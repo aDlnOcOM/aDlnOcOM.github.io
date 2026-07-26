@@ -28,12 +28,92 @@
       padding: 20px;
       border-radius: 6px;
       border: 1px solid #30363d;
-      min-width: 200px;
+      min-width: 220px;
     }
     #stats h2 { margin-bottom: 10px; font-size: 16px; }
     #stats div { margin: 8px 0; }
     .label { color: #8b949e; }
     .value { color: #58a6ff; font-weight: bold; }
+
+    /* Leaderboard */
+    #leaderboard {
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #30363d;
+    }
+    #leaderboard h3 {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #8b949e;
+    }
+    #leaderboard ol {
+      padding-left: 20px;
+      font-size: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+    #leaderboard li {
+      margin: 5px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .lb-name { color: #58a6ff; }
+    .lb-score { color: #2ea043; }
+    .lb-date { color: #8b949e; font-size: 10px; display: block; }
+
+    /* Modal */
+    #modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    #modal-content {
+      background: #161b22;
+      padding: 30px;
+      border-radius: 8px;
+      border: 2px solid #30363d;
+      text-align: center;
+      max-width: 350px;
+      width: 90%;
+    }
+    #modal-content h2 {
+      margin-bottom: 15px;
+      color: #f0f6fc;
+    }
+    #modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+    #modal-content button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: #2ea043;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #modal-content button:hover {
+      background: #3fb950;
+    }
+    #loading {
+      color: #8b949e;
+      font-size: 12px;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -44,19 +124,53 @@
       <div><span class="label">Score:</span> <span class="value" id="score">0</span></div>
       <div><span class="label">Lines:</span> <span class="value" id="lines">0</span></div>
       <div><span class="label">Level:</span> <span class="value" id="level">1</span></div>
-      <div><span class="label">Next:</span></div>
-      <canvas id="next" width="100" height="100"></canvas>
+
+      <div id="leaderboard">
+        <h3>🏆 Global Leaderboard</h3>
+        <ol id="lb-list"><li id="loading">Loading...</li></ol>
+      </div>
     </div>
   </div>
 
-  <script>
+  <!-- Game Over Modal -->
+  <div id="modal">
+    <div id="modal-content">
+      <h2>GAME OVER</h2>
+      <p>Final Score: <span id="final-score" style="color:#2ea043;font-weight:bold;">0</span></p>
+      <input type="text" id="player-name" placeholder="Enter your nickname" maxlength="12" />
+      <button onclick="saveScore()">Save Record</button>
+      <button onclick="restartGame()" style="background:#388bfd;">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    // === FIREBASE CONFIG ===
+    // ВСТАВЬ СЮДА СВОЙ КОНФИГ ИЗ FIREBASE CONSOLE!
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
+  authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
+  databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "githubleaderboard-adlnocom",
+  storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
+  messagingSenderId: "547100842018",
+  appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
+  measurementId: "G-10793GQHSE"
+};
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // === TETRIS ENGINE ===
     const COLS = 10, ROWS = 20, SIZE = 24;
     const board = document.getElementById("board");
-    const nextCanvas = document.getElementById("next");
     board.width = COLS * SIZE;
     board.height = ROWS * SIZE;
     const ctx = board.getContext("2d");
-    const nextCtx = nextCanvas.getContext("2d");
 
     const COLORS = {
       bg: "#0d1117",
@@ -80,24 +194,27 @@
       L: [[0,0,1],[1,1,1]]
     };
 
-    let grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-    let score = 0, lines = 0, level = 1;
-    let gameOver = false;
+    let grid, score, lines, level, gameOver;
     let current, next, posX, posY;
+    let lastDrop = 0, dropInterval = 1000;
 
-    function randomShape() {
-      const keys = Object.keys(SHAPES);
-      const key = keys[Math.floor(Math.random() * keys.length)];
-      return { shape: SHAPES[key], color: COLORS[key], type: key };
-    }
-
-    function spawn() {
+    function init() {
+      grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+      score = 0; lines = 0; level = 1;
+      gameOver = false;
       current = next || randomShape();
       next = randomShape();
       posX = Math.floor((COLS - current.shape[0].length) / 2);
       posY = 0;
-      if (collide()) gameOver = true;
-      drawNext();
+      lastDrop = 0;
+      dropInterval = 1000;
+      updateStats();
+    }
+
+    function randomShape() {
+      const keys = Object.keys(SHAPES);
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      return { shape: SHAPES[key], color: COLORS[key] };
     }
 
     function collide(nx = posX, ny = posY, shape = current.shape) {
@@ -125,7 +242,16 @@
       } else {
         lock();
         clearLines();
-        spawn();
+        if (!gameOver) {
+          current = next;
+          next = randomShape();
+          posX = Math.floor((COLS - current.shape[0].length) / 2);
+          posY = 0;
+          if (collide()) {
+            gameOver = true;
+            showGameOver();
+          }
+        }
       }
     }
 
@@ -151,6 +277,7 @@
         lines += cleared;
         score += [0, 100, 300, 500, 800][cleared] * level;
         level = Math.floor(lines / 10) + 1;
+        dropInterval = Math.max(100, 1000 - (level - 1) * 100);
         updateStats();
       }
     }
@@ -159,23 +286,6 @@
       document.getElementById("score").textContent = score;
       document.getElementById("lines").textContent = lines;
       document.getElementById("level").textContent = level;
-    }
-
-    function drawNext() {
-      nextCtx.fillStyle = COLORS.bg;
-      nextCtx.fillRect(0, 0, 100, 100);
-      const shape = next.shape;
-      const size = 20;
-      const offsetX = (100 - shape[0].length * size) / 2;
-      const offsetY = (100 - shape.length * size) / 2;
-      shape.forEach((row, y) => {
-        row.forEach((val, x) => {
-          if (val) {
-            nextCtx.fillStyle = next.color;
-            nextCtx.fillRect(offsetX + x * size, offsetY + y * size, size - 1, size - 1);
-          }
-        });
-      });
     }
 
     function draw() {
@@ -216,19 +326,75 @@
           });
         });
       }
-
-      if (gameOver) {
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(0, 0, board.width, board.height);
-        ctx.fillStyle = COLORS.I;
-        ctx.font = "24px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", board.width / 2, board.height / 2);
-        ctx.font = "14px monospace";
-        ctx.fillText("Press F5", board.width / 2, board.height / 2 + 25);
-      }
     }
 
+    // === FIREBASE LEADERBOARD ===
+    const leaderboardRef = ref(db, "leaderboard");
+
+    // Load leaderboard in real-time
+    onValue(leaderboardRef, (snapshot) => {
+      const data = snapshot.val();
+      const list = document.getElementById("lb-list");
+
+      if (!data) {
+        list.innerHTML = '<li style="color:#8b949e;">No records yet</li>';
+        return;
+      }
+
+      // Convert to array and sort
+      const entries = Object.values(data).sort((a, b) => b.score - a.score).slice(0, 20);
+
+      list.innerHTML = entries.map((entry, i) => {
+        const date = new Date(entry.timestamp).toLocaleDateString();
+        return `
+          <li>
+            <span class="lb-name">#${i+1} ${escapeHtml(entry.name)}</span>
+            <span class="lb-score">${entry.score}</span>
+            <span class="lb-date">${date}</span>
+          </li>
+        `;
+      }).join("");
+    });
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Expose to global scope for button onclick
+    window.saveScore = function() {
+      const nameInput = document.getElementById("player-name");
+      const name = nameInput.value.trim() || "Anonymous";
+
+      // Sanitize
+      const sanitizedName = name.replace(/[^a-zA-Z0-9_\-\s]/g, "").slice(0, 12);
+
+      // Push to Firebase
+      push(leaderboardRef, {
+        name: sanitizedName,
+        score: score,
+        timestamp: Date.now()
+      });
+
+      document.getElementById("modal").style.display = "none";
+      nameInput.value = "";
+    };
+
+    // === GAME OVER ===
+    function showGameOver() {
+      document.getElementById("final-score").textContent = score;
+      document.getElementById("modal").style.display = "flex";
+      document.getElementById("player-name").value = "";
+      document.getElementById("player-name").focus();
+    }
+
+    window.restartGame = function() {
+      document.getElementById("modal").style.display = "none";
+      init();
+    };
+
+    // === CONTROLS ===
     document.addEventListener("keydown", e => {
       if (gameOver) return;
       if (e.code === "ArrowLeft" && !collide(posX - 1, posY)) posX--;
@@ -237,12 +403,10 @@
       if (e.code === "ArrowUp") rotate();
     });
 
-    let dropInterval = 1000;
-    let lastDrop = 0;
-
+    // === GAME LOOP ===
     function loop(timestamp) {
       if (!lastDrop) lastDrop = timestamp;
-      if (timestamp - lastDrop > dropInterval / level) {
+      if (timestamp - lastDrop > dropInterval) {
         drop();
         lastDrop = timestamp;
       }
@@ -250,7 +414,8 @@
       requestAnimationFrame(loop);
     }
 
-    spawn();
+    // === START ===
+    init();
     requestAnimationFrame(loop);
   </script>
 </body>
