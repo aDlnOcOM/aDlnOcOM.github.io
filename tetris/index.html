@@ -170,16 +170,11 @@
   </div>
 
   <div id="game">
-    <!-- NEXT PIECE -->
     <div id="preview-box">
       <h3>NEXT</h3>
       <canvas id="preview" width="72" height="72"></canvas>
     </div>
-
-    <!-- BOARD -->
     <canvas id="board"></canvas>
-
-    <!-- STATS + LEADERBOARD -->
     <div id="stats">
       <h2>📊 Stats</h2>
       <div><span class="label">Score:</span> <span class="value" id="score">0</span></div>
@@ -208,7 +203,6 @@
   </div>
 
   <script type="module">
-    // ================== FIREBASE ==================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -227,19 +221,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
-
-    // ================== CONSTANTS ==================
     const COLS = 10, ROWS = 20, SIZE = 24;
     const PREVIEW_SIZE = 18;
-    const GAME_VERSION = "2.2.0";
-    const MAX_REASONABLE_SCORE = 350000;
-    const MIN_PLAY_TIME_MS = 15000;
-    const MAX_PLAY_TIME_MS = 45 * 60 * 1000;
+    const GAME_VERSION = "2.3.0";
+    const MAX_REASONABLE_SCORE = 180000;
+    const MIN_PLAY_TIME_MS = 25000;          // минимум 25 сек
+    const MAX_PLAY_TIME_MS = 35 * 60 * 1000; // максимум 35 минут
     const SAVE_COOLDOWN_MS = 45000;
     const STORAGE_NAME = "tetris_nickname_v2";
     const STORAGE_BAN = "tetris_banned_v2";
-
-    // ================== BAN CHECK ==================
     if (localStorage.getItem(STORAGE_BAN) === "1") {
       document.getElementById("banned-screen").style.display = "flex";
       document.getElementById("game").style.display = "none";
@@ -278,7 +268,7 @@
     let currentUser = null;
     let lastSaveTime = 0;
     let isSaving = false;
-    let allEntries = [];          // все записи для расчёта места игрока
+    let allEntries = [];
     let myBestScore = 0;
 
     // ================== AUTH ==================
@@ -474,9 +464,8 @@
 
       allEntries = Object.values(data).sort((a, b) => b.score - a.score);
 
-      // Топ-6
-      const top8 = allEntries.slice(0, 6);
-      list.innerHTML = top8.map((entry, i) => {
+      const top6 = allEntries.slice(0, 6);
+      list.innerHTML = top6.map((entry, i) => {
         const date = new Date(entry.timestamp).toLocaleDateString();
         const timeSec = entry.playTimeMs ? Math.round(entry.playTimeMs / 1000) + "s" : "";
         return `
@@ -488,7 +477,6 @@
         `;
       }).join("");
 
-      // Место текущего игрока
       updateMyRank();
     });
 
@@ -501,7 +489,6 @@
         return;
       }
 
-      // Ищем лучший результат этого ника
       const myEntries = allEntries.filter(e => e.name === savedName);
       if (!myEntries.length) {
         myRankEl.innerHTML = `Your place: not ranked yet`;
@@ -542,24 +529,21 @@
 
     function validateScoreData(data) {
       if (!data.score || data.score < 0 || data.score > MAX_REASONABLE_SCORE) return "Score out of range";
-      if (data.lines < 0 || data.lines > 2500) return "Lines out of range";
-      if (data.level < 1 || data.level > 40) return "Level out of range";
+      if (data.lines < 0 || data.lines > 1200) return "Lines out of range";
+      if (data.level < 1 || data.level > 25) return "Level out of range";
       if (data.playTimeMs < MIN_PLAY_TIME_MS) return "Game too short";
       if (data.playTimeMs > MAX_PLAY_TIME_MS) return "Game too long";
-
-      const theoreticalMax = data.lines * 800 * Math.max(1, data.level);
-      if (data.score > theoreticalMax * 1.25) return "Score inconsistent";
-
-      const scorePerSec = data.score / (data.playTimeMs / 1000);
-      if (scorePerSec > 120) return "Impossible score rate";
-
-      const linesPerMin = data.lines / (data.playTimeMs / 60000);
-      if (linesPerMin > 25) return "Impossible lines rate";
-
       const expectedLevel = Math.floor(data.lines / 10) + 1;
-      if (Math.abs(data.level - expectedLevel) > 2) return "Level mismatch";
-
-      if (data.lines >= 20 && data.score < data.lines * 30) return "Score too low";
+      if (Math.abs(data.level - expectedLevel) > 1) return "Level mismatch";
+      const avgLevelFactor = (1 + data.level) / 2;
+      const theoreticalMax = data.lines * 800 * avgLevelFactor * 1.18;
+      if (data.score > theoreticalMax) return "Score inconsistent";
+      const scorePerSec = data.score / (data.playTimeMs / 1000);
+      if (scorePerSec > 90) return "Impossible score rate";
+      const linesPerMin = data.lines / (data.playTimeMs / 60000);
+      if (linesPerMin > 16) return "Impossible lines rate";
+      if (data.lines >= 20 && data.score < data.lines * 55) return "Score too low";
+      if (data.score > 15000 && data.score % 1000 === 0) return "Suspicious score";
 
       return null;
     }
@@ -593,7 +577,6 @@
         return;
       }
 
-      // Сохраняем ник
       localStorage.setItem(STORAGE_NAME, name);
 
       const playTimeMs = Math.round(performance.now() - startTime);
@@ -612,7 +595,13 @@
       const error = validateScoreData(payload);
       if (error) {
         setStatus("Invalid data: " + error, true);
-        if (error.includes("Impossible") || error.includes("inconsistent") || error.includes("out of range")) {
+        if (
+          error.includes("Impossible") ||
+          error.includes("inconsistent") ||
+          error.includes("out of range") ||
+          error.includes("mismatch") ||
+          error.includes("Suspicious")
+        ) {
           banUser(error);
         }
         return;
@@ -632,7 +621,7 @@
         }, 800);
       } catch (err) {
         console.error(err);
-        setStatus("Save failed", true);
+        setStatus("Save failed (check Firebase rules)", true);
       } finally {
         isSaving = false;
         document.getElementById("btn-save").disabled = false;
