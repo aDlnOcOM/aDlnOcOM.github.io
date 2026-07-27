@@ -15,35 +15,79 @@
       font-family: "Courier New", monospace;
       color: #c9d1d9;
     }
-    #game { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
-    canvas {
+    #game {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    #preview-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+      min-width: 90px;
+    }
+    #preview-box h3 {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 8px;
+    }
+    #preview {
+      display: block;
+      margin: 0 auto;
+      image-rendering: pixelated;
+      background: #0d1117;
+      border: 1px solid #30363d;
+    }
+    canvas#board {
       border: 2px solid #30363d;
       image-rendering: pixelated;
       background: #0d1117;
     }
     #stats {
       background: #161b22;
-      padding: 20px;
+      padding: 18px;
       border-radius: 6px;
       border: 1px solid #30363d;
-      min-width: 240px;
+      min-width: 230px;
     }
     #stats h2 { margin-bottom: 10px; font-size: 16px; }
-    #stats div { margin: 8px 0; }
+    #stats div { margin: 7px 0; }
     .label { color: #8b949e; }
     .value { color: #58a6ff; font-weight: bold; }
-    #leaderboard { margin-top: 20px; padding-top: 15px; border-top: 1px solid #30363d; }
-    #leaderboard h3 { margin-bottom: 10px; font-size: 14px; color: #8b949e; }
+    #leaderboard {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #30363d;
+    }
+    #leaderboard h3 {
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #8b949e;
+    }
     #leaderboard ol {
-      padding-left: 20px;
+      padding-left: 18px;
       font-size: 12px;
-      max-height: 280px;
+      max-height: 210px;
       overflow-y: auto;
     }
-    #leaderboard li { margin: 6px 0; }
+    #leaderboard li { margin: 5px 0; }
     .lb-name { color: #58a6ff; }
     .lb-score { color: #2ea043; font-weight: bold; }
     .lb-meta { color: #8b949e; font-size: 10px; display: block; }
+    #my-rank {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #my-rank .place { color: #f0f6fc; font-weight: bold; }
+    #my-rank .score { color: #2ea043; }
     #modal {
       display: none;
       position: fixed;
@@ -56,7 +100,7 @@
     }
     #modal-content {
       background: #161b22;
-      padding: 30px;
+      padding: 28px;
       border-radius: 8px;
       border: 2px solid #30363d;
       text-align: center;
@@ -102,19 +146,50 @@
     }
     .error { color: #f85149 !important; }
     .success { color: #2ea043 !important; }
+    #banned-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0d1117;
+      z-index: 999;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      color: #f85149;
+      font-size: 18px;
+      text-align: center;
+      padding: 20px;
+    }
   </style>
 </head>
 <body>
+  <div id="banned-screen">
+    <div style="font-size:42px;margin-bottom:16px;">🚫</div>
+    <div>You have been blocked for cheating</div>
+    <div style="font-size:13px;color:#8b949e;margin-top:10px;">This browser can no longer submit scores</div>
+  </div>
+
   <div id="game">
+    <!-- NEXT PIECE -->
+    <div id="preview-box">
+      <h3>NEXT</h3>
+      <canvas id="preview" width="72" height="72"></canvas>
+    </div>
+
+    <!-- BOARD -->
     <canvas id="board"></canvas>
+
+    <!-- STATS + LEADERBOARD -->
     <div id="stats">
       <h2>📊 Stats</h2>
       <div><span class="label">Score:</span> <span class="value" id="score">0</span></div>
       <div><span class="label">Lines:</span> <span class="value" id="lines">0</span></div>
       <div><span class="label">Level:</span> <span class="value" id="level">1</span></div>
+
       <div id="leaderboard">
-        <h3>🏆 Global Leaderboard</h3>
+        <h3>🏆 Top 8</h3>
         <ol id="lb-list"><li style="color:#8b949e;">Loading...</li></ol>
+        <div id="my-rank">Your place: —</div>
       </div>
     </div>
   </div>
@@ -123,7 +198,7 @@
     <div id="modal-content">
       <h2>GAME OVER</h2>
       <p>Final Score: <span id="final-score" style="color:#2ea043;font-weight:bold;">0</span></p>
-      <input type="text" id="player-name" placeholder="Nickname (3-12 chars)" maxlength="12" autocomplete="off" />
+      <input type="text" id="player-name" placeholder="Nickname (2-12 chars)" maxlength="12" autocomplete="off" />
       <div>
         <button id="btn-save">Save Record</button>
         <button id="btn-restart" class="secondary">Play Again</button>
@@ -155,17 +230,30 @@
 
     // ================== CONSTANTS ==================
     const COLS = 10, ROWS = 20, SIZE = 24;
-    const GAME_VERSION = "2.1.0";
+    const PREVIEW_SIZE = 18;
+    const GAME_VERSION = "2.2.0";
     const MAX_REASONABLE_SCORE = 350000;
-    const MIN_PLAY_TIME_MS = 15000;          // минимум 15 сек игры
-    const MAX_PLAY_TIME_MS = 45 * 60 * 1000; // максимум 45 минут
-    const SAVE_COOLDOWN_MS = 45000;          // 45 сек между сохранениями
+    const MIN_PLAY_TIME_MS = 15000;
+    const MAX_PLAY_TIME_MS = 45 * 60 * 1000;
+    const SAVE_COOLDOWN_MS = 45000;
+    const STORAGE_NAME = "tetris_nickname_v2";
+    const STORAGE_BAN = "tetris_banned_v2";
+
+    // ================== BAN CHECK ==================
+    if (localStorage.getItem(STORAGE_BAN) === "1") {
+      document.getElementById("banned-screen").style.display = "flex";
+      document.getElementById("game").style.display = "none";
+      throw new Error("Banned");
+    }
 
     // ================== GAME STATE ==================
     const board = document.getElementById("board");
     board.width = COLS * SIZE;
     board.height = ROWS * SIZE;
     const ctx = board.getContext("2d");
+
+    const previewCanvas = document.getElementById("preview");
+    const pctx = previewCanvas.getContext("2d");
 
     const COLORS = {
       bg: "#0d1117", grid: "#161b22",
@@ -190,14 +278,14 @@
     let currentUser = null;
     let lastSaveTime = 0;
     let isSaving = false;
+    let allEntries = [];          // все записи для расчёта места игрока
+    let myBestScore = 0;
 
     // ================== AUTH ==================
     onAuthStateChanged(auth, (user) => {
       currentUser = user;
       if (!user) {
-        signInAnonymously(auth).catch(err => {
-          console.error("Auth failed:", err);
-        });
+        signInAnonymously(auth).catch(err => console.error("Auth failed:", err));
       }
     });
 
@@ -216,12 +304,13 @@
       dropInterval = 1000;
       startTime = performance.now();
       updateStats();
+      drawPreview();
     }
 
     function randomShape() {
       const keys = Object.keys(SHAPES);
       const key = keys[Math.floor(Math.random() * keys.length)];
-      return { shape: SHAPES[key], color: COLORS[key] };
+      return { shape: SHAPES[key], color: COLORS[key], type: key };
     }
 
     function collide(nx = posX, ny = posY, shape = current.shape) {
@@ -254,6 +343,7 @@
           next = randomShape();
           posX = Math.floor((COLS - current.shape[0].length) / 2);
           posY = 0;
+          drawPreview();
           if (collide()) {
             gameOver = true;
             showGameOver();
@@ -284,7 +374,6 @@
       }
       if (cleared) {
         lines += cleared;
-        // Классическая формула очков
         const points = [0, 100, 300, 500, 800][cleared] * level;
         score += points;
         level = Math.floor(lines / 10) + 1;
@@ -299,6 +388,7 @@
       document.getElementById("level").textContent = level;
     }
 
+    // ================== DRAW ==================
     function draw() {
       ctx.fillStyle = COLORS.bg;
       ctx.fillRect(0, 0, board.width, board.height);
@@ -339,34 +429,94 @@
       }
     }
 
+    function drawPreview() {
+      pctx.fillStyle = COLORS.bg;
+      pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+      if (!next) return;
+
+      const shape = next.shape;
+      const color = next.color;
+      const w = shape[0].length;
+      const h = shape.length;
+      const offsetX = Math.floor((4 - w) / 2);
+      const offsetY = Math.floor((4 - h) / 2);
+
+      shape.forEach((row, y) => {
+        row.forEach((val, x) => {
+          if (val) {
+            pctx.fillStyle = color;
+            pctx.fillRect(
+              (offsetX + x) * PREVIEW_SIZE,
+              (offsetY + y) * PREVIEW_SIZE,
+              PREVIEW_SIZE - 1,
+              PREVIEW_SIZE - 1
+            );
+          }
+        });
+      });
+    }
+
     // ================== LEADERBOARD ==================
     const leaderboardRef = ref(db, "leaderboard");
 
-    onValue(query(leaderboardRef, orderByChild("score"), limitToLast(25)), (snapshot) => {
+    onValue(query(leaderboardRef, orderByChild("score"), limitToLast(50)), (snapshot) => {
       const data = snapshot.val();
       const list = document.getElementById("lb-list");
+      const myRankEl = document.getElementById("my-rank");
 
       if (!data) {
         list.innerHTML = '<li style="color:#8b949e;">No records yet</li>';
+        myRankEl.textContent = "Your place: —";
+        allEntries = [];
         return;
       }
 
-      const entries = Object.values(data)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 20);
+      allEntries = Object.values(data).sort((a, b) => b.score - a.score);
 
-      list.innerHTML = entries.map((entry, i) => {
+      // Топ-8
+      const top8 = allEntries.slice(0, 8);
+      list.innerHTML = top8.map((entry, i) => {
         const date = new Date(entry.timestamp).toLocaleDateString();
         const timeSec = entry.playTimeMs ? Math.round(entry.playTimeMs / 1000) + "s" : "";
         return `
           <li>
             <span class="lb-name">#${i + 1} ${escapeHtml(entry.name || "Anon")}</span>
             <span class="lb-score">${entry.score}</span>
-            <span class="lb-meta">${date} · L${entry.level || "?"} · ${entry.lines || "?"} lines ${timeSec ? "· " + timeSec : ""}</span>
+            <span class="lb-meta">${date} · L${entry.level || "?"} · ${entry.lines || "?"}ln ${timeSec ? "· " + timeSec : ""}</span>
           </li>
         `;
       }).join("");
+
+      // Место текущего игрока
+      updateMyRank();
     });
+
+    function updateMyRank() {
+      const myRankEl = document.getElementById("my-rank");
+      const savedName = localStorage.getItem(STORAGE_NAME) || "";
+
+      if (!allEntries.length || !savedName) {
+        myRankEl.innerHTML = `Your place: —`;
+        return;
+      }
+
+      // Ищем лучший результат этого ника
+      const myEntries = allEntries.filter(e => e.name === savedName);
+      if (!myEntries.length) {
+        myRankEl.innerHTML = `Your place: not ranked yet`;
+        return;
+      }
+
+      myBestScore = Math.max(...myEntries.map(e => e.score));
+      const place = allEntries.findIndex(e => e.score === myBestScore && e.name === savedName) + 1;
+
+      myRankEl.innerHTML = `
+        <span class="place">#${place}</span>
+        <span class="score">${myBestScore}</span>
+        <span style="color:#8b949e;font-size:11px;"> (${escapeHtml(savedName)})</span>
+      `;
+    }
 
     function escapeHtml(text) {
       const div = document.createElement("div");
@@ -374,32 +524,44 @@
       return div.innerHTML;
     }
 
-    // ================== SAVE SCORE (PROTECTED) ==================
+    // ================== SAVE + ANTI-CHEAT ==================
     function sanitizeName(name) {
       return name
         .trim()
-        .replace(/[^\w\s\-\u0400-\u04FF]/g, "") // латиница + кириллица + _ -
+        .replace(/[^\w\s\-\u0400-\u04FF]/g, "")
         .slice(0, 12);
     }
 
+    function banUser(reason) {
+      console.warn("BAN:", reason);
+      localStorage.setItem(STORAGE_BAN, "1");
+      document.getElementById("banned-screen").style.display = "flex";
+      document.getElementById("game").style.display = "none";
+      document.getElementById("modal").style.display = "none";
+    }
+
     function validateScoreData(data) {
-      // 1. Базовые проверки
       if (!data.score || data.score < 0 || data.score > MAX_REASONABLE_SCORE) return "Score out of range";
       if (data.lines < 0 || data.lines > 2500) return "Lines out of range";
       if (data.level < 1 || data.level > 40) return "Level out of range";
       if (data.playTimeMs < MIN_PLAY_TIME_MS) return "Game too short";
       if (data.playTimeMs > MAX_PLAY_TIME_MS) return "Game too long";
 
-      // 2. Согласованность счёта и линий (очень грубая, но отсекает бред)
-      // Максимум теоретический: все тетрисы на высоком уровне
-      const maxPossible = data.lines * 800 * Math.max(1, data.level);
-      if (data.score > maxPossible * 1.3) return "Score inconsistent with lines/level";
+      const theoreticalMax = data.lines * 800 * Math.max(1, data.level);
+      if (data.score > theoreticalMax * 1.25) return "Score inconsistent";
 
-      // 3. Минимальная "плотность" очков
-      const minExpected = data.lines * 40;
-      if (data.lines > 10 && data.score < minExpected) return "Score too low for lines";
+      const scorePerSec = data.score / (data.playTimeMs / 1000);
+      if (scorePerSec > 120) return "Impossible score rate";
 
-      return null; // ok
+      const linesPerMin = data.lines / (data.playTimeMs / 60000);
+      if (linesPerMin > 25) return "Impossible lines rate";
+
+      const expectedLevel = Math.floor(data.lines / 10) + 1;
+      if (Math.abs(data.level - expectedLevel) > 2) return "Level mismatch";
+
+      if (data.lines >= 20 && data.score < data.lines * 30) return "Score too low";
+
+      return null;
     }
 
     async function saveScoreSecure() {
@@ -409,20 +571,30 @@
         return;
       }
       if (!currentUser) {
-        setStatus("Not authenticated. Wait a second...", true);
+        setStatus("Not authenticated...", true);
+        return;
+      }
+      if (localStorage.getItem(STORAGE_BAN) === "1") {
+        banUser("Already banned");
         return;
       }
 
       const now = Date.now();
       if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
         const left = Math.ceil((SAVE_COOLDOWN_MS - (now - lastSaveTime)) / 1000);
-        setStatus(`Wait ${left}s before next save`, true);
+        setStatus(`Wait ${left}s`, true);
         return;
       }
 
       const nameInput = document.getElementById("player-name");
       let name = sanitizeName(nameInput.value);
-      if (name.length < 2) name = "Anonymous";
+      if (name.length < 2) {
+        setStatus("Nickname too short", true);
+        return;
+      }
+
+      // Сохраняем ник
+      localStorage.setItem(STORAGE_NAME, name);
 
       const playTimeMs = Math.round(performance.now() - startTime);
 
@@ -439,7 +611,10 @@
 
       const error = validateScoreData(payload);
       if (error) {
-        setStatus(error, true);
+        setStatus("Invalid data: " + error, true);
+        if (error.includes("Impossible") || error.includes("inconsistent") || error.includes("out of range")) {
+          banUser(error);
+        }
         return;
       }
 
@@ -450,13 +625,14 @@
       try {
         await push(leaderboardRef, payload);
         lastSaveTime = now;
-        setStatus("Record saved!", false);
+        setStatus("Saved!", false);
+        updateMyRank();
         setTimeout(() => {
           document.getElementById("modal").style.display = "none";
-        }, 900);
+        }, 800);
       } catch (err) {
         console.error(err);
-        setStatus("Save failed (check Firebase rules)", true);
+        setStatus("Save failed", true);
       } finally {
         isSaving = false;
         document.getElementById("btn-save").disabled = false;
@@ -473,7 +649,9 @@
     function showGameOver() {
       document.getElementById("final-score").textContent = score;
       document.getElementById("modal").style.display = "flex";
-      document.getElementById("player-name").value = "";
+
+      const saved = localStorage.getItem(STORAGE_NAME) || "";
+      document.getElementById("player-name").value = saved;
       document.getElementById("status-msg").textContent = "";
       document.getElementById("player-name").focus();
     }
@@ -483,7 +661,6 @@
       init();
     }
 
-    // Привязка кнопок (не через window)
     document.getElementById("btn-save").addEventListener("click", saveScoreSecure);
     document.getElementById("btn-restart").addEventListener("click", restartGame);
 
@@ -494,13 +671,14 @@
       if (e.code === "ArrowRight" && !collide(posX + 1, posY)) posX++;
       if (e.code === "ArrowDown") drop();
       if (e.code === "ArrowUp") rotate();
-      if (e.code === "Space") { // hard drop
+      if (e.code === "Space") {
+        e.preventDefault();
         while (!collide(posX, posY + 1)) posY++;
         drop();
       }
     });
 
-    // ================== GAME LOOP ==================
+    // ================== LOOP ==================
     function loop(timestamp) {
       if (!lastDrop) lastDrop = timestamp;
       if (!gameOver && timestamp - lastDrop > dropInterval) {
