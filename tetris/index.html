@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GitHub TETRIS | aDlnOcOM</title>
+  <title>GitHub TETRIS | Protected</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -15,60 +15,41 @@
       font-family: "Courier New", monospace;
       color: #c9d1d9;
     }
-    #game {
-      display: flex;
-      gap: 20px;
-    }
+    #game { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
     canvas {
       border: 2px solid #30363d;
       image-rendering: pixelated;
+      background: #0d1117;
     }
     #stats {
       background: #161b22;
       padding: 20px;
       border-radius: 6px;
       border: 1px solid #30363d;
-      min-width: 220px;
+      min-width: 240px;
     }
     #stats h2 { margin-bottom: 10px; font-size: 16px; }
     #stats div { margin: 8px 0; }
     .label { color: #8b949e; }
     .value { color: #58a6ff; font-weight: bold; }
-
-    /* Leaderboard */
-    #leaderboard {
-      margin-top: 20px;
-      padding-top: 15px;
-      border-top: 1px solid #30363d;
-    }
-    #leaderboard h3 {
-      margin-bottom: 10px;
-      font-size: 14px;
-      color: #8b949e;
-    }
+    #leaderboard { margin-top: 20px; padding-top: 15px; border-top: 1px solid #30363d; }
+    #leaderboard h3 { margin-bottom: 10px; font-size: 14px; color: #8b949e; }
     #leaderboard ol {
       padding-left: 20px;
       font-size: 12px;
-      max-height: 250px;
+      max-height: 280px;
       overflow-y: auto;
     }
-    #leaderboard li {
-      margin: 5px 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    #leaderboard li { margin: 6px 0; }
     .lb-name { color: #58a6ff; }
-    .lb-score { color: #2ea043; }
-    .lb-date { color: #8b949e; font-size: 10px; display: block; }
-
-    /* Modal */
+    .lb-score { color: #2ea043; font-weight: bold; }
+    .lb-meta { color: #8b949e; font-size: 10px; display: block; }
     #modal {
       display: none;
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       justify-content: center;
       align-items: center;
       z-index: 100;
@@ -79,41 +60,48 @@
       border-radius: 8px;
       border: 2px solid #30363d;
       text-align: center;
-      max-width: 350px;
+      max-width: 360px;
       width: 90%;
     }
-    #modal-content h2 {
-      margin-bottom: 15px;
-      color: #f0f6fc;
-    }
+    #modal-content h2 { margin-bottom: 12px; color: #f0f6fc; }
     #modal-content input {
       width: 100%;
       padding: 10px;
-      margin: 10px 0;
+      margin: 12px 0;
       background: #0d1117;
       border: 1px solid #30363d;
       color: #c9d1d9;
       border-radius: 4px;
       font-family: inherit;
+      font-size: 14px;
     }
     #modal-content button {
-      padding: 10px 20px;
-      margin: 5px;
+      padding: 10px 18px;
+      margin: 6px;
       background: #2ea043;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
       font-family: inherit;
+      font-size: 14px;
     }
-    #modal-content button:hover {
-      background: #3fb950;
+    #modal-content button:hover { background: #3fb950; }
+    #modal-content button.secondary { background: #388bfd; }
+    #modal-content button.secondary:hover { background: #58a6ff; }
+    #modal-content button:disabled {
+      background: #30363d;
+      cursor: not-allowed;
+      opacity: 0.6;
     }
-    #loading {
-      color: #8b949e;
+    #status-msg {
       font-size: 12px;
+      color: #8b949e;
       margin-top: 10px;
+      min-height: 18px;
     }
+    .error { color: #f85149 !important; }
+    .success { color: #2ea043 !important; }
   </style>
 </head>
 <body>
@@ -124,64 +112,65 @@
       <div><span class="label">Score:</span> <span class="value" id="score">0</span></div>
       <div><span class="label">Lines:</span> <span class="value" id="lines">0</span></div>
       <div><span class="label">Level:</span> <span class="value" id="level">1</span></div>
-
       <div id="leaderboard">
         <h3>🏆 Global Leaderboard</h3>
-        <ol id="lb-list"><li id="loading">Loading...</li></ol>
+        <ol id="lb-list"><li style="color:#8b949e;">Loading...</li></ol>
       </div>
     </div>
   </div>
 
-  <!-- Game Over Modal -->
   <div id="modal">
     <div id="modal-content">
       <h2>GAME OVER</h2>
       <p>Final Score: <span id="final-score" style="color:#2ea043;font-weight:bold;">0</span></p>
-      <input type="text" id="player-name" placeholder="Enter your nickname" maxlength="12" />
-      <button onclick="saveScore()">Save Record</button>
-      <button onclick="restartGame()" style="background:#388bfd;">Play Again</button>
+      <input type="text" id="player-name" placeholder="Nickname (3-12 chars)" maxlength="12" autocomplete="off" />
+      <div>
+        <button id="btn-save">Save Record</button>
+        <button id="btn-restart" class="secondary">Play Again</button>
+      </div>
+      <div id="status-msg"></div>
     </div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module">
-    // === FIREBASE CONFIG ===
-    // ВСТАВЬ СЮДА СВОЙ КОНФИГ ИЗ FIREBASE CONSOLE!
+    // ================== FIREBASE ==================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
-  authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
-  databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "githubleaderboard-adlnocom",
-  storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
-  messagingSenderId: "547100842018",
-  appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
-  measurementId: "G-10793GQHSE"
-};
+      apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
+      authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
+      databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "githubleaderboard-adlnocom",
+      storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
+      messagingSenderId: "547100842018",
+      appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
+      measurementId: "G-10793GQHSE"
+    };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+    const auth = getAuth(app);
 
-    // === TETRIS ENGINE ===
+    // ================== CONSTANTS ==================
     const COLS = 10, ROWS = 20, SIZE = 24;
+    const GAME_VERSION = "2.1.0";
+    const MAX_REASONABLE_SCORE = 350000;
+    const MIN_PLAY_TIME_MS = 15000;          // минимум 15 сек игры
+    const MAX_PLAY_TIME_MS = 45 * 60 * 1000; // максимум 45 минут
+    const SAVE_COOLDOWN_MS = 45000;          // 45 сек между сохранениями
+
+    // ================== GAME STATE ==================
     const board = document.getElementById("board");
     board.width = COLS * SIZE;
     board.height = ROWS * SIZE;
     const ctx = board.getContext("2d");
 
     const COLORS = {
-      bg: "#0d1117",
-      grid: "#161b22",
-      I: "#2ea043",
-      O: "#8b5cf6",
-      T: "#f0f6fc",
-      S: "#238636",
-      Z: "#a371f7",
-      J: "#388bfd",
-      L: "#f78166"
+      bg: "#0d1117", grid: "#161b22",
+      I: "#2ea043", O: "#8b5cf6", T: "#f0f6fc",
+      S: "#238636", Z: "#a371f7", J: "#388bfd", L: "#f78166"
     };
 
     const SHAPES = {
@@ -197,10 +186,27 @@
     let grid, score, lines, level, gameOver;
     let current, next, posX, posY;
     let lastDrop = 0, dropInterval = 1000;
+    let startTime = 0;
+    let currentUser = null;
+    let lastSaveTime = 0;
+    let isSaving = false;
 
+    // ================== AUTH ==================
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      if (!user) {
+        signInAnonymously(auth).catch(err => {
+          console.error("Auth failed:", err);
+        });
+      }
+    });
+
+    // ================== TETRIS ENGINE ==================
     function init() {
-      grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-      score = 0; lines = 0; level = 1;
+      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      score = 0;
+      lines = 0;
+      level = 1;
       gameOver = false;
       current = next || randomShape();
       next = randomShape();
@@ -208,6 +214,7 @@
       posY = 0;
       lastDrop = 0;
       dropInterval = 1000;
+      startTime = performance.now();
       updateStats();
     }
 
@@ -258,7 +265,9 @@
     function lock() {
       current.shape.forEach((row, y) => {
         row.forEach((val, x) => {
-          if (val && posY + y >= 0) grid[posY + y][posX + x] = current.color;
+          if (val && posY + y >= 0) {
+            grid[posY + y][posX + x] = current.color;
+          }
         });
       });
     }
@@ -275,9 +284,11 @@
       }
       if (cleared) {
         lines += cleared;
-        score += [0, 100, 300, 500, 800][cleared] * level;
+        // Классическая формула очков
+        const points = [0, 100, 300, 500, 800][cleared] * level;
+        score += points;
         level = Math.floor(lines / 10) + 1;
-        dropInterval = Math.max(100, 1000 - (level - 1) * 100);
+        dropInterval = Math.max(80, 1000 - (level - 1) * 90);
         updateStats();
       }
     }
@@ -316,7 +327,7 @@
         });
       });
 
-      if (!gameOver) {
+      if (!gameOver && current) {
         current.shape.forEach((row, y) => {
           row.forEach((val, x) => {
             if (val && posY + y >= 0) {
@@ -328,11 +339,10 @@
       }
     }
 
-    // === FIREBASE LEADERBOARD ===
+    // ================== LEADERBOARD ==================
     const leaderboardRef = ref(db, "leaderboard");
 
-    // Load leaderboard in real-time
-    onValue(leaderboardRef, (snapshot) => {
+    onValue(query(leaderboardRef, orderByChild("score"), limitToLast(25)), (snapshot) => {
       const data = snapshot.val();
       const list = document.getElementById("lb-list");
 
@@ -341,16 +351,18 @@
         return;
       }
 
-      // Convert to array and sort
-      const entries = Object.values(data).sort((a, b) => b.score - a.score).slice(0, 20);
+      const entries = Object.values(data)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20);
 
       list.innerHTML = entries.map((entry, i) => {
         const date = new Date(entry.timestamp).toLocaleDateString();
+        const timeSec = entry.playTimeMs ? Math.round(entry.playTimeMs / 1000) + "s" : "";
         return `
           <li>
-            <span class="lb-name">#${i+1} ${escapeHtml(entry.name)}</span>
+            <span class="lb-name">#${i + 1} ${escapeHtml(entry.name || "Anon")}</span>
             <span class="lb-score">${entry.score}</span>
-            <span class="lb-date">${date}</span>
+            <span class="lb-meta">${date} · L${entry.level || "?"} · ${entry.lines || "?"} lines ${timeSec ? "· " + timeSec : ""}</span>
           </li>
         `;
       }).join("");
@@ -362,51 +374,136 @@
       return div.innerHTML;
     }
 
-    // Expose to global scope for button onclick
-    window.saveScore = function() {
+    // ================== SAVE SCORE (PROTECTED) ==================
+    function sanitizeName(name) {
+      return name
+        .trim()
+        .replace(/[^\w\s\-\u0400-\u04FF]/g, "") // латиница + кириллица + _ -
+        .slice(0, 12);
+    }
+
+    function validateScoreData(data) {
+      // 1. Базовые проверки
+      if (!data.score || data.score < 0 || data.score > MAX_REASONABLE_SCORE) return "Score out of range";
+      if (data.lines < 0 || data.lines > 2500) return "Lines out of range";
+      if (data.level < 1 || data.level > 40) return "Level out of range";
+      if (data.playTimeMs < MIN_PLAY_TIME_MS) return "Game too short";
+      if (data.playTimeMs > MAX_PLAY_TIME_MS) return "Game too long";
+
+      // 2. Согласованность счёта и линий (очень грубая, но отсекает бред)
+      // Максимум теоретический: все тетрисы на высоком уровне
+      const maxPossible = data.lines * 800 * Math.max(1, data.level);
+      if (data.score > maxPossible * 1.3) return "Score inconsistent with lines/level";
+
+      // 3. Минимальная "плотность" очков
+      const minExpected = data.lines * 40;
+      if (data.lines > 10 && data.score < minExpected) return "Score too low for lines";
+
+      return null; // ok
+    }
+
+    async function saveScoreSecure() {
+      if (isSaving) return;
+      if (!gameOver) {
+        setStatus("Game is not over", true);
+        return;
+      }
+      if (!currentUser) {
+        setStatus("Not authenticated. Wait a second...", true);
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
+        const left = Math.ceil((SAVE_COOLDOWN_MS - (now - lastSaveTime)) / 1000);
+        setStatus(`Wait ${left}s before next save`, true);
+        return;
+      }
+
       const nameInput = document.getElementById("player-name");
-      const name = nameInput.value.trim() || "Anonymous";
+      let name = sanitizeName(nameInput.value);
+      if (name.length < 2) name = "Anonymous";
 
-      // Sanitize
-      const sanitizedName = name.replace(/[^a-zA-Z0-9_\-\s]/g, "").slice(0, 12);
+      const playTimeMs = Math.round(performance.now() - startTime);
 
-      // Push to Firebase
-      push(leaderboardRef, {
-        name: sanitizedName,
-        score: score,
-        timestamp: Date.now()
-      });
+      const payload = {
+        name,
+        score,
+        lines,
+        level,
+        playTimeMs,
+        timestamp: now,
+        uid: currentUser.uid,
+        version: GAME_VERSION
+      };
 
-      document.getElementById("modal").style.display = "none";
-      nameInput.value = "";
-    };
+      const error = validateScoreData(payload);
+      if (error) {
+        setStatus(error, true);
+        return;
+      }
 
-    // === GAME OVER ===
+      isSaving = true;
+      document.getElementById("btn-save").disabled = true;
+      setStatus("Saving...");
+
+      try {
+        await push(leaderboardRef, payload);
+        lastSaveTime = now;
+        setStatus("Record saved!", false);
+        setTimeout(() => {
+          document.getElementById("modal").style.display = "none";
+        }, 900);
+      } catch (err) {
+        console.error(err);
+        setStatus("Save failed (check Firebase rules)", true);
+      } finally {
+        isSaving = false;
+        document.getElementById("btn-save").disabled = false;
+      }
+    }
+
+    function setStatus(msg, isError = false) {
+      const el = document.getElementById("status-msg");
+      el.textContent = msg;
+      el.className = isError ? "error" : "success";
+    }
+
+    // ================== UI ==================
     function showGameOver() {
       document.getElementById("final-score").textContent = score;
       document.getElementById("modal").style.display = "flex";
       document.getElementById("player-name").value = "";
+      document.getElementById("status-msg").textContent = "";
       document.getElementById("player-name").focus();
     }
 
-    window.restartGame = function() {
+    function restartGame() {
       document.getElementById("modal").style.display = "none";
       init();
-    };
+    }
 
-    // === CONTROLS ===
+    // Привязка кнопок (не через window)
+    document.getElementById("btn-save").addEventListener("click", saveScoreSecure);
+    document.getElementById("btn-restart").addEventListener("click", restartGame);
+
+    // ================== CONTROLS ==================
     document.addEventListener("keydown", e => {
       if (gameOver) return;
       if (e.code === "ArrowLeft" && !collide(posX - 1, posY)) posX--;
       if (e.code === "ArrowRight" && !collide(posX + 1, posY)) posX++;
       if (e.code === "ArrowDown") drop();
       if (e.code === "ArrowUp") rotate();
+      if (e.code === "Space") { // hard drop
+        while (!collide(posX, posY + 1)) posY++;
+        drop();
+      }
     });
 
-    // === GAME LOOP ===
+    // ================== GAME LOOP ==================
     function loop(timestamp) {
       if (!lastDrop) lastDrop = timestamp;
-      if (timestamp - lastDrop > dropInterval) {
+      if (!gameOver && timestamp - lastDrop > dropInterval) {
         drop();
         lastDrop = timestamp;
       }
@@ -414,7 +511,7 @@
       requestAnimationFrame(loop);
     }
 
-    // === START ===
+    // ================== START ==================
     init();
     requestAnimationFrame(loop);
   </script>
