@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GitHub TETRIS | Protected</title>
+  <title>Just TETRIS | i++</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -340,6 +340,155 @@
           }
         }
       }
+    }<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
+      authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
+      databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "githubleaderboard-adlnocom",
+      storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
+      messagingSenderId: "547100842018",
+      appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
+      measurementId: "G-10793GQHSE"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+    const COLS = 10, ROWS = 20, SIZE = 24;
+    const PREVIEW_SIZE = 18;
+    
+    const GAME_VERSION = "2.3.0"; 
+    const MAX_REASONABLE_SCORE = 180000;
+    const MIN_PLAY_TIME_MS = 25000;          
+    const MAX_PLAY_TIME_MS = 35 * 60 * 1000; 
+    const SAVE_COOLDOWN_MS = 45000;
+    const STORAGE_NAME = "tetris_nickname_v2";
+    const STORAGE_BAN = "tetris_banned_v2";
+
+    // Enhanced Ban Check (Checks Local, Session, and Cookies)
+    function isBanned() {
+      return localStorage.getItem(STORAGE_BAN) === "1" || 
+             sessionStorage.getItem(STORAGE_BAN) === "1" || 
+             document.cookie.includes(`${STORAGE_BAN}=1`);
+    }
+
+    if (isBanned()) {
+      document.getElementById("banned-screen").style.display = "flex";
+      document.getElementById("game").style.display = "none";
+      throw new Error("Banned");
+    }
+
+    // ================== GAME STATE ==================
+    const board = document.getElementById("board");
+    board.width = COLS * SIZE;
+    board.height = ROWS * SIZE;
+    const ctx = board.getContext("2d");
+
+    const previewCanvas = document.getElementById("preview");
+    const pctx = previewCanvas.getContext("2d");
+
+    const COLORS = {
+      bg: "#0d1117", grid: "#161b22",
+      I: "#2ea043", O: "#8b5cf6", T: "#f0f6fc",
+      S: "#238636", Z: "#a371f7", J: "#388bfd", L: "#f78166"
+    };
+
+    const SHAPES = {
+      I: [[1,1,1,1]], O: [[1,1],[1,1]], T: [[0,1,0],[1,1,1]],
+      S: [[0,1,1],[1,1,0]], Z: [[1,1,0],[0,1,1]], J: [[1,0,0],[1,1,1]], L: [[0,0,1],[1,1,1]]
+    };
+
+    // Global exposed state
+    let grid, score, lines, level, gameOver;
+    let current, next, posX, posY;
+    let lastDrop = 0, dropInterval = 1000;
+    let startTime = 0;
+    let currentUser = null;
+    let lastSaveTime = 0;
+    let isSaving = false;
+    let allEntries = [];
+    let myBestScore = 0;
+
+    // SHADOW STATE & HEURISTICS (Hidden variables to detect memory manipulation & bots)
+    let shadowState = { score: 0, lines: 0, level: 1 };
+    let heuristics = { keyPresses: 0, piecesSpawned: 0 };
+
+    // ================== AUTH ==================
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      if (!user) {
+        signInAnonymously(auth).catch(err => console.error("Auth failed:", err));
+      }
+    });
+
+    // ================== TETRIS ENGINE ==================
+    function init() {
+      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      score = 0; lines = 0; level = 1;
+      shadowState = { score: 0, lines: 0, level: 1 }; // Reset shadow
+      heuristics = { keyPresses: 0, piecesSpawned: 0 }; // Reset heuristics
+      
+      gameOver = false;
+      current = next || randomShape();
+      next = randomShape();
+      posX = Math.floor((COLS - current.shape[0].length) / 2);
+      posY = 0;
+      lastDrop = 0;
+      dropInterval = 1000;
+      startTime = performance.now();
+      updateStats();
+      drawPreview();
+    }
+
+    function randomShape() {
+      heuristics.piecesSpawned++; // Track piece spawns for bot detection
+      const keys = Object.keys(SHAPES);
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      return { shape: SHAPES[key], color: COLORS[key], type: key };
+    }
+
+    function collide(nx = posX, ny = posY, shape = current.shape) {
+      for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+          if (shape[y][x]) {
+            const bx = nx + x, by = ny + y;
+            if (bx < 0 || bx >= COLS || by >= ROWS || (by >= 0 && grid[by][bx])) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function rotate() {
+      const rotated = current.shape[0].map((_, i) =>
+        current.shape.map(row => row[i]).reverse()
+      );
+      if (!collide(posX, posY, rotated)) current.shape = rotated;
+    }
+
+    function drop() {
+      if (!collide(posX, posY + 1)) {
+        posY++;
+      } else {
+        lock();
+        clearLines();
+        if (!gameOver) {
+          current = next;
+          next = randomShape();
+          posX = Math.floor((COLS - current.shape[0].length) / 2);
+          posY = 0;
+          drawPreview();
+          if (collide()) {
+            gameOver = true;
+            showGameOver();
+          }
+        }
+      }
     }
 
     function lock() {
@@ -364,9 +513,15 @@
       }
       if (cleared) {
         lines += cleared;
+        shadowState.lines += cleared; // Sync shadow
+
         const points = [0, 100, 300, 500, 800][cleared] * level;
         score += points;
+        shadowState.score += points; // Sync shadow
+
         level = Math.floor(lines / 10) + 1;
+        shadowState.level = level; // Sync shadow
+
         dropInterval = Math.max(80, 1000 - (level - 1) * 90);
         updateStats();
       }
@@ -386,16 +541,10 @@
       ctx.strokeStyle = COLORS.grid;
       ctx.lineWidth = 1;
       for (let x = 0; x <= COLS; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * SIZE, 0);
-        ctx.lineTo(x * SIZE, board.height);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x * SIZE, 0); ctx.lineTo(x * SIZE, board.height); ctx.stroke();
       }
       for (let y = 0; y <= ROWS; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * SIZE);
-        ctx.lineTo(board.width, y * SIZE);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y * SIZE); ctx.lineTo(board.width, y * SIZE); ctx.stroke();
       }
 
       grid.forEach((row, y) => {
@@ -422,11 +571,8 @@
     function drawPreview() {
       pctx.fillStyle = COLORS.bg;
       pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-
       if (!next) return;
-
       const shape = next.shape;
-      const color = next.color;
       const w = shape[0].length;
       const h = shape.length;
       const offsetX = Math.floor((4 - w) / 2);
@@ -435,13 +581,8 @@
       shape.forEach((row, y) => {
         row.forEach((val, x) => {
           if (val) {
-            pctx.fillStyle = color;
-            pctx.fillRect(
-              (offsetX + x) * PREVIEW_SIZE,
-              (offsetY + y) * PREVIEW_SIZE,
-              PREVIEW_SIZE - 1,
-              PREVIEW_SIZE - 1
-            );
+            pctx.fillStyle = next.color;
+            pctx.fillRect((offsetX + x) * PREVIEW_SIZE, (offsetY + y) * PREVIEW_SIZE, PREVIEW_SIZE - 1, PREVIEW_SIZE - 1);
           }
         });
       });
@@ -463,7 +604,6 @@
       }
 
       allEntries = Object.values(data).sort((a, b) => b.score - a.score);
-
       const top6 = allEntries.slice(0, 6);
       list.innerHTML = top6.map((entry, i) => {
         const date = new Date(entry.timestamp).toLocaleDateString();
@@ -476,7 +616,6 @@
           </li>
         `;
       }).join("");
-
       updateMyRank();
     });
 
@@ -488,16 +627,13 @@
         myRankEl.innerHTML = `Your place: —`;
         return;
       }
-
       const myEntries = allEntries.filter(e => e.name === savedName);
       if (!myEntries.length) {
         myRankEl.innerHTML = `Your place: not ranked yet`;
         return;
       }
-
       myBestScore = Math.max(...myEntries.map(e => e.score));
       const place = allEntries.findIndex(e => e.score === myBestScore && e.name === savedName) + 1;
-
       myRankEl.innerHTML = `
         <span class="place">#${place}</span>
         <span class="score">${myBestScore}</span>
@@ -513,36 +649,48 @@
 
     // ================== SAVE + ANTI-CHEAT ==================
     function sanitizeName(name) {
-      return name
-        .trim()
-        .replace(/[^\w\s\-\u0400-\u04FF]/g, "")
-        .slice(0, 12);
+      return name.trim().replace(/[^\w\s\-\u0400-\u04FF]/g, "").slice(0, 12);
     }
 
     function banUser(reason) {
       console.warn("BAN:", reason);
+      // Resilient Ban (Local + Session + Cookie)
       localStorage.setItem(STORAGE_BAN, "1");
+      sessionStorage.setItem(STORAGE_BAN, "1");
+      document.cookie = `${STORAGE_BAN}=1; max-age=31536000; path=/`;
+
       document.getElementById("banned-screen").style.display = "flex";
       document.getElementById("game").style.display = "none";
       document.getElementById("modal").style.display = "none";
     }
 
     function validateScoreData(data) {
+      // 1. Shadow State Verification (Catches Memory Injection)
+      if (data.score !== shadowState.score || data.lines !== shadowState.lines || data.level !== shadowState.level) return "State tampered";
+      
+      // 2. Bot/Script Detection (Must have reasonable keypress activity)
+      if (data.score > 0 && heuristics.keyPresses < heuristics.piecesSpawned * 0.3) return "Bot behavior detected";
+
+      // 3. Mathematical Constraints
       if (!data.score || data.score < 0 || data.score > MAX_REASONABLE_SCORE) return "Score out of range";
       if (data.lines < 0 || data.lines > 1200) return "Lines out of range";
       if (data.level < 1 || data.level > 25) return "Level out of range";
       if (data.playTimeMs < MIN_PLAY_TIME_MS) return "Game too short";
       if (data.playTimeMs > MAX_PLAY_TIME_MS) return "Game too long";
+
       const expectedLevel = Math.floor(data.lines / 10) + 1;
       if (Math.abs(data.level - expectedLevel) > 1) return "Level mismatch";
-      const avgLevelFactor = (1 + data.level) / 2;
-      const theoreticalMax = data.lines * 800 * avgLevelFactor * 1.18;
+
+      // Precise Math constraint: Max 200 points per line per level
+      const theoreticalMax = (data.lines * 200 * data.level) + (data.level * 800);
       if (data.score > theoreticalMax) return "Score inconsistent";
+
       const scorePerSec = data.score / (data.playTimeMs / 1000);
       if (scorePerSec > 90) return "Impossible score rate";
       const linesPerMin = data.lines / (data.playTimeMs / 60000);
       if (linesPerMin > 16) return "Impossible lines rate";
-      if (data.lines >= 20 && data.score < data.lines * 55) return "Score too low";
+      
+      if (data.lines >= 20 && data.score < data.lines * 25) return "Score too low";
       if (data.score > 15000 && data.score % 1000 === 0) return "Suspicious score";
 
       return null;
@@ -550,18 +698,9 @@
 
     async function saveScoreSecure() {
       if (isSaving) return;
-      if (!gameOver) {
-        setStatus("Game is not over", true);
-        return;
-      }
-      if (!currentUser) {
-        setStatus("Not authenticated...", true);
-        return;
-      }
-      if (localStorage.getItem(STORAGE_BAN) === "1") {
-        banUser("Already banned");
-        return;
-      }
+      if (!gameOver) { setStatus("Game is not over", true); return; }
+      if (!currentUser) { setStatus("Not authenticated...", true); return; }
+      if (isBanned()) { banUser("Already banned"); return; }
 
       const now = Date.now();
       if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
@@ -572,21 +711,12 @@
 
       const nameInput = document.getElementById("player-name");
       let name = sanitizeName(nameInput.value);
-      if (name.length < 2) {
-        setStatus("Nickname too short", true);
-        return;
-      }
-
+      if (name.length < 2) { setStatus("Nickname too short", true); return; }
       localStorage.setItem(STORAGE_NAME, name);
 
       const playTimeMs = Math.round(performance.now() - startTime);
-
       const payload = {
-        name,
-        score,
-        lines,
-        level,
-        playTimeMs,
+        name, score, lines, level, playTimeMs,
         timestamp: now,
         uid: currentUser.uid,
         version: GAME_VERSION
@@ -596,11 +726,9 @@
       if (error) {
         setStatus("Invalid data: " + error, true);
         if (
-          error.includes("Impossible") ||
-          error.includes("inconsistent") ||
-          error.includes("out of range") ||
-          error.includes("mismatch") ||
-          error.includes("Suspicious")
+          error.includes("Impossible") || error.includes("tampered") ||
+          error.includes("Bot behavior") || error.includes("inconsistent") ||
+          error.includes("out of range") || error.includes("Suspicious")
         ) {
           banUser(error);
         }
@@ -616,9 +744,7 @@
         lastSaveTime = now;
         setStatus("Saved!", false);
         updateMyRank();
-        setTimeout(() => {
-          document.getElementById("modal").style.display = "none";
-        }, 800);
+        setTimeout(() => { document.getElementById("modal").style.display = "none"; }, 800);
       } catch (err) {
         console.error(err);
         setStatus("Save failed (check Firebase rules)", true);
@@ -638,7 +764,6 @@
     function showGameOver() {
       document.getElementById("final-score").textContent = score;
       document.getElementById("modal").style.display = "flex";
-
       const saved = localStorage.getItem(STORAGE_NAME) || "";
       document.getElementById("player-name").value = saved;
       document.getElementById("status-msg").textContent = "";
@@ -656,6 +781,8 @@
     // ================== CONTROLS ==================
     document.addEventListener("keydown", e => {
       if (gameOver) return;
+      heuristics.keyPresses++; // Track input heuristics
+      
       if (e.code === "ArrowLeft" && !collide(posX - 1, posY)) posX--;
       if (e.code === "ArrowRight" && !collide(posX + 1, posY)) posX++;
       if (e.code === "ArrowDown") drop();
