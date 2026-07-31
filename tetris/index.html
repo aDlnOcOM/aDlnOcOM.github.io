@@ -160,6 +160,51 @@
       text-align: center;
       padding: 20px;
     }
+    /* ===== MOBILE CONTROLS ===== */
+    #controls {
+      display: none;
+      width: 100%;
+      max-width: 280px;
+      margin: 12px auto 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    #controls-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+    .ctrl-btn {
+      background: #161b22;
+      border: 2px solid #30363d;
+      border-radius: 10px;
+      color: #c9d1d9;
+      font-size: 28px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, transform 0.05s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ctrl-btn:active,
+    .ctrl-btn.active {
+      background: #21262d;
+      border-color: #58a6ff;
+      transform: scale(0.96);
+    }
+    .ctrl-btn.up { grid-column: 2; grid-row: 1; }
+    .ctrl-btn.left { grid-column: 1; grid-row: 2; }
+    .ctrl-btn.down { grid-column: 2; grid-row: 2; }
+    .ctrl-btn.right { grid-column: 3; grid-row: 2; }
+    @media (max-width: 700px) {
+      #controls { display: block; }
+      #game { flex-direction: column; align-items: center; }
+    }
   </style>
 </head>
 <body>
@@ -187,6 +232,16 @@
         <div id="my-rank">Your place: —</div>
       </div>
     </div>
+
+    <!-- MOBILE CONTROLS -->
+    <div id="controls">
+      <div id="controls-grid">
+        <button class="ctrl-btn up" id="btn-up" aria-label="Rotate">▲</button>
+        <button class="ctrl-btn left" id="btn-left" aria-label="Move Left">◀</button>
+        <button class="ctrl-btn down" id="btn-down" aria-label="Soft Drop">▼</button>
+        <button class="ctrl-btn right" id="btn-right" aria-label="Move Right">▶</button>
+      </div>
+    </div>
   </div>
 
   <div id="modal">
@@ -203,144 +258,6 @@
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
-      authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
-      databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "githubleaderboard-adlnocom",
-      storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
-      messagingSenderId: "547100842018",
-      appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
-      measurementId: "G-10793GQHSE"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
-    const COLS = 10, ROWS = 20, SIZE = 24;
-    const PREVIEW_SIZE = 18;
-    const GAME_VERSION = "2.3.0";
-    const MAX_REASONABLE_SCORE = 180000;
-    const MIN_PLAY_TIME_MS = 25000;          // минимум 25 сек
-    const MAX_PLAY_TIME_MS = 35 * 60 * 1000; // максимум 35 минут
-    const SAVE_COOLDOWN_MS = 45000;
-    const STORAGE_NAME = "tetris_nickname_v2";
-    const STORAGE_BAN = "tetris_banned_v2";
-    if (localStorage.getItem(STORAGE_BAN) === "1") {
-      document.getElementById("banned-screen").style.display = "flex";
-      document.getElementById("game").style.display = "none";
-      throw new Error("Banned");
-    }
-
-    // ================== GAME STATE ==================
-    const board = document.getElementById("board");
-    board.width = COLS * SIZE;
-    board.height = ROWS * SIZE;
-    const ctx = board.getContext("2d");
-
-    const previewCanvas = document.getElementById("preview");
-    const pctx = previewCanvas.getContext("2d");
-
-    const COLORS = {
-      bg: "#0d1117", grid: "#161b22",
-      I: "#2ea043", O: "#8b5cf6", T: "#f0f6fc",
-      S: "#238636", Z: "#a371f7", J: "#388bfd", L: "#f78166"
-    };
-
-    const SHAPES = {
-      I: [[1,1,1,1]],
-      O: [[1,1],[1,1]],
-      T: [[0,1,0],[1,1,1]],
-      S: [[0,1,1],[1,1,0]],
-      Z: [[1,1,0],[0,1,1]],
-      J: [[1,0,0],[1,1,1]],
-      L: [[0,0,1],[1,1,1]]
-    };
-
-    let grid, score, lines, level, gameOver;
-    let current, next, posX, posY;
-    let lastDrop = 0, dropInterval = 1000;
-    let startTime = 0;
-    let currentUser = null;
-    let lastSaveTime = 0;
-    let isSaving = false;
-    let allEntries = [];
-    let myBestScore = 0;
-
-    // ================== AUTH ==================
-    onAuthStateChanged(auth, (user) => {
-      currentUser = user;
-      if (!user) {
-        signInAnonymously(auth).catch(err => console.error("Auth failed:", err));
-      }
-    });
-
-    // ================== TETRIS ENGINE ==================
-    function init() {
-      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-      score = 0;
-      lines = 0;
-      level = 1;
-      gameOver = false;
-      current = next || randomShape();
-      next = randomShape();
-      posX = Math.floor((COLS - current.shape[0].length) / 2);
-      posY = 0;
-      lastDrop = 0;
-      dropInterval = 1000;
-      startTime = performance.now();
-      updateStats();
-      drawPreview();
-    }
-
-    function randomShape() {
-      const keys = Object.keys(SHAPES);
-      const key = keys[Math.floor(Math.random() * keys.length)];
-      return { shape: SHAPES[key], color: COLORS[key], type: key };
-    }
-
-    function collide(nx = posX, ny = posY, shape = current.shape) {
-      for (let y = 0; y < shape.length; y++) {
-        for (let x = 0; x < shape[y].length; x++) {
-          if (shape[y][x]) {
-            const bx = nx + x, by = ny + y;
-            if (bx < 0 || bx >= COLS || by >= ROWS || (by >= 0 && grid[by][bx])) return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    function rotate() {
-      const rotated = current.shape[0].map((_, i) =>
-        current.shape.map(row => row[i]).reverse()
-      );
-      if (!collide(posX, posY, rotated)) current.shape = rotated;
-    }
-
-    function drop() {
-      if (!collide(posX, posY + 1)) {
-        posY++;
-      } else {
-        lock();
-        clearLines();
-        if (!gameOver) {
-          current = next;
-          next = randomShape();
-          posX = Math.floor((COLS - current.shape[0].length) / 2);
-          posY = 0;
-          drawPreview();
-          if (collide()) {
-            gameOver = true;
-            showGameOver();
-          }
-        }
-      }
-    }<script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -612,7 +529,7 @@
           <li>
             <span class="lb-name">#${i + 1} ${escapeHtml(entry.name || "Anon")}</span>
             <span class="lb-score">${entry.score}</span>
-            <span class="lb-meta">${date} · L${entry.level || "?"} · ${entry.lines || "?"}ln ${timeSec ? "· " + timeSec : ""}</span>
+            <span class="lb-meta">\( {date} · L \){entry.level || "?"} · ${entry.lines || "?"}ln ${timeSec ? "· " + timeSec : ""}</span>
           </li>
         `;
       }).join("");
@@ -793,6 +710,26 @@
         drop();
       }
     });
+
+    // ===== MOBILE CONTROLS =====
+    function bindCtrl(id, action) {
+      const el = document.getElementById(id);
+      const fire = (e) => {
+        e.preventDefault();
+        if (gameOver) return;
+        heuristics.keyPresses++;
+        action();
+        el.classList.add("active");
+        setTimeout(() => el.classList.remove("active"), 100);
+      };
+      el.addEventListener("touchstart", fire, { passive: false });
+      el.addEventListener("mousedown", fire);
+    }
+
+    bindCtrl("btn-left",  () => { if (!collide(posX - 1, posY)) posX--; });
+    bindCtrl("btn-right", () => { if (!collide(posX + 1, posY)) posX++; });
+    bindCtrl("btn-down",  () => { drop(); });
+    bindCtrl("btn-up",    () => { rotate(); });
 
     // ================== LOOP ==================
     function loop(timestamp) {
