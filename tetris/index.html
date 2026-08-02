@@ -1,750 +1,291 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="Классический Tetris с простым сетевым режимом на двоих">
   <title>Just TETRIS | i++</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0d1117;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      font-family: "Courier New", monospace;
-      color: #c9d1d9;
-    }
-    #game {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: flex-start;
-    }
-    #preview-box {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 12px;
-      text-align: center;
-      min-width: 90px;
-    }
-    #preview-box h3 {
-      font-size: 12px;
-      color: #8b949e;
-      margin-bottom: 8px;
-    }
-    #preview {
-      display: block;
-      margin: 0 auto;
-      image-rendering: pixelated;
-      background: #0d1117;
-      border: 1px solid #30363d;
-    }
-    canvas#board {
-      border: 2px solid #30363d;
-      image-rendering: pixelated;
-      background: #0d1117;
-    }
-    #stats {
-      background: #161b22;
-      padding: 18px;
-      border-radius: 6px;
-      border: 1px solid #30363d;
-      min-width: 230px;
-    }
-    #stats h2 { margin-bottom: 10px; font-size: 16px; }
-    #stats div { margin: 7px 0; }
-    .label { color: #8b949e; }
-    .value { color: #58a6ff; font-weight: bold; }
-    #leaderboard {
-      margin-top: 16px;
-      padding-top: 12px;
-      border-top: 1px solid #30363d;
-    }
-    #leaderboard h3 {
-      margin-bottom: 8px;
-      font-size: 13px;
-      color: #8b949e;
-    }
-    #leaderboard ol {
-      padding-left: 18px;
-      font-size: 12px;
-      max-height: 210px;
-      overflow-y: auto;
-    }
-    #leaderboard li { margin: 5px 0; }
-    .lb-name { color: #58a6ff; }
-    .lb-score { color: #2ea043; font-weight: bold; }
-    .lb-meta { color: #8b949e; font-size: 10px; display: block; }
-    #my-rank {
-      margin-top: 10px;
-      padding: 8px 10px;
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    #my-rank .place { color: #f0f6fc; font-weight: bold; }
-    #my-rank .score { color: #2ea043; }
-    #modal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85);
-      justify-content: center;
-      align-items: center;
-      z-index: 100;
-    }
-    #modal-content {
-      background: #161b22;
-      padding: 28px;
-      border-radius: 8px;
-      border: 2px solid #30363d;
-      text-align: center;
-      max-width: 360px;
-      width: 90%;
-    }
-    #modal-content h2 { margin-bottom: 12px; color: #f0f6fc; }
-    #modal-content input {
-      width: 100%;
-      padding: 10px;
-      margin: 12px 0;
-      background: #0d1117;
-      border: 1px solid #30363d;
-      color: #c9d1d9;
-      border-radius: 4px;
-      font-family: inherit;
-      font-size: 14px;
-    }
-    #modal-content button {
-      padding: 10px 18px;
-      margin: 6px;
-      background: #2ea043;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 14px;
-    }
-    #modal-content button:hover { background: #3fb950; }
-    #modal-content button.secondary { background: #388bfd; }
-    #modal-content button.secondary:hover { background: #58a6ff; }
-    #modal-content button:disabled {
-      background: #30363d;
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-    #status-msg {
-      font-size: 12px;
-      color: #8b949e;
-      margin-top: 10px;
-      min-height: 18px;
-    }
-    .error { color: #f85149 !important; }
-    .success { color: #2ea043 !important; }
-    #banned-screen {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #0d1117;
-      z-index: 999;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      color: #f85149;
-      font-size: 18px;
-      text-align: center;
-      padding: 20px;
-    }
-    /* ===== MOBILE CONTROLS ===== */
-    #controls {
-      display: none;
-      width: 100%;
-      max-width: 280px;
-      margin: 12px auto 0;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    #controls-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(2, 1fr);
-      gap: 8px;
-      width: 100%;
-    }
-    .ctrl-btn {
-      background: #161b22;
-      border: 2px solid #30363d;
-      border-radius: 10px;
-      color: #c9d1d9;
-      font-size: 28px;
-      height: 64px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: background 0.1s, border-color 0.1s, transform 0.05s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .ctrl-btn:active,
-    .ctrl-btn.active {
-      background: #21262d;
-      border-color: #58a6ff;
-      transform: scale(0.96);
-    }
-    .ctrl-btn.up { grid-column: 2; grid-row: 1; }
-    .ctrl-btn.left { grid-column: 1; grid-row: 2; }
-    .ctrl-btn.down { grid-column: 2; grid-row: 2; }
-    .ctrl-btn.right { grid-column: 3; grid-row: 2; }
-    @media (max-width: 700px) {
-      #controls { display: block; }
-      #game { flex-direction: column; align-items: center; }
-    }
-  </style>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="banned-screen">
-    <div style="font-size:42px;margin-bottom:16px;">🚫</div>
-    <div>You have been blocked for cheating</div>
-    <div style="font-size:13px;color:#8b949e;margin-top:10px;">This browser can no longer submit scores</div>
+  <div id="app">
+    <!-- Классический Tetris открыт по умолчанию. -->
+    <section id="game-view" class="view game-view" data-mode="solo">
+      <header id="network-game-header" class="network-game-header">
+        <div>
+          <span id="game-mode-kicker">NETWORK</span>
+          <strong id="game-mode-title">Сетевая игра</strong>
+        </div>
+        <button id="game-exit-button" class="plain-button" type="button">← Лобби</button>
+      </header>
+
+      <div id="solo-shell" class="classic-game">
+        <div id="solo-preview-slot" class="slot">
+          <div id="compact-preview-wrap" class="preview-box">
+            <h3>NEXT</h3>
+            <canvas id="next-preview" width="72" height="72" aria-label="Следующая фигура"></canvas>
+          </div>
+        </div>
+
+        <div id="solo-layout" class="solo-layout game-layout">
+          <canvas id="solo-board" class="board-canvas" aria-label="Игровое поле"></canvas>
+        </div>
+
+        <div id="solo-stats-slot" class="slot">
+          <aside id="stats" class="stats-panel">
+            <h2>📊 Stats</h2>
+            <div><span class="label">Score:</span> <span class="value" id="game-score">0</span></div>
+            <div><span class="label">Lines:</span> <span class="value" id="game-lines">0</span></div>
+            <div><span class="label">Level:</span> <span class="value" id="game-level">1</span></div>
+            <div class="network-time"><span class="label">Time:</span> <span class="value" id="game-time">00:00</span></div>
+
+            <div id="leaderboard" class="solo-leaderboard">
+              <h3>🏆 Top 6</h3>
+              <ol id="solo-leaderboard-list"><li class="muted">Loading...</li></ol>
+              <div id="my-rank">Your place: —</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div id="network-match-shell" class="network-match-shell">
+        <div id="network-hud" class="network-hud">
+          <div id="network-preview-slot" class="slot"></div>
+          <div id="network-stats-slot" class="slot"></div>
+        </div>
+
+        <div id="competitive-layout" class="competitive-layout game-layout" hidden>
+          <section class="player-board-panel">
+            <header>
+              <span>ВЫ · <strong id="competitive-own-name">Игрок</strong></span>
+              <b id="competitive-own-score">0</b>
+            </header>
+            <canvas id="competitive-own-board" class="board-canvas" aria-label="Ваше поле"></canvas>
+          </section>
+
+          <span class="versus-mark" aria-hidden="true">VS</span>
+
+          <section class="player-board-panel opponent-panel">
+            <header>
+              <span>ПРОТИВНИК · <strong id="competitive-opponent-name">Игрок</strong></span>
+              <b id="competitive-opponent-score">0</b>
+            </header>
+            <canvas id="competitive-opponent-board" class="board-canvas" aria-label="Поле противника"></canvas>
+          </section>
+        </div>
+
+        <div id="coop-layout" class="coop-layout game-layout" hidden>
+          <div class="coop-caption">
+            <span>ЛЕВАЯ ПОЛОВИНА</span>
+            <span>ПРАВАЯ ПОЛОВИНА</span>
+          </div>
+          <canvas id="coop-board" class="coop-canvas" aria-label="Общее кооперативное поле"></canvas>
+          <p class="coop-meta">
+            Раунд <strong id="coop-round">1</strong> · ваша сторона: <strong id="coop-side">левая</strong>
+          </p>
+        </div>
+      </div>
+
+      <nav id="game-controls" class="game-controls" aria-label="Управление игрой" data-disabled>
+        <div class="controls-grid">
+          <button class="ctrl-btn up" type="button" data-game-action="rotate" aria-label="Повернуть">▲</button>
+          <button id="network-open-button" class="network-open-button" type="button">Сетевая игра</button>
+          <button class="ctrl-btn left" type="button" data-game-action="left" aria-label="Влево">◀</button>
+          <button class="ctrl-btn down" type="button" data-game-action="softDrop" aria-label="Ускорить падение">▼</button>
+          <button class="ctrl-btn right" type="button" data-game-action="right" aria-label="Вправо">▶</button>
+        </div>
+      </nav>
+    </section>
+
+    <!-- Весь сетевой GUI отделён от классической игры. -->
+    <section id="network-shell" class="network-shell" hidden>
+      <header class="network-header">
+        <button id="home-logo" class="network-title" type="button">Сетевая игра</button>
+
+        <div id="connection-status" class="connection-status is-connecting" role="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="status-text">Подключение…</span>
+        </div>
+
+        <div class="network-header-actions">
+          <button id="invite-code-button" class="small-box" type="button" title="Скопировать код">
+            <span>Код</span>
+            <strong id="invite-code-value">———</strong>
+          </button>
+          <button id="profile-button" class="small-box" type="button" title="Изменить имя">
+            <span>Игрок</span>
+            <strong id="profile-name">Гость</strong>
+          </button>
+          <button id="leaderboard-toggle" class="plain-button" type="button" aria-expanded="false" aria-controls="leaderboard-drawer">Рейтинги</button>
+          <button id="start-solo-button" class="primary-button" type="button">← Классический Tetris</button>
+        </div>
+      </header>
+
+      <main class="network-main">
+        <!-- Экран ожидания: все элементы видны сразу, но становятся активными после создания лобби. -->
+        <section id="home-view" class="view network-view">
+          <div class="join-row">
+            <div>
+              <h1>Подключение по коду</h1>
+              <p>Передайте другу свой код или введите его код ниже.</p>
+            </div>
+            <form id="join-lobby-form" class="join-form" autocomplete="off">
+              <label class="sr-only" for="join-code-input">Код игрока</label>
+              <input id="join-code-input" type="text" maxlength="6" placeholder="AB7K2Q" autocomplete="off">
+              <button id="join-lobby-button" class="primary-button" type="submit">Войти</button>
+            </form>
+          </div>
+
+          <div id="offline-banner" class="offline-banner" hidden>
+            Firebase недоступен. Классический Tetris продолжает работать локально.
+          </div>
+
+          <div class="network-grid">
+            <section class="simple-panel is-disabled">
+              <header class="panel-heading">
+                <h2>Чат</h2>
+                <span>0 / 50</span>
+              </header>
+              <ol class="chat-list placeholder-list">
+                <li class="empty-state">Чат станет доступен, когда второй игрок подключится.</li>
+              </ol>
+              <div class="chat-form">
+                <input disabled placeholder="Сообщение…">
+                <button class="plain-button" type="button" disabled>➤</button>
+              </div>
+            </section>
+
+            <section class="simple-panel">
+              <header class="panel-heading"><h2>Участники</h2><span>1 / 2</span></header>
+              <div class="member-list">
+                <div class="member-row"><strong id="waiting-player-name">Гость (вы)</strong><span>онлайн</span></div>
+                <div class="member-row muted"><strong>Ожидание игрока…</strong><span>—</span></div>
+              </div>
+
+              <fieldset class="mode-selector" disabled>
+                <legend>Режим</legend>
+                <label><input type="radio" disabled> <span><strong>Соревновательный</strong><small>Два отдельных поля.</small></span></label>
+                <label><input type="radio" disabled> <span><strong>Кооперативный</strong><small>Общее поле двойной ширины.</small></span></label>
+              </fieldset>
+              <p class="hint-text">Настройки включатся после создания лобби.</p>
+            </section>
+          </div>
+        </section>
+
+        <!-- Настоящее лобби после подключения второго игрока. -->
+        <section id="lobby-view" class="view network-view" hidden>
+          <div class="lobby-title-row">
+            <div>
+              <h1>Лобби <span id="lobby-code-label">———</span></h1>
+              <p id="lobby-hint" class="hint-text">Оба игрока должны нажать «Я готов».</p>
+            </div>
+            <div class="lobby-title-actions">
+              <span id="lobby-status-badge" class="status-badge">Настройка</span>
+              <button id="leave-lobby-button" class="plain-button danger-button" type="button">Покинуть и вернуться в Tetris</button>
+            </div>
+          </div>
+
+          <div id="lobby-layout" class="network-grid" data-mobile-panel="chat">
+            <section class="simple-panel" data-lobby-panel="chat">
+              <header class="panel-heading">
+                <h2>Чат</h2>
+                <span id="chat-counter">0 / 50</span>
+              </header>
+              <ol id="chat-list" class="chat-list" aria-live="polite">
+                <li class="empty-state">Сообщений пока нет.</li>
+              </ol>
+              <form id="chat-form" class="chat-form" autocomplete="off">
+                <label class="sr-only" for="chat-input">Сообщение</label>
+                <input id="chat-input" maxlength="300" placeholder="Сообщение…">
+                <button class="plain-button" type="submit" aria-label="Отправить">➤</button>
+              </form>
+            </section>
+
+            <section class="simple-panel" data-lobby-panel="settings">
+              <header class="panel-heading"><h2>Участники</h2><span>2 игрока</span></header>
+              <div class="member-list">
+                <article id="member-left" class="member-row member-card">
+                  <strong class="member-name">Ожидание…</strong>
+                  <span class="member-ready">Не готов</span>
+                </article>
+                <article id="member-right" class="member-row member-card">
+                  <strong class="member-name">Ожидание…</strong>
+                  <span class="member-ready">Не готов</span>
+                </article>
+              </div>
+
+              <fieldset id="mode-fieldset" class="mode-selector">
+                <legend>Режим</legend>
+                <label>
+                  <input type="radio" name="lobby-mode" value="competitive">
+                  <span><strong>Соревновательный</strong><small>Ваше поле и поле соперника с туманом войны.</small></span>
+                </label>
+                <label>
+                  <input type="radio" name="lobby-mode" value="coop">
+                  <span><strong>Кооперативный</strong><small>Одно поле 20×20, по одной фигуре на игрока.</small></span>
+                </label>
+              </fieldset>
+
+              <div class="lobby-actions">
+                <button id="ready-button" class="plain-button" type="button">Я готов</button>
+                <button id="start-match-button" class="primary-button" type="button" disabled>Начать матч</button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <button id="drawer-backdrop" class="drawer-backdrop" type="button" aria-label="Закрыть рейтинг" hidden></button>
+    <aside id="leaderboard-drawer" class="leaderboard-drawer" aria-hidden="true">
+      <header>
+        <h2>Рейтинги</h2>
+        <button id="leaderboard-close" class="plain-button" type="button">✕</button>
+      </header>
+      <div class="leaderboard-tabs" role="tablist">
+        <button class="is-active" type="button" data-leaderboard-tab="solo">Соло</button>
+        <button type="button" data-leaderboard-tab="competitive">Победы</button>
+        <button type="button" data-leaderboard-tab="coop">Кооп</button>
+      </div>
+      <ol id="leaderboard-list" class="leaderboard-list"><li class="empty-state">Загрузка…</li></ol>
+    </aside>
+
+    <dialog id="profile-dialog" class="modal-dialog">
+      <form id="profile-form" method="dialog" class="modal-content">
+        <button class="dialog-close" type="button" data-dialog-close="profile-dialog" aria-label="Закрыть">✕</button>
+        <h2>Имя игрока</h2>
+        <p>От 2 до 12 символов.</p>
+        <input id="profile-name-input" maxlength="12" autocomplete="nickname" placeholder="Nickname" required>
+        <p id="profile-error" class="form-error" role="alert"></p>
+        <button class="primary-button" type="submit">Сохранить</button>
+      </form>
+    </dialog>
+
+    <dialog id="result-dialog" class="modal-dialog result-dialog">
+      <div class="modal-content result-dialog-content">
+        <div id="result-icon" class="result-icon" aria-hidden="true">▦</div>
+        <p id="result-kicker" class="result-kicker">GAME OVER</p>
+        <h2 id="result-title">Игра окончена</h2>
+        <p id="result-description">Проверяем результат…</p>
+        <div class="result-stats">
+          <span>Score: <strong id="result-score">0</strong></span>
+          <span>Lines: <strong id="result-lines">0</strong></span>
+          <span>Time: <strong id="result-time">00:00</strong></span>
+        </div>
+        <div id="result-verification" class="verification-status is-pending">
+          <span class="status-dot"></span><span>Проверка партии…</span>
+        </div>
+        <div class="dialog-actions">
+          <button id="result-primary-button" class="primary-button" type="button">Play Again</button>
+          <button id="result-secondary-button" class="plain-button" type="button">Сетевая игра</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   </div>
 
-  <div id="game">
-    <div id="preview-box">
-      <h3>NEXT</h3>
-      <canvas id="preview" width="72" height="72"></canvas>
-    </div>
-    <canvas id="board"></canvas>
-    <div id="stats">
-      <h2>📊 Stats</h2>
-      <div><span class="label">Score:</span> <span class="value" id="score">0</span></div>
-      <div><span class="label">Lines:</span> <span class="value" id="lines">0</span></div>
-      <div><span class="label">Level:</span> <span class="value" id="level">1</span></div>
-
-      <div id="leaderboard">
-        <h3>🏆 Top 6</h3>
-        <ol id="lb-list"><li style="color:#8b949e;">Loading...</li></ol>
-        <div id="my-rank">Your place: —</div>
-      </div>
-    </div>
-
-    <!-- MOBILE CONTROLS -->
-    <div id="controls">
-      <div id="controls-grid">
-        <button class="ctrl-btn up" id="btn-up" aria-label="Rotate">▲</button>
-        <button class="ctrl-btn left" id="btn-left" aria-label="Move Left">◀</button>
-        <button class="ctrl-btn down" id="btn-down" aria-label="Soft Drop">▼</button>
-        <button class="ctrl-btn right" id="btn-right" aria-label="Move Right">▶</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="modal">
-    <div id="modal-content">
-      <h2>GAME OVER</h2>
-      <p>Final Score: <span id="final-score" style="color:#2ea043;font-weight:bold;">0</span></p>
-      <input type="text" id="player-name" placeholder="Nickname (2-12 chars)" maxlength="12" autocomplete="off" />
-      <div>
-        <button id="btn-save">Save Record</button>
-        <button id="btn-restart" class="secondary">Play Again</button>
-      </div>
-      <div id="status-msg"></div>
-    </div>
-  </div>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCJu7xKBuR_bVal7P2CFGmy5DeVvR2VQGs",
-      authDomain: "githubleaderboard-adlnocom.firebaseapp.com",
-      databaseURL: "https://githubleaderboard-adlnocom-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "githubleaderboard-adlnocom",
-      storageBucket: "githubleaderboard-adlnocom.firebasestorage.app",
-      messagingSenderId: "547100842018",
-      appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
-      measurementId: "G-10793GQHSE"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
-    const COLS = 10, ROWS = 20, SIZE = 24;
-    const PREVIEW_SIZE = 18;
-    
-    const GAME_VERSION = "2.3.0"; 
-    const MAX_REASONABLE_SCORE = 180000;
-    const MIN_PLAY_TIME_MS = 25000;          
-    const MAX_PLAY_TIME_MS = 35 * 60 * 1000; 
-    const SAVE_COOLDOWN_MS = 45000;
-    const STORAGE_NAME = "tetris_nickname_v2";
-    const STORAGE_BAN = "tetris_banned_v2";
-
-    // Enhanced Ban Check (Checks Local, Session, and Cookies)
-    function isBanned() {
-      return localStorage.getItem(STORAGE_BAN) === "1" || 
-             sessionStorage.getItem(STORAGE_BAN) === "1" || 
-             document.cookie.includes(`${STORAGE_BAN}=1`);
-    }
-
-    if (isBanned()) {
-      document.getElementById("banned-screen").style.display = "flex";
-      document.getElementById("game").style.display = "none";
-      throw new Error("Banned");
-    }
-
-    // ================== GAME STATE ==================
-    const board = document.getElementById("board");
-    board.width = COLS * SIZE;
-    board.height = ROWS * SIZE;
-    const ctx = board.getContext("2d");
-
-    const previewCanvas = document.getElementById("preview");
-    const pctx = previewCanvas.getContext("2d");
-
-    const COLORS = {
-      bg: "#0d1117", grid: "#161b22",
-      I: "#2ea043", O: "#8b5cf6", T: "#f0f6fc",
-      S: "#238636", Z: "#a371f7", J: "#388bfd", L: "#f78166"
-    };
-
-    const SHAPES = {
-      I: [[1,1,1,1]], O: [[1,1],[1,1]], T: [[0,1,0],[1,1,1]],
-      S: [[0,1,1],[1,1,0]], Z: [[1,1,0],[0,1,1]], J: [[1,0,0],[1,1,1]], L: [[0,0,1],[1,1,1]]
-    };
-
-    // Global exposed state
-    let grid, score, lines, level, gameOver;
-    let current, next, posX, posY;
-    let lastDrop = 0, dropInterval = 1000;
-    let startTime = 0;
-    let currentUser = null;
-    let lastSaveTime = 0;
-    let isSaving = false;
-    let allEntries = [];
-    let myBestScore = 0;
-
-    // SHADOW STATE & HEURISTICS (Hidden variables to detect memory manipulation & bots)
-    let shadowState = { score: 0, lines: 0, level: 1 };
-    let heuristics = { keyPresses: 0, piecesSpawned: 0 };
-
-    // ================== AUTH ==================
-    onAuthStateChanged(auth, (user) => {
-      currentUser = user;
-      if (!user) {
-        signInAnonymously(auth).catch(err => console.error("Auth failed:", err));
-      }
-    });
-
-    // ================== TETRIS ENGINE ==================
-    function init() {
-      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-      score = 0; lines = 0; level = 1;
-      shadowState = { score: 0, lines: 0, level: 1 }; // Reset shadow
-      heuristics = { keyPresses: 0, piecesSpawned: 0 }; // Reset heuristics
-      
-      gameOver = false;
-      current = next || randomShape();
-      next = randomShape();
-      posX = Math.floor((COLS - current.shape[0].length) / 2);
-      posY = 0;
-      lastDrop = 0;
-      dropInterval = 1000;
-      startTime = performance.now();
-      updateStats();
-      drawPreview();
-    }
-
-    function randomShape() {
-      heuristics.piecesSpawned++; // Track piece spawns for bot detection
-      const keys = Object.keys(SHAPES);
-      const key = keys[Math.floor(Math.random() * keys.length)];
-      return { shape: SHAPES[key], color: COLORS[key], type: key };
-    }
-
-    function collide(nx = posX, ny = posY, shape = current.shape) {
-      for (let y = 0; y < shape.length; y++) {
-        for (let x = 0; x < shape[y].length; x++) {
-          if (shape[y][x]) {
-            const bx = nx + x, by = ny + y;
-            if (bx < 0 || bx >= COLS || by >= ROWS || (by >= 0 && grid[by][bx])) return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    function rotate() {
-      const rotated = current.shape[0].map((_, i) =>
-        current.shape.map(row => row[i]).reverse()
-      );
-      if (!collide(posX, posY, rotated)) current.shape = rotated;
-    }
-
-    function drop() {
-      if (!collide(posX, posY + 1)) {
-        posY++;
-      } else {
-        lock();
-        clearLines();
-        if (!gameOver) {
-          current = next;
-          next = randomShape();
-          posX = Math.floor((COLS - current.shape[0].length) / 2);
-          posY = 0;
-          drawPreview();
-          if (collide()) {
-            gameOver = true;
-            showGameOver();
-          }
-        }
-      }
-    }
-
-    function lock() {
-      current.shape.forEach((row, y) => {
-        row.forEach((val, x) => {
-          if (val && posY + y >= 0) {
-            grid[posY + y][posX + x] = current.color;
-          }
-        });
-      });
-    }
-
-    function clearLines() {
-      let cleared = 0;
-      for (let y = ROWS - 1; y >= 0; y--) {
-        if (grid[y].every(cell => cell)) {
-          grid.splice(y, 1);
-          grid.unshift(Array(COLS).fill(0));
-          cleared++;
-          y++;
-        }
-      }
-      if (cleared) {
-        lines += cleared;
-        shadowState.lines += cleared; // Sync shadow
-
-        const points = [0, 100, 300, 500, 800][cleared] * level;
-        score += points;
-        shadowState.score += points; // Sync shadow
-
-        level = Math.floor(lines / 10) + 1;
-        shadowState.level = level; // Sync shadow
-
-        dropInterval = Math.max(80, 1000 - (level - 1) * 90);
-        updateStats();
-      }
-    }
-
-    function updateStats() {
-      document.getElementById("score").textContent = score;
-      document.getElementById("lines").textContent = lines;
-      document.getElementById("level").textContent = level;
-    }
-
-    // ================== DRAW ==================
-    function draw() {
-      ctx.fillStyle = COLORS.bg;
-      ctx.fillRect(0, 0, board.width, board.height);
-
-      ctx.strokeStyle = COLORS.grid;
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= COLS; x++) {
-        ctx.beginPath(); ctx.moveTo(x * SIZE, 0); ctx.lineTo(x * SIZE, board.height); ctx.stroke();
-      }
-      for (let y = 0; y <= ROWS; y++) {
-        ctx.beginPath(); ctx.moveTo(0, y * SIZE); ctx.lineTo(board.width, y * SIZE); ctx.stroke();
-      }
-
-      grid.forEach((row, y) => {
-        row.forEach((cell, x) => {
-          if (cell) {
-            ctx.fillStyle = cell;
-            ctx.fillRect(x * SIZE, y * SIZE, SIZE - 1, SIZE - 1);
-          }
-        });
-      });
-
-      if (!gameOver && current) {
-        current.shape.forEach((row, y) => {
-          row.forEach((val, x) => {
-            if (val && posY + y >= 0) {
-              ctx.fillStyle = current.color;
-              ctx.fillRect((posX + x) * SIZE, (posY + y) * SIZE, SIZE - 1, SIZE - 1);
-            }
-          });
-        });
-      }
-    }
-
-    function drawPreview() {
-      pctx.fillStyle = COLORS.bg;
-      pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-      if (!next) return;
-      const shape = next.shape;
-      const w = shape[0].length;
-      const h = shape.length;
-      const offsetX = Math.floor((4 - w) / 2);
-      const offsetY = Math.floor((4 - h) / 2);
-
-      shape.forEach((row, y) => {
-        row.forEach((val, x) => {
-          if (val) {
-            pctx.fillStyle = next.color;
-            pctx.fillRect((offsetX + x) * PREVIEW_SIZE, (offsetY + y) * PREVIEW_SIZE, PREVIEW_SIZE - 1, PREVIEW_SIZE - 1);
-          }
-        });
-      });
-    }
-
-    // ================== LEADERBOARD ==================
-    const leaderboardRef = ref(db, "leaderboard");
-
-    onValue(query(leaderboardRef, orderByChild("score"), limitToLast(50)), (snapshot) => {
-      const data = snapshot.val();
-      const list = document.getElementById("lb-list");
-      const myRankEl = document.getElementById("my-rank");
-
-      if (!data) {
-        list.innerHTML = '<li style="color:#8b949e;">No records yet</li>';
-        myRankEl.textContent = "Your place: —";
-        allEntries = [];
-        return;
-      }
-
-      allEntries = Object.values(data).sort((a, b) => b.score - a.score);
-      const top6 = allEntries.slice(0, 6);
-      list.innerHTML = top6.map((entry, i) => {
-        const date = new Date(entry.timestamp).toLocaleDateString();
-        const timeSec = entry.playTimeMs ? Math.round(entry.playTimeMs / 1000) + "s" : "";
-        return `
-          <li>
-            <span class="lb-name">#${i + 1} ${escapeHtml(entry.name || "Anon")}</span>
-            <span class="lb-score">${entry.score}</span>
-            <span class="lb-meta">\( {date} · L \){entry.level || "?"} · ${entry.lines || "?"}ln ${timeSec ? "· " + timeSec : ""}</span>
-          </li>
-        `;
-      }).join("");
-      updateMyRank();
-    });
-
-    function updateMyRank() {
-      const myRankEl = document.getElementById("my-rank");
-      const savedName = localStorage.getItem(STORAGE_NAME) || "";
-
-      if (!allEntries.length || !savedName) {
-        myRankEl.innerHTML = `Your place: —`;
-        return;
-      }
-      const myEntries = allEntries.filter(e => e.name === savedName);
-      if (!myEntries.length) {
-        myRankEl.innerHTML = `Your place: not ranked yet`;
-        return;
-      }
-      myBestScore = Math.max(...myEntries.map(e => e.score));
-      const place = allEntries.findIndex(e => e.score === myBestScore && e.name === savedName) + 1;
-      myRankEl.innerHTML = `
-        <span class="place">#${place}</span>
-        <span class="score">${myBestScore}</span>
-        <span style="color:#8b949e;font-size:11px;"> (${escapeHtml(savedName)})</span>
-      `;
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    // ================== SAVE + ANTI-CHEAT ==================
-    function sanitizeName(name) {
-      return name.trim().replace(/[^\w\s\-\u0400-\u04FF]/g, "").slice(0, 12);
-    }
-
-    function banUser(reason) {
-      console.warn("BAN:", reason);
-      // Resilient Ban (Local + Session + Cookie)
-      localStorage.setItem(STORAGE_BAN, "1");
-      sessionStorage.setItem(STORAGE_BAN, "1");
-      document.cookie = `${STORAGE_BAN}=1; max-age=31536000; path=/`;
-
-      document.getElementById("banned-screen").style.display = "flex";
-      document.getElementById("game").style.display = "none";
-      document.getElementById("modal").style.display = "none";
-    }
-
-    function validateScoreData(data) {
-      // 1. Shadow State Verification (Catches Memory Injection)
-      if (data.score !== shadowState.score || data.lines !== shadowState.lines || data.level !== shadowState.level) return "State tampered";
-      
-      // 2. Bot/Script Detection (Must have reasonable keypress activity)
-      if (data.score > 0 && heuristics.keyPresses < heuristics.piecesSpawned * 0.3) return "Bot behavior detected";
-
-      // 3. Mathematical Constraints
-      if (!data.score || data.score < 0 || data.score > MAX_REASONABLE_SCORE) return "Score out of range";
-      if (data.lines < 0 || data.lines > 1200) return "Lines out of range";
-      if (data.level < 1 || data.level > 25) return "Level out of range";
-      if (data.playTimeMs < MIN_PLAY_TIME_MS) return "Game too short";
-      if (data.playTimeMs > MAX_PLAY_TIME_MS) return "Game too long";
-
-      const expectedLevel = Math.floor(data.lines / 10) + 1;
-      if (Math.abs(data.level - expectedLevel) > 1) return "Level mismatch";
-
-      // Precise Math constraint: Max 200 points per line per level
-      const theoreticalMax = (data.lines * 200 * data.level) + (data.level * 800);
-      if (data.score > theoreticalMax) return "Score inconsistent";
-
-      const scorePerSec = data.score / (data.playTimeMs / 1000);
-      if (scorePerSec > 90) return "Impossible score rate";
-      const linesPerMin = data.lines / (data.playTimeMs / 60000);
-      if (linesPerMin > 16) return "Impossible lines rate";
-      
-      if (data.lines >= 20 && data.score < data.lines * 25) return "Score too low";
-      if (data.score > 15000 && data.score % 1000 === 0) return "Suspicious score";
-
-      return null;
-    }
-
-    async function saveScoreSecure() {
-      if (isSaving) return;
-      if (!gameOver) { setStatus("Game is not over", true); return; }
-      if (!currentUser) { setStatus("Not authenticated...", true); return; }
-      if (isBanned()) { banUser("Already banned"); return; }
-
-      const now = Date.now();
-      if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
-        const left = Math.ceil((SAVE_COOLDOWN_MS - (now - lastSaveTime)) / 1000);
-        setStatus(`Wait ${left}s`, true);
-        return;
-      }
-
-      const nameInput = document.getElementById("player-name");
-      let name = sanitizeName(nameInput.value);
-      if (name.length < 2) { setStatus("Nickname too short", true); return; }
-      localStorage.setItem(STORAGE_NAME, name);
-
-      const playTimeMs = Math.round(performance.now() - startTime);
-      const payload = {
-        name, score, lines, level, playTimeMs,
-        timestamp: now,
-        uid: currentUser.uid,
-        version: GAME_VERSION
-      };
-
-      const error = validateScoreData(payload);
-      if (error) {
-        setStatus("Invalid data: " + error, true);
-        if (
-          error.includes("Impossible") || error.includes("tampered") ||
-          error.includes("Bot behavior") || error.includes("inconsistent") ||
-          error.includes("out of range") || error.includes("Suspicious")
-        ) {
-          banUser(error);
-        }
-        return;
-      }
-
-      isSaving = true;
-      document.getElementById("btn-save").disabled = true;
-      setStatus("Saving...");
-
-      try {
-        await push(leaderboardRef, payload);
-        lastSaveTime = now;
-        setStatus("Saved!", false);
-        updateMyRank();
-        setTimeout(() => { document.getElementById("modal").style.display = "none"; }, 800);
-      } catch (err) {
-        console.error(err);
-        setStatus("Save failed (check Firebase rules)", true);
-      } finally {
-        isSaving = false;
-        document.getElementById("btn-save").disabled = false;
-      }
-    }
-
-    function setStatus(msg, isError = false) {
-      const el = document.getElementById("status-msg");
-      el.textContent = msg;
-      el.className = isError ? "error" : "success";
-    }
-
-    // ================== UI ==================
-    function showGameOver() {
-      document.getElementById("final-score").textContent = score;
-      document.getElementById("modal").style.display = "flex";
-      const saved = localStorage.getItem(STORAGE_NAME) || "";
-      document.getElementById("player-name").value = saved;
-      document.getElementById("status-msg").textContent = "";
-      document.getElementById("player-name").focus();
-    }
-
-    function restartGame() {
-      document.getElementById("modal").style.display = "none";
-      init();
-    }
-
-    document.getElementById("btn-save").addEventListener("click", saveScoreSecure);
-    document.getElementById("btn-restart").addEventListener("click", restartGame);
-
-    // ================== CONTROLS ==================
-    document.addEventListener("keydown", e => {
-      if (gameOver) return;
-      heuristics.keyPresses++; // Track input heuristics
-      
-      if (e.code === "ArrowLeft" && !collide(posX - 1, posY)) posX--;
-      if (e.code === "ArrowRight" && !collide(posX + 1, posY)) posX++;
-      if (e.code === "ArrowDown") drop();
-      if (e.code === "ArrowUp") rotate();
-      if (e.code === "Space") {
-        e.preventDefault();
-        while (!collide(posX, posY + 1)) posY++;
-        drop();
-      }
-    });
-
-    // ===== MOBILE CONTROLS =====
-    function bindCtrl(id, action) {
-      const el = document.getElementById(id);
-      const fire = (e) => {
-        e.preventDefault();
-        if (gameOver) return;
-        heuristics.keyPresses++;
-        action();
-        el.classList.add("active");
-        setTimeout(() => el.classList.remove("active"), 100);
-      };
-      el.addEventListener("touchstart", fire, { passive: false });
-      el.addEventListener("mousedown", fire);
-    }
-
-    bindCtrl("btn-left",  () => { if (!collide(posX - 1, posY)) posX--; });
-    bindCtrl("btn-right", () => { if (!collide(posX + 1, posY)) posX++; });
-    bindCtrl("btn-down",  () => { drop(); });
-    bindCtrl("btn-up",    () => { rotate(); });
-
-    // ================== LOOP ==================
-    function loop(timestamp) {
-      if (!lastDrop) lastDrop = timestamp;
-      if (!gameOver && timestamp - lastDrop > dropInterval) {
-        drop();
-        lastDrop = timestamp;
-      }
-      draw();
-      requestAnimationFrame(loop);
-    }
-
-    // ================== START ==================
-    init();
-    requestAnimationFrame(loop);
-  </script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
