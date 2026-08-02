@@ -19,7 +19,6 @@ const APP_CONFIG = Object.freeze({
     appId: "1:547100842018:web:ae8d07584a81cb9f22d27b",
     measurementId: "G-10793GQHSE",
   },
-  functionsRegion: "europe-west1",
   firebaseSdkVersion: "10.12.5",
   firebaseLoadTimeoutMs: 12000,
   appCheckSiteKey: "",
@@ -67,7 +66,7 @@ function escapeText(value) {
 
 /* ===== core/tetris-core.mjs ===== */
 /**
- * Deterministic Tetris core shared by the browser and Cloud Functions.
+ * Deterministic Tetris core used by the browser and local replay validation.
  * No DOM, timers, Firebase, or random global state are used here.
  */
 
@@ -1412,6 +1411,10 @@ class GameControls {
 
 /* ===== services/firebase-service.js ===== */
 const DEFAULT_FIREBASE_SDK_VERSION = "10.12.5";
+const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const INVITE_LENGTH = 6;
+const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
+const DISCONNECT_GRACE_MS = 15000;
 
 const LEADERBOARD_ORDER = Object.freeze({
   solo: "score",
@@ -1432,13 +1435,50 @@ function withTimeout(promise, timeoutMs, message) {
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
 }
 
+function makeClientError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function secureRandomSeed() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return values[0] || 1;
+}
+
+function randomInviteCode() {
+  const values = new Uint32Array(INVITE_LENGTH);
+  crypto.getRandomValues(values);
+  let code = "";
+  for (const value of values) {
+    code += INVITE_ALPHABET[value % INVITE_ALPHABET.length];
+  }
+  return code;
+}
+
+function assertFirebaseKey(value, label = "Идентификатор") {
+  const key = String(value ?? "");
+  if (!/^[A-Za-z0-9_-]{10,160}$/.test(key)) {
+    throw makeClientError("app/invalid-key", `${label} имеет неверный формат.`);
+  }
+  return key;
+}
+
+function assertDuration(value) {
+  const duration = Number(value);
+  if (!Number.isInteger(duration) || duration < 0 || duration > MAX_SESSION_MS) {
+    throw makeClientError("app/invalid-duration", "Некорректная длительность партии.");
+  }
+  return duration;
+}
+
 async function loadFirebaseModules(version, includeAppCheck) {
   const base = `https://www.gstatic.com/firebasejs/${version}`;
   const imports = [
     import(`${base}/firebase-app.js`),
     import(`${base}/firebase-auth.js`),
     import(`${base}/firebase-database.js`),
-    import(`${base}/firebase-functions.js`),
   ];
   if (includeAppCheck) imports.push(import(`${base}/firebase-app-check.js`));
   const modules = await Promise.all(imports);
@@ -1452,19 +1492,21 @@ class FirebaseService {
     this.app = null;
     this.auth = null;
     this.db = null;
-    this.functions = null;
     this.user = null;
     this.serverTimeOffset = 0;
     this.connectionRef = null;
     this.initialized = false;
+    this.presenceError = null;
     this.presenceUnsubscribe = null;
     this.offsetUnsubscribe = null;
+    this.activeSoloSessions = new Map();
+    this.lastChatSentAt = 0;
   }
 
   async initialize() {
     if (this.initialized) return this.user;
     if (this.config.forceOffline) {
-      throw new Error("Локальный режим включён параметром URL.");
+      throw makeClientError("app/offline-mode", "Локальный режим включён параметром URL.");
     }
 
     const version = this.config.firebaseSdkVersion || DEFAULT_FIREBASE_SDK_VERSION;
@@ -1485,7 +1527,6 @@ class FirebaseService {
 
     this.auth = this.api.getAuth(this.app);
     this.db = this.api.getDatabase(this.app);
-    this.functions = this.api.getFunctions(this.app, this.config.functionsRegion);
 
     if (this.config.useEmulators) {
       this.api.connectAuthEmulator(
@@ -1494,7 +1535,6 @@ class FirebaseService {
         { disableWarnings: true },
       );
       this.api.connectDatabaseEmulator(this.db, this.config.emulatorHost, 9000);
-      this.api.connectFunctionsEmulator(this.functions, this.config.emulatorHost, 5001);
     }
 
     this.offsetUnsubscribe = this.api.onValue(
@@ -1509,7 +1549,15 @@ class FirebaseService {
       timeoutMs,
       "Не удалось выполнить анонимную авторизацию Firebase.",
     );
-    await this.startPresence(timeoutMs);
+
+    this.presenceError = null;
+    try {
+      await this.startPresence(timeoutMs);
+    } catch (error) {
+      this.presenceError = error;
+      console.warn("Firebase presence is unavailable", error);
+    }
+
     this.initialized = true;
     return this.user;
   }
@@ -1554,7 +1602,7 @@ class FirebaseService {
         initialRegistrationFinished = true;
         this.presenceUnsubscribe?.();
         this.presenceUnsubscribe = null;
-        reject(new Error("Не удалось зарегистрировать присутствие в Firebase."));
+        reject(makeClientError("app/presence-timeout", "Не удалось зарегистрировать присутствие в Firebase."));
       }, Math.max(3000, Number(timeoutMs) || 12000));
 
       const failInitialRegistration = (error) => {
@@ -1606,12 +1654,12 @@ class FirebaseService {
   }
 
   requireUser() {
-    if (!this.user) throw new Error("Firebase user is not authenticated");
+    if (!this.user) throw makeClientError("app/not-authenticated", "Firebase user is not authenticated");
     return this.user;
   }
 
   requireApi() {
-    if (!this.api || !this.db) throw new Error("Firebase service is not initialized");
+    if (!this.api || !this.db) throw makeClientError("app/not-initialized", "Firebase service is not initialized");
     return this.api;
   }
 
@@ -1619,56 +1667,810 @@ class FirebaseService {
     return Date.now() + this.serverTimeOffset;
   }
 
-  async call(name, data = {}) {
+  async reserveInviteCode(uid, preferredCode = null) {
     const api = this.requireApi();
-    const callable = api.httpsCallable(this.functions, name);
-    const result = await callable(data);
-    return result.data;
+    const tryReserve = async (candidate) => {
+      const code = normalizeInviteCode(candidate);
+      if (code.length !== INVITE_LENGTH) return null;
+      const result = await api.runTransaction(
+        api.ref(this.db, `inviteCodes/${code}`),
+        (current) => (current === null || current === uid ? uid : undefined),
+        { applyLocally: false },
+      );
+      return result.committed ? code : null;
+    };
+
+    const preferred = await tryReserve(preferredCode);
+    if (preferred) return preferred;
+
+    for (let attempt = 0; attempt < 48; attempt += 1) {
+      const code = await tryReserve(randomInviteCode());
+      if (code) return code;
+    }
+    throw makeClientError("app/invite-code-exhausted", "Не удалось выделить уникальный код игрока.");
   }
 
-  ensureProfile(name) {
-    return this.call("ensureProfile", { name });
+  async ensureProfile(requestedName) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const profileRef = api.ref(this.db, `profiles/${uid}`);
+    const existing = (await api.get(profileRef)).val() ?? {};
+    const inviteCode = await this.reserveInviteCode(uid, existing.inviteCode);
+    const requested = sanitizeName(requestedName);
+    const existingName = sanitizeName(existing.name);
+    const fallback = `Игрок${uid.slice(0, 4)}`.slice(0, 12);
+    const name = requested.length >= 2
+      ? requested
+      : existingName.length >= 2
+        ? existingName
+        : fallback;
+    const now = this.serverNow();
+    const profile = {
+      uid,
+      name,
+      inviteCode,
+      createdAt: Number(existing.createdAt) || now,
+      updatedAt: now,
+      version: GAME_VERSION,
+    };
+    await api.set(profileRef, profile);
+    return profile;
   }
 
-  updateProfile(name) {
-    return this.call("updateProfile", { name });
+  async updateProfile(requestedName) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const name = sanitizeName(requestedName);
+    if (name.length < 2) {
+      throw makeClientError("app/invalid-name", "Имя должно содержать от 2 до 12 символов.");
+    }
+    const profile = await this.ensureProfile(name);
+    const lobbyId = (await api.get(api.ref(this.db, `userLobby/${uid}`))).val();
+    if (lobbyId && !String(lobbyId).startsWith("__joining__")) {
+      const memberRef = api.ref(this.db, `lobbies/${lobbyId}/members/${uid}`);
+      if ((await api.get(memberRef)).exists()) {
+        await api.set(api.ref(this.db, `lobbies/${lobbyId}/members/${uid}/name`), profile.name);
+        await api.set(api.ref(this.db, `lobbies/${lobbyId}/updatedAt`), this.serverNow());
+      }
+    }
+    return profile;
   }
 
-  joinLobbyByCode(code) {
-    return this.call("joinLobbyByCode", { code });
+  async isOnline(uid) {
+    const api = this.requireApi();
+    const snapshot = await api.get(api.ref(this.db, `presence/${uid}/connections`));
+    const value = snapshot.val();
+    return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
   }
 
-  leaveLobby() {
-    return this.call("leaveLobby");
+  async clearStaleLobbyAssignment(uid) {
+    const api = this.requireApi();
+    const pointerRef = api.ref(this.db, `userLobby/${uid}`);
+    const pointer = (await api.get(pointerRef)).val();
+    if (!pointer) return null;
+
+    const value = String(pointer);
+    if (value.startsWith("__joining__")) {
+      const timestamp = Number(value.split("_").at(-1));
+      const stale = !Number.isFinite(timestamp) || this.serverNow() - timestamp > 45000;
+      if (stale) {
+        await api.runTransaction(
+          pointerRef,
+          (current) => (current === pointer ? null : undefined),
+          { applyLocally: false },
+        );
+        return null;
+      }
+      return { lobbyId: value, lobby: null, reservation: true };
+    }
+
+    const lobby = (await api.get(api.ref(this.db, `lobbies/${value}`))).val();
+    if (!lobby || !lobby.members?.[uid]) {
+      await api.runTransaction(
+        pointerRef,
+        (current) => (current === pointer ? null : undefined),
+        { applyLocally: false },
+      );
+      return null;
+    }
+    return { lobbyId: value, lobby };
   }
 
-  startSoloGame() {
-    return this.call("startSoloGame");
+  async joinLobbyByCode(rawCode) {
+    const api = this.requireApi();
+    const guestUid = this.requireUser().uid;
+    const code = normalizeInviteCode(rawCode);
+    if (code.length !== INVITE_LENGTH) {
+      throw makeClientError("app/invalid-code", "Введите шестизначный код игрока.");
+    }
+
+    const inviteValue = (await api.get(api.ref(this.db, `inviteCodes/${code}`))).val();
+    const hostUid = typeof inviteValue === "string" ? inviteValue : inviteValue?.uid;
+    if (!hostUid) throw makeClientError("app/player-not-found", "Игрок с таким кодом не найден.");
+    if (hostUid === guestUid) throw makeClientError("app/self-join", "Нельзя подключиться к собственному коду.");
+    if (!(await this.isOnline(hostUid))) {
+      throw makeClientError("app/player-offline", "Владелец кода сейчас не в сети.");
+    }
+
+    const guestActive = await this.clearStaleLobbyAssignment(guestUid);
+    if (guestActive) throw makeClientError("app/already-in-lobby", "Вы уже находитесь в лобби.");
+    const hostActive = await this.clearStaleLobbyAssignment(hostUid);
+    if (hostActive) throw makeClientError("app/host-busy", "Этот игрок уже находится в другом лобби.");
+
+    const now = this.serverNow();
+    const reservation = `__joining__${hostUid}_${Math.trunc(now)}`;
+    const guestReservation = await api.runTransaction(
+      api.ref(this.db, `userLobby/${guestUid}`),
+      (current) => (current === null ? reservation : undefined),
+      { applyLocally: false },
+    );
+    if (!guestReservation.committed) {
+      throw makeClientError("app/join-in-progress", "Вы уже подключаетесь к другому лобби.");
+    }
+
+    const lobbyId = hostUid;
+    let lobbyCreated = false;
+    let hostPointerWritten = false;
+    try {
+      const [hostProfileValue, guestProfileValue] = await Promise.all([
+        api.get(api.ref(this.db, `profiles/${hostUid}`)),
+        api.get(api.ref(this.db, `profiles/${guestUid}`)),
+      ]);
+      const hostProfile = hostProfileValue.val();
+      const guestProfile = guestProfileValue.val() ?? await this.ensureProfile();
+      if (!hostProfile) throw makeClientError("app/host-profile-missing", "Профиль владельца кода не найден.");
+
+      const lobbyPayload = {
+        hostUid,
+        guestUid,
+        code,
+        mode: "competitive",
+        status: "configuring",
+        createdAt: now,
+        updatedAt: now,
+        members: {
+          [hostUid]: { name: sanitizeName(hostProfile.name) || "Игрок 1", side: "left", ready: false },
+          [guestUid]: { name: sanitizeName(guestProfile.name) || "Игрок 2", side: "right", ready: false },
+        },
+      };
+
+      const lobbyTransaction = await api.runTransaction(
+        api.ref(this.db, `lobbies/${lobbyId}`),
+        (current) => (current === null ? lobbyPayload : undefined),
+        { applyLocally: false },
+      );
+      if (!lobbyTransaction.committed) {
+        throw makeClientError("app/lobby-busy", "К этому игроку уже подключился кто-то другой.");
+      }
+      lobbyCreated = true;
+
+      // Write the two pointers separately. A parent-level multipath update would
+      // require a permissive rule at the database root, which we intentionally avoid.
+      await api.set(api.ref(this.db, `userLobby/${hostUid}`), lobbyId);
+      hostPointerWritten = true;
+      await api.set(api.ref(this.db, `userLobby/${guestUid}`), lobbyId);
+      return { lobbyId };
+    } catch (error) {
+      try {
+        await api.runTransaction(
+          api.ref(this.db, `userLobby/${guestUid}`),
+          (current) => (current === reservation || current === lobbyId ? null : undefined),
+          { applyLocally: false },
+        );
+        if (hostPointerWritten) {
+          await api.runTransaction(
+            api.ref(this.db, `userLobby/${hostUid}`),
+            (current) => (current === lobbyId ? null : undefined),
+            { applyLocally: false },
+          );
+        }
+        if (lobbyCreated) await api.remove(api.ref(this.db, `lobbies/${lobbyId}`));
+      } catch (rollbackError) {
+        console.warn("Lobby rollback failed", rollbackError);
+      }
+      throw error;
+    }
   }
 
-  finishSoloGame(sessionId, durationMs, inputLog) {
-    return this.call("finishSoloGame", { sessionId, durationMs, inputLog });
+  async leaveLobby() {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const pointerRef = api.ref(this.db, `userLobby/${uid}`);
+    const pointer = (await api.get(pointerRef)).val();
+    if (!pointer || String(pointer).startsWith("__joining__")) {
+      await api.remove(pointerRef);
+      return { left: true };
+    }
+
+    const lobbyId = String(pointer);
+    const lobby = (await api.get(api.ref(this.db, `lobbies/${lobbyId}`))).val();
+    if (!lobby) {
+      await api.remove(pointerRef);
+      return { left: true };
+    }
+    if (!lobby.members?.[uid]) throw makeClientError("app/not-lobby-member", "Вы не состоите в этом лобби.");
+    if (["starting", "playing"].includes(lobby.status)) {
+      throw makeClientError("app/match-active", "Нельзя покинуть лобби во время активного матча.");
+    }
+
+    // Delete the chat while membership still exists, then clear pointers and
+    // finally delete the lobby. Each write is authorized at its exact path.
+    // The chat rule permits an idempotent parent delete, so no unrestricted
+    // read of the chat node is needed.
+    await api.remove(api.ref(this.db, `lobbyChats/${lobbyId}`));
+    for (const memberUid of Object.keys(lobby.members ?? {})) {
+      await api.runTransaction(
+        api.ref(this.db, `userLobby/${memberUid}`),
+        (current) => (current === lobbyId ? null : undefined),
+        { applyLocally: false },
+      );
+    }
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}`),
+      (current) => (current ? null : undefined),
+      { applyLocally: false },
+    );
+    return { left: true };
   }
 
-  startMatch(lobbyId) {
-    return this.call("startMatch", { lobbyId });
+  async clearOwnLobbyPointer(expectedLobbyId = null) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const pointerRef = api.ref(this.db, `userLobby/${uid}`);
+    await api.runTransaction(
+      pointerRef,
+      (current) => (!expectedLobbyId || current === expectedLobbyId ? null : undefined),
+      { applyLocally: false },
+    );
   }
 
-  finishCompetitiveMatch(matchId, durationMs, inputLog, gameOver) {
-    return this.call("finishCompetitiveMatch", {
-      matchId,
+  async startSoloGame() {
+    const uid = this.requireUser().uid;
+    const api = this.requireApi();
+    const sessionId = api.push(api.ref(this.db, `_clientKeys/${uid}`)).key;
+    const session = {
+      sessionId,
+      seed: secureRandomSeed(),
+      status: "playing",
+      startedAt: this.serverNow(),
+      version: GAME_VERSION,
+    };
+    this.activeSoloSessions.set(sessionId, session);
+    return session;
+  }
+
+  async finishSoloGame(sessionId, durationValue, inputLog) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const durationMs = assertDuration(durationValue);
+    const session = this.activeSoloSessions.get(sessionId);
+    if (!session) throw makeClientError("app/session-missing", "Локальная сессия партии не найдена.");
+    if (durationMs > this.serverNow() - session.startedAt + 30000) {
+      throw makeClientError("app/duration-in-future", "Длительность партии находится в будущем.");
+    }
+
+    let snapshot;
+    try {
+      snapshot = replaySolo({
+        seed: session.seed,
+        inputLog,
+        durationMs,
+        requireGameOver: true,
+      });
+    } catch (error) {
+      throw makeClientError("app/replay-failed", `Результат не прошёл локальное воспроизведение: ${error.message}`);
+    }
+
+    const profile = await this.ensureProfile();
+    const entryRef = api.ref(this.db, `leaderboards/solo/${uid}`);
+    const timestamp = this.serverNow();
+    await api.runTransaction(entryRef, (current) => {
+      if (current && Number(current.score) > snapshot.score) return undefined;
+      if (current && Number(current.score) === snapshot.score && Number(current.playTimeMs) <= durationMs) {
+        return { ...current, name: profile.name, updatedAt: timestamp };
+      }
+      return {
+        uid,
+        name: profile.name,
+        score: snapshot.score,
+        lines: snapshot.lines,
+        level: snapshot.level,
+        playTimeMs: durationMs,
+        timestamp,
+        updatedAt: timestamp,
+        version: GAME_VERSION,
+      };
+    }, { applyLocally: false });
+
+    this.activeSoloSessions.delete(sessionId);
+    return {
+      verified: false,
+      validation: "client-replay",
+      score: snapshot.score,
+      lines: snapshot.lines,
+      level: snapshot.level,
       durationMs,
-      inputLog,
-      gameOver: Boolean(gameOver),
-    });
+    };
   }
 
-  finishCoopMatch(matchId, durationMs) {
-    return this.call("finishCoopMatch", { matchId, durationMs });
+  async startMatch(rawLobbyId) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const lobbyId = assertFirebaseKey(rawLobbyId, "Идентификатор лобби");
+    const lobbyRef = api.ref(this.db, `lobbies/${lobbyId}`);
+    let lobby = (await api.get(lobbyRef)).val();
+    if (!lobby || !lobby.members?.[uid]) throw makeClientError("app/lobby-not-found", "Лобби не найдено.");
+    if (lobby.hostUid !== uid) throw makeClientError("app/not-host", "Запустить матч может только создатель лобби.");
+    if (lobby.status === "playing" && lobby.matchId) {
+      const existing = (await api.get(api.ref(this.db, `matches/${lobby.matchId}`))).val();
+      return { matchId: lobby.matchId, ...existing };
+    }
+    if (!lobby.guestUid || Object.keys(lobby.members ?? {}).length !== 2) {
+      throw makeClientError("app/two-players-required", "Для старта нужны два игрока.");
+    }
+    if (!["competitive", "coop"].includes(lobby.mode)) {
+      throw makeClientError("app/mode-missing", "Не выбран режим матча.");
+    }
+    if (!Object.values(lobby.members ?? {}).every((member) => member.ready === true)) {
+      throw makeClientError("app/not-ready", "Оба игрока должны подтвердить готовность.");
+    }
+
+    const pendingRef = api.ref(this.db, `lobbies/${lobbyId}/pendingMatch`);
+    const existingPending = (await api.get(pendingRef)).val();
+    if (existingPending?.matchId) {
+      const existingMatch = (await api.get(api.ref(this.db, `matches/${existingPending.matchId}`))).val();
+      const stale = !existingMatch
+        && this.serverNow() - Number(existingPending.createdAt || 0) > 30000;
+      if (stale) {
+        await api.runTransaction(
+          pendingRef,
+          (current) => (current?.matchId === existingPending.matchId ? null : undefined),
+          { applyLocally: false },
+        );
+      }
+    }
+
+    const candidate = {
+      matchId: api.push(api.ref(this.db, "matches")).key,
+      seed: secureRandomSeed(),
+      createdAt: this.serverNow(),
+      startedAt: this.serverNow() + 3500,
+    };
+    const pendingTransaction = await api.runTransaction(
+      pendingRef,
+      (current) => (current === null ? candidate : undefined),
+      { applyLocally: false },
+    );
+    const pending = pendingTransaction.committed
+      ? pendingTransaction.snapshot.val()
+      : (await api.get(pendingRef)).val();
+    if (!pending?.matchId) throw makeClientError("app/start-lock-failed", "Не удалось зарезервировать запуск матча.");
+
+    lobby = (await api.get(lobbyRef)).val();
+    if (!lobby || lobby.hostUid !== uid) throw makeClientError("app/lobby-changed", "Состояние лобби изменилось.");
+
+    const match = {
+      lobbyId,
+      hostUid: lobby.hostUid,
+      guestUid: lobby.guestUid,
+      mode: lobby.mode,
+      status: "playing",
+      seed: pending.seed,
+      createdAt: pending.createdAt,
+      startedAt: pending.startedAt,
+      version: GAME_VERSION,
+      members: lobby.members,
+    };
+    const matchRef = api.ref(this.db, `matches/${pending.matchId}`);
+    const matchTransaction = await api.runTransaction(
+      matchRef,
+      (current) => (current === null ? match : undefined),
+      { applyLocally: false },
+    );
+    const storedMatch = matchTransaction.committed
+      ? matchTransaction.snapshot.val()
+      : (await api.get(matchRef)).val();
+    if (!storedMatch) {
+      throw makeClientError("app/match-create-failed", "Не удалось создать матч.");
+    }
+
+    // Security Rules evaluate sibling state from the committed database.
+    // Use idempotent transactions so retries or a double click cannot turn a
+    // successful start into a permission error.
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/lastResult`),
+      (current) => (current ? null : undefined),
+      { applyLocally: false },
+    );
+    const matchIdTransaction = await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/matchId`),
+      (current) => (current === null ? pending.matchId : undefined),
+      { applyLocally: false },
+    );
+    if (!matchIdTransaction.committed) {
+      const currentMatchId = (await api.get(api.ref(this.db, `lobbies/${lobbyId}/matchId`))).val();
+      if (currentMatchId !== pending.matchId) {
+        throw makeClientError("app/parallel-match", "В лобби уже запускается другой матч.");
+      }
+    }
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/status`),
+      (current) => (current === "configuring" ? "playing" : undefined),
+      { applyLocally: false },
+    );
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/pendingMatch`),
+      (current) => (current?.matchId === pending.matchId ? null : undefined),
+      { applyLocally: false },
+    );
+    await api.set(api.ref(this.db, `lobbies/${lobbyId}/updatedAt`), this.serverNow());
+    return { matchId: pending.matchId, ...storedMatch };
   }
 
-  claimDisconnectResult(matchId) {
-    return this.call("claimDisconnectResult", { matchId });
+  async updateCompetitiveEntry(targetUid, matchId, result, scoreCandidate = 0) {
+    const api = this.requireApi();
+    const profile = (await api.get(api.ref(this.db, `profiles/${targetUid}`))).val() ?? {};
+    const outcome = result.winnerUid === targetUid ? "win" : "loss";
+    const entryRef = api.ref(this.db, `leaderboards/competitive/${targetUid}`);
+    const now = this.serverNow();
+
+    await api.runTransaction(entryRef, (currentValue) => {
+      const current = currentValue && typeof currentValue === "object" ? currentValue : {};
+      const processedMatches = { ...(current.processedMatches ?? {}) };
+      const isNewOutcome = !processedMatches[matchId];
+      if (isNewOutcome) processedMatches[matchId] = outcome;
+      const wins = Math.max(0, Math.trunc(Number(current.wins) || 0))
+        + (isNewOutcome && outcome === "win" ? 1 : 0);
+      const losses = Math.max(0, Math.trunc(Number(current.losses) || 0))
+        + (isNewOutcome && outcome === "loss" ? 1 : 0);
+      const maxScore = Math.max(
+        Math.max(0, Math.trunc(Number(current.maxScore) || 0)),
+        Math.max(0, Math.trunc(Number(scoreCandidate) || 0)),
+      );
+      return {
+        uid: targetUid,
+        name: sanitizeName(profile.name) || "Игрок",
+        wins,
+        losses,
+        maxScore,
+        sortKey: wins * 1000000000 + maxScore,
+        lastMatchId: matchId,
+        processedMatches,
+        updatedAt: now,
+        version: GAME_VERSION,
+      };
+    }, { applyLocally: false });
+  }
+
+  async updateCompetitiveLeaderboards(matchId, match, result, scoreByUid = {}) {
+    const loserScore = Math.max(0, Number(result.loserScore) || 0);
+    await Promise.all([
+      this.updateCompetitiveEntry(
+        result.winnerUid,
+        matchId,
+        result,
+        Number(scoreByUid[result.winnerUid]) || 0,
+      ),
+      this.updateCompetitiveEntry(
+        result.loserUid,
+        matchId,
+        result,
+        Math.max(loserScore, Number(scoreByUid[result.loserUid]) || 0),
+      ),
+    ]);
+  }
+
+  async finishCompetitiveMatch(rawMatchId, durationValue, inputLog, claimsGameOver) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const matchId = assertFirebaseKey(rawMatchId, "Идентификатор матча");
+    const durationMs = assertDuration(durationValue);
+    const matchRef = api.ref(this.db, `matches/${matchId}`);
+    const match = (await api.get(matchRef)).val();
+    if (!match || match.mode !== "competitive" || !match.members?.[uid]) {
+      throw makeClientError("app/match-not-found", "Соревновательный матч не найден.");
+    }
+    if (durationMs > this.serverNow() - Number(match.startedAt || 0) + 30000) {
+      throw makeClientError("app/duration-in-future", "Длительность матча находится в будущем.");
+    }
+
+    let replay;
+    try {
+      replay = replaySolo({
+        seed: match.seed,
+        inputLog,
+        durationMs,
+        requireGameOver: Boolean(claimsGameOver),
+      });
+    } catch (error) {
+      throw makeClientError("app/replay-failed", `Результат не прошёл локальное воспроизведение: ${error.message}`);
+    }
+
+    const resultRef = api.ref(this.db, `matches/${matchId}/result`);
+    let result = (await api.get(resultRef)).val();
+    if (claimsGameOver && replay.gameOver && !result) {
+      const otherUid = Object.keys(match.members).find((memberUid) => memberUid !== uid);
+      const payload = {
+        winnerUid: otherUid,
+        loserUid: uid,
+        reason: "top-out",
+        finishedAt: this.serverNow(),
+        loserDurationMs: durationMs,
+        loserScore: replay.score,
+        version: GAME_VERSION,
+      };
+      const transaction = await api.runTransaction(
+        resultRef,
+        (current) => (current === null ? payload : undefined),
+        { applyLocally: false },
+      );
+      result = transaction.committed
+        ? transaction.snapshot.val()
+        : (await api.get(resultRef)).val();
+    }
+
+    if (result) {
+      await this.updateCompetitiveLeaderboards(matchId, match, result, { [uid]: replay.score });
+      await this.markMatchFinished(matchId);
+      await this.resetLobbyAfterMatch(matchId, match, result);
+    }
+
+    return {
+      verified: false,
+      validation: "client-replay",
+      score: replay.score,
+      lines: replay.lines,
+      level: replay.level,
+      durationMs,
+      gameOver: replay.gameOver,
+      result,
+    };
+  }
+
+  async updateCoopLeaderboard(matchId, match, result) {
+    const api = this.requireApi();
+    const teamId = `${match.hostUid}__${match.guestUid}`;
+    const [hostProfileValue, guestProfileValue] = await Promise.all([
+      api.get(api.ref(this.db, `profiles/${match.hostUid}`)),
+      api.get(api.ref(this.db, `profiles/${match.guestUid}`)),
+    ]);
+    const hostProfile = hostProfileValue.val() ?? {};
+    const guestProfile = guestProfileValue.val() ?? {};
+    const now = this.serverNow();
+
+    await api.runTransaction(
+      api.ref(this.db, `leaderboards/coop/${teamId}`),
+      (currentValue) => {
+        const current = currentValue && typeof currentValue === "object" ? currentValue : {};
+        const processedMatches = { ...(current.processedMatches ?? {}) };
+        const isNew = !processedMatches[matchId];
+        if (isNew) processedMatches[matchId] = true;
+        const previousMax = Math.max(0, Math.trunc(Number(current.maxScore) || 0));
+        const maxScore = Math.max(previousMax, Math.max(0, Math.trunc(Number(result.score) || 0)));
+        return {
+          teamId,
+          memberUids: [match.hostUid, match.guestUid],
+          player1Name: sanitizeName(hostProfile.name) || "Игрок 1",
+          player2Name: sanitizeName(guestProfile.name) || "Игрок 2",
+          maxScore,
+          matches: Math.max(0, Math.trunc(Number(current.matches) || 0)) + (isNew ? 1 : 0),
+          bestDurationMs: maxScore > previousMax
+            ? Math.max(0, Math.trunc(Number(result.durationMs) || 0))
+            : Math.max(0, Math.trunc(Number(current.bestDurationMs) || Number(result.durationMs) || 0)),
+          lastMatchId: matchId,
+          processedMatches,
+          updatedAt: now,
+          version: GAME_VERSION,
+        };
+      },
+      { applyLocally: false },
+    );
+  }
+
+  async finishCoopMatch(rawMatchId, durationValue) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const matchId = assertFirebaseKey(rawMatchId, "Идентификатор матча");
+    const durationMs = assertDuration(durationValue);
+    const matchRef = api.ref(this.db, `matches/${matchId}`);
+    const match = (await api.get(matchRef)).val();
+    if (!match || match.mode !== "coop" || !match.members?.[uid]) {
+      throw makeClientError("app/match-not-found", "Кооперативный матч не найден.");
+    }
+    if (match.hostUid !== uid) {
+      throw makeClientError("app/not-host", "Итог кооперативного матча отправляет ведущий.");
+    }
+
+    const acceptedValue = (await api.get(api.ref(this.db, `matches/${matchId}/acceptedCommands`))).val() ?? {};
+    const inputLog = Object.values(acceptedValue)
+      .map((entry, index) => ({
+        seq: Number(entry?.seq) || index + 1,
+        side: entry?.side,
+        action: entry?.action,
+        atMs: Number(entry?.atMs) || 0,
+      }))
+      .sort((a, b) => a.atMs - b.atMs || a.seq - b.seq);
+
+    let replay;
+    try {
+      replay = replayCoop({
+        seed: match.seed,
+        inputLog,
+        durationMs,
+        requireGameOver: true,
+      });
+    } catch (error) {
+      throw makeClientError("app/replay-failed", `Матч не прошёл локальное воспроизведение: ${error.message}`);
+    }
+
+    const resultRef = api.ref(this.db, `matches/${matchId}/result`);
+    const payload = {
+      outcome: "team-game-over",
+      score: replay.score,
+      lines: replay.lines,
+      level: replay.level,
+      durationMs,
+      finishedAt: this.serverNow(),
+      version: GAME_VERSION,
+    };
+    const resultTransaction = await api.runTransaction(
+      resultRef,
+      (current) => (current === null ? payload : undefined),
+      { applyLocally: false },
+    );
+    const result = resultTransaction.committed
+      ? resultTransaction.snapshot.val()
+      : (await api.get(resultRef)).val();
+    if (!result) throw makeClientError("app/result-missing", "Не удалось сохранить итог матча.");
+
+    await this.updateCoopLeaderboard(matchId, match, result);
+    await this.markMatchFinished(matchId);
+    await this.resetLobbyAfterMatch(matchId, match, result);
+    return { verified: false, validation: "client-replay", ...result };
+  }
+
+  async claimDisconnectResult(rawMatchId) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const matchId = assertFirebaseKey(rawMatchId, "Идентификатор матча");
+    const matchRef = api.ref(this.db, `matches/${matchId}`);
+    const match = (await api.get(matchRef)).val();
+    if (!match || !match.members?.[uid] || !["competitive", "coop"].includes(match.mode)) {
+      throw makeClientError("app/match-not-found", "Сетевой матч не найден.");
+    }
+
+    const existing = (await api.get(api.ref(this.db, `matches/${matchId}/result`))).val();
+    if (existing) {
+      await this.markMatchFinished(matchId);
+      await this.resetLobbyAfterMatch(matchId, match, existing);
+      return { resolved: true, result: existing };
+    }
+    if (match.status !== "playing") throw makeClientError("app/match-not-active", "Матч не находится в активном состоянии.");
+
+    const otherUid = Object.keys(match.members).find((memberUid) => memberUid !== uid);
+    if (!otherUid) throw makeClientError("app/opponent-missing", "В матче отсутствует второй игрок.");
+    if (await this.isOnline(otherUid)) throw makeClientError("app/opponent-online", "Второй игрок снова в сети.");
+
+    const lastOnline = Number((await api.get(api.ref(this.db, `presence/${otherUid}/lastOnline`))).val());
+    const offlineSince = lastOnline || Number(match.startedAt) || this.serverNow();
+    const offlineMs = this.serverNow() - offlineSince;
+    if (offlineMs < DISCONNECT_GRACE_MS) {
+      throw makeClientError(
+        "app/reconnect-grace",
+        `Ожидание переподключения: ${Math.ceil((DISCONNECT_GRACE_MS - offlineMs) / 1000)} сек.`,
+      );
+    }
+
+    const finishedAt = this.serverNow();
+    const payload = match.mode === "competitive"
+      ? {
+          winnerUid: uid,
+          loserUid: otherUid,
+          reason: "disconnect",
+          finishedAt,
+          loserScore: Math.max(0, Number(match.competitiveState?.[otherUid]?.score) || 0),
+          version: GAME_VERSION,
+        }
+      : {
+          outcome: "team-disconnected",
+          disconnectedUid: otherUid,
+          claimantUid: uid,
+          reason: "disconnect",
+          score: Math.max(0, Number(match.coopState?.score) || 0),
+          lines: Math.max(0, Number(match.coopState?.lines) || 0),
+          level: Math.max(1, Number(match.coopState?.level) || 1),
+          durationMs: Math.max(0, finishedAt - Number(match.startedAt || finishedAt)),
+          finishedAt,
+          version: GAME_VERSION,
+        };
+
+    const resultRef = api.ref(this.db, `matches/${matchId}/result`);
+    const resultTransaction = await api.runTransaction(
+      resultRef,
+      (current) => (current === null ? payload : undefined),
+      { applyLocally: false },
+    );
+    const result = resultTransaction.committed
+      ? resultTransaction.snapshot.val()
+      : (await api.get(resultRef)).val();
+
+    if (match.mode === "competitive" && result) {
+      await this.updateCompetitiveLeaderboards(matchId, match, result, {
+        [uid]: Math.max(0, Number(match.competitiveState?.[uid]?.score) || 0),
+        [otherUid]: Math.max(0, Number(match.competitiveState?.[otherUid]?.score) || 0),
+      });
+    }
+
+    await this.markMatchFinished(matchId);
+    await this.resetLobbyAfterMatch(matchId, match, result);
+    return { resolved: true, result };
+  }
+
+  async markMatchFinished(matchId) {
+    const api = this.requireApi();
+    const matchRef = api.ref(this.db, `matches/${matchId}`);
+    const match = (await api.get(matchRef)).val();
+    if (!match?.result) return;
+
+    if (match.status !== "finished") {
+      await api.runTransaction(
+        api.ref(this.db, `matches/${matchId}/status`),
+        (current) => (current === "playing" ? "finished" : undefined),
+        { applyLocally: false },
+      );
+    }
+
+    const finishedAtRef = api.ref(this.db, `matches/${matchId}/finishedAt`);
+    const finishedAt = Number((await api.get(finishedAtRef)).val());
+    if (!Number.isFinite(finishedAt)) {
+      await api.set(finishedAtRef, this.serverNow());
+    }
+  }
+
+  async resetLobbyAfterMatch(matchId, match, result) {
+    const api = this.requireApi();
+    const lobbyId = match?.lobbyId;
+    if (!lobbyId) return;
+    const lobbyRef = api.ref(this.db, `lobbies/${lobbyId}`);
+    const lobby = (await api.get(lobbyRef)).val();
+    if (!lobby || lobby.matchId !== matchId) return;
+
+    const matchStillAttached = async () => (
+      (await api.get(api.ref(this.db, `lobbies/${lobbyId}/matchId`))).val() === matchId
+    );
+    const setWhileAttached = async (path, value) => {
+      if (!(await matchStillAttached())) return false;
+      try {
+        await api.set(api.ref(this.db, path), value);
+        return true;
+      } catch (error) {
+        if (!(await matchStillAttached())) return false;
+        throw error;
+      }
+    };
+
+    // Keep matchId until every result-dependent child write has passed its rule.
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/status`),
+      (current) => (current === "playing" ? "configuring" : undefined),
+      { applyLocally: false },
+    );
+    if (result && !(await setWhileAttached(`lobbies/${lobbyId}/lastResult`, result))) return;
+    for (const memberUid of Object.keys(lobby.members ?? {})) {
+      if (!(await setWhileAttached(`lobbies/${lobbyId}/members/${memberUid}/ready`, false))) return;
+    }
+    if (!(await setWhileAttached(`lobbies/${lobbyId}/updatedAt`, this.serverNow()))) return;
+
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/pendingMatch`),
+      (current) => (current?.matchId === matchId ? null : undefined),
+      { applyLocally: false },
+    );
+    await api.runTransaction(
+      api.ref(this.db, `lobbies/${lobbyId}/matchId`),
+      (current) => (current === matchId ? null : undefined),
+      { applyLocally: false },
+    );
   }
 
   subscribeProfile(uid, callback) {
@@ -1711,24 +2513,38 @@ class FirebaseService {
     });
   }
 
-  async sendChat(lobbyId, _profile, text) {
-    const cleanText = String(text ?? "").trim().slice(0, 300);
-    if (!cleanText) return null;
-    return this.call("sendLobbyMessage", { lobbyId, text: cleanText });
-  }
-
-  setLobbyMode(lobbyId, mode) {
-    const api = this.requireApi();
-    return api.set(api.ref(this.db, `lobbies/${lobbyId}/mode`), mode);
-  }
-
-  setReady(lobbyId, ready) {
+  async sendChat(lobbyId, profile, text) {
     const api = this.requireApi();
     const uid = this.requireUser().uid;
-    return api.set(
-      api.ref(this.db, `lobbies/${lobbyId}/members/${uid}/ready`),
-      Boolean(ready),
-    );
+    const cleanText = String(text ?? "").trim().slice(0, 300);
+    if (!cleanText) return null;
+    const now = this.serverNow();
+    if (now - this.lastChatSentAt < 450) {
+      throw makeClientError("app/chat-rate", "Сообщения отправляются слишком часто.");
+    }
+    this.lastChatSentAt = now;
+    const messageRef = api.push(api.ref(this.db, `lobbyChats/${lobbyId}`));
+    const message = {
+      uid,
+      name: sanitizeName(profile?.name) || "Игрок",
+      text: cleanText,
+      timestamp: api.serverTimestamp(),
+    };
+    await api.set(messageRef, message);
+    return { messageId: messageRef.key, ...message, timestamp: now };
+  }
+
+  async setLobbyMode(lobbyId, mode) {
+    const api = this.requireApi();
+    await api.set(api.ref(this.db, `lobbies/${lobbyId}/mode`), mode);
+    await api.set(api.ref(this.db, `lobbies/${lobbyId}/updatedAt`), this.serverNow());
+  }
+
+  async setReady(lobbyId, ready) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    await api.set(api.ref(this.db, `lobbies/${lobbyId}/members/${uid}/ready`), Boolean(ready));
+    await api.set(api.ref(this.db, `lobbies/${lobbyId}/updatedAt`), this.serverNow());
   }
 
   publishCompetitiveState(matchId, snapshot, sequence) {
@@ -1836,6 +2652,7 @@ class FirebaseService {
     this.offsetUnsubscribe = null;
   }
 }
+
 
 /* ===== modes/solo-mode.js ===== */
 class SoloMode {
@@ -2084,7 +2901,7 @@ class CompetitiveMode {
       this.notifyFinished({ result, snapshot, match: this.match });
     } catch (error) {
       this.finishSubmitted = false;
-      this.onStatus?.(error?.message || "Не удалось проверить матч");
+      this.onStatus?.(error?.message || "Не удалось сохранить матч");
       console.error(error);
       if (gameOver && this.engine.gameOver && this.running && !this.finished) {
         const delay = Math.min(15000, 2000 * (2 ** Math.min(this.resultRetryCount, 3)));
@@ -2116,8 +2933,8 @@ class CompetitiveMode {
     this.render();
 
     // Submit the local replay once so the winner's maximum score can also be
-    // verified. Notification is idempotent because the database update and
-    // callable response can arrive in either order.
+    // included. Notification is idempotent because the realtime database update
+    // and the local replay result can arrive in either order.
     void this.submitResult(this.engine.gameOver);
     this.notifyFinished({
       result: match.result ?? null,
@@ -2453,7 +3270,7 @@ class CoopMode {
       this.notifyFinished({ result, snapshot: this.engine.getSnapshot(), match: this.match });
     } catch (error) {
       this.finishSubmitted = false;
-      this.onStatus?.(error?.message || "Не удалось проверить кооперативный матч");
+      this.onStatus?.(error?.message || "Не удалось сохранить кооперативный матч");
       console.error(error);
       if (this.running && this.engine?.gameOver && !this.finished) {
         const delay = Math.min(15000, 2000 * (2 ** Math.min(this.resultRetryCount, 3)));
@@ -2593,6 +3410,8 @@ const state = {
   service: new FirebaseService(APP_CONFIG),
   controls: null,
   firebaseReady: false,
+  firebaseCoreReady: false,
+  firebaseDiagnostic: "Firebase ещё не подключён.",
   user: null,
   profile: null,
   currentView: "home",
@@ -2653,9 +3472,48 @@ function showHome({ stopGame = true } = {}) {
 function friendlyError(error) {
   const message = String(error?.message ?? error ?? "Неизвестная ошибка")
     .replace(/^FirebaseError:\s*/i, "")
-    .replace(/^\[functions\/[\w-]+\]\s*/i, "")
     .trim();
   return message || "Неизвестная ошибка";
+}
+
+function firebaseDiagnostic(error, stage = "Firebase") {
+  const code = String(error?.code ?? "").toLowerCase();
+  const message = friendlyError(error);
+  const host = location.hostname || "текущий домен";
+
+  if (APP_CONFIG.forceOffline) {
+    return "Локальный режим включён параметром ?offline=1 или ?demo=1. Удалите его из адреса страницы.";
+  }
+  if (code.includes("auth/operation-not-allowed")) {
+    return "В Firebase Console включите Authentication → Sign-in method → Anonymous.";
+  }
+  if (code.includes("auth/unauthorized-domain")) {
+    return `Добавьте домен ${host} в Firebase Authentication → Settings → Authorized domains.`;
+  }
+  if (code.includes("auth/too-many-requests")) {
+    return "Firebase временно ограничил анонимные входы с этого IP. Подождите или проверьте квоты Authentication.";
+  }
+  if (/not found|404/i.test(message)) {
+    return "Запрашиваемые данные Firebase не найдены. Проверьте URL Realtime Database и опубликованные правила.";
+  }
+  if (/permission_denied|permission denied/i.test(message) && stage === "presence") {
+    return "Firebase Auth работает, но правила Realtime Database запрещают запись presence. Опубликуйте актуальные rules и обновите страницу.";
+  }
+  if (code.includes("permission-denied") || /permission_denied|permission denied/i.test(message)) {
+    return "Firebase отклонил операцию. Опубликуйте database.rules.json и проверьте Anonymous Authentication.";
+  }
+  if (/failed to fetch|load firebase sdk|network request failed|network-error/i.test(message)) {
+    return "Не удалось загрузить Firebase SDK или обратиться к Firebase. Проверьте интернет, блокировщики и доступ к www.gstatic.com.";
+  }
+  return `${stage}: ${message}`;
+}
+
+function setFirebaseUnavailable(message) {
+  state.firebaseReady = false;
+  state.firebaseDiagnostic = message;
+  elements.offlineBanner.textContent = message;
+  elements.offlineBanner.hidden = false;
+  setConnection("offline", "Firebase недоступен");
 }
 
 function showToast(message, { error = false, duration = 3300 } = {}) {
@@ -2750,8 +3608,8 @@ async function startSolo() {
     try {
       session = await state.service.startSoloGame();
     } catch (error) {
-      console.warn("Server solo session unavailable, using local mode", error);
-      showToast("Серверная сессия недоступна. Игра запущена без сохранения рекорда.", { error: true });
+      console.warn("Firebase solo session unavailable, using local mode", error);
+      showToast("Firebase недоступен. Игра запущена без сохранения рекорда.", { error: true });
     } finally {
       setBusy(elements.startSoloButton, false);
     }
@@ -2788,8 +3646,8 @@ async function handleSoloGameOver({ snapshot, durationMs, inputLog }) {
     kicker: "GAME OVER",
     title: "Игра окончена",
     description: state.soloSession?.sessionId
-      ? "Проверяем журнал команд и пересчитываем результат на сервере."
-      : "Локальная партия завершена. Рекорд не будет отправлен на сервер.",
+      ? "Проверяем журнал команд и сохраняем результат в Firebase."
+      : "Локальная партия завершена. Рекорд не будет сохранён в Firebase.",
     snapshot,
     verification: state.soloSession?.sessionId ? "pending" : "neutral",
     verificationText: state.soloSession?.sessionId ? "Проверка партии…" : "Локальный режим",
@@ -2806,8 +3664,8 @@ async function handleSoloGameOver({ snapshot, durationMs, inputLog }) {
       durationMs,
       inputLog,
     );
-    elements.resultDescription.textContent = "Результат подтверждён и учтён в таблице рекордов.";
-    setVerification("success", `Подтверждено сервером · ${formatScore(result.score)} очков`);
+    elements.resultDescription.textContent = "Результат воспроизведён локально и учтён в таблице рекордов.";
+    setVerification("success", `Сохранено в Firebase Spark · ${formatScore(result.score)} очков`);
   } catch (error) {
     elements.resultDescription.textContent = "Результат не записан. Локальной блокировки или автоматического бана нет.";
     setVerification("error", friendlyError(error));
@@ -2860,6 +3718,9 @@ async function enterLobby(lobbyId) {
 
   state.unsubLobby = state.service.subscribeLobby(lobbyId, (lobby) => {
     if (!lobby) {
+      void state.service.clearOwnLobbyPointer(lobbyId).catch((error) => {
+        console.warn("Stale lobby pointer cleanup failed", error);
+      });
       state.lobbyId = null;
       state.lobby = null;
       cleanupLobbySubscriptions();
@@ -3090,7 +3951,7 @@ function handleNetworkResult(mode, matchId, context) {
     } else {
       description = won
         ? "Противник достиг верхней границы. Победа добавлена в отдельный рейтинг."
-        : "Ваше поле достигло верхней границы. Матч подтверждён сервером.";
+        : "Ваше поле достигло верхней границы. Результат записан в Firebase.";
     }
   } else {
     title = "Совместная партия завершена";
@@ -3106,7 +3967,7 @@ function handleNetworkResult(mode, matchId, context) {
     description,
     snapshot,
     verification: "success",
-    verificationText: "Результат подтверждён сервером",
+    verificationText: "Результат сохранён в Firebase Spark",
     primaryText: "Вернуться в лобби",
     secondaryText: "Покинуть лобби",
     primaryAction: () => {
@@ -3259,6 +4120,9 @@ function bindEvents() {
     stopActiveMode();
     if (state.lobbyId) showView("lobby");
     else showHome({ stopGame: false });
+    if (!state.firebaseReady) {
+      showToast(state.firebaseDiagnostic, { error: true, duration: 7000 });
+    }
   });
 
   elements.gameExitButton.addEventListener("click", () => {
@@ -3328,7 +4192,7 @@ function bindEvents() {
   elements.joinLobbyForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!state.firebaseReady) {
-      showToast("Для лобби необходимо подключение к Firebase.", { error: true });
+      showToast(state.firebaseDiagnostic, { error: true, duration: 7000 });
       return;
     }
     const code = normalizeInviteCode(elements.joinCodeInput.value);
@@ -3471,43 +4335,62 @@ async function bootstrap() {
 
   // The board starts immediately, just like the original lightweight page.
   // Firebase connects in parallel; the next solo round will then use a
-  // server-issued seed and become eligible for the verified leaderboard.
+  // client-side session and become eligible for the shared Firebase leaderboard.
   await startSolo();
 
   try {
     state.user = await state.service.initialize();
-    const savedName = sanitizeName(localStorage.getItem("tetris_player_name_v3"));
-    state.profile = await state.service.ensureProfile(savedName);
-    state.firebaseReady = true;
-    localStorage.setItem("tetris_player_name_v3", state.profile.name);
-    renderIdentity();
-    elements.offlineBanner.hidden = true;
-    setConnection("online", APP_CONFIG.useEmulators ? "Emulator online" : "Firebase online");
-
-    state.unsubUserLobby = state.service.subscribeUserLobby(state.user.uid, (lobbyId) => {
-      if (lobbyId && !String(lobbyId).startsWith("__joining__")) {
-        enterLobby(lobbyId);
-      } else if (!lobbyId && state.lobbyId) {
-        state.lobbyId = null;
-        state.lobby = null;
-        cleanupLobbySubscriptions();
-        if (state.currentView === "lobby") showHome({ stopGame: false });
-      }
-    });
-    subscribeLeaderboards();
+    state.firebaseCoreReady = true;
   } catch (error) {
-    console.error("Firebase bootstrap failed", error);
+    console.error("Firebase core initialization failed", error);
     state.service.dispose();
-    state.firebaseReady = false;
     state.profile = {
       name: sanitizeName(localStorage.getItem("tetris_player_name_v3")) || "Гость",
       inviteCode: null,
     };
     renderIdentity();
-    elements.offlineBanner.hidden = false;
-    setConnection("offline", "Локальный режим");
-    showToast("Firebase не подключён. Классический Tetris работает локально.", { error: true, duration: 5000 });
+    const diagnostic = firebaseDiagnostic(error, "Инициализация Firebase");
+    setFirebaseUnavailable(diagnostic);
+    showToast(diagnostic, { error: true, duration: 8000 });
+    return;
   }
+
+  if (state.service.presenceError) {
+    const diagnostic = firebaseDiagnostic(state.service.presenceError, "presence");
+    setFirebaseUnavailable(diagnostic);
+    showToast(diagnostic, { error: true, duration: 8000 });
+    return;
+  }
+
+  try {
+    const savedName = sanitizeName(localStorage.getItem("tetris_player_name_v3"));
+    state.profile = await state.service.ensureProfile(savedName);
+  } catch (error) {
+    console.error("Firebase Spark profile initialization failed", error);
+    const diagnostic = firebaseDiagnostic(error, "Firebase Spark");
+    setFirebaseUnavailable(diagnostic);
+    showToast(diagnostic, { error: true, duration: 9000 });
+    return;
+  }
+
+  state.firebaseReady = true;
+  state.firebaseDiagnostic = "Firebase Spark подключён.";
+  localStorage.setItem("tetris_player_name_v3", state.profile.name);
+  renderIdentity();
+  elements.offlineBanner.hidden = true;
+  setConnection("online", APP_CONFIG.useEmulators ? "Emulator online" : "Firebase online");
+
+  state.unsubUserLobby = state.service.subscribeUserLobby(state.user.uid, (lobbyId) => {
+    if (lobbyId && !String(lobbyId).startsWith("__joining__")) {
+      enterLobby(lobbyId);
+    } else if (!lobbyId && state.lobbyId) {
+      state.lobbyId = null;
+      state.lobby = null;
+      cleanupLobbySubscriptions();
+      if (state.currentView === "lobby") showHome({ stopGame: false });
+    }
+  });
+  subscribeLeaderboards();
 }
 
 bootstrap();
