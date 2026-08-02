@@ -1963,12 +1963,43 @@ class FirebaseService {
 
     const profile = await this.ensureProfile();
     const entryRef = api.ref(this.db, `leaderboards/solo/${uid}`);
-    const timestamp = this.serverNow();
-    await api.runTransaction(entryRef, (current) => {
-      if (current && Number(current.score) > snapshot.score) return undefined;
-      if (current && Number(current.score) === snapshot.score && Number(current.playTimeMs) <= durationMs) {
-        return { ...current, name: profile.name, updatedAt: timestamp };
+    const updatedAt = this.serverNow();
+    const transaction = await api.runTransaction(entryRef, (current) => {
+      const currentScore = Number(current?.score);
+      const currentPlayTime = Number(current?.playTimeMs);
+      const currentIsReusable = Boolean(
+        current
+        && current.version === GAME_VERSION
+        && current.uid === uid
+        && Number.isInteger(currentScore)
+        && Number.isInteger(Number(current.lines))
+        && Number.isInteger(currentPlayTime)
+        && Number(current.timestamp) > 0,
+      );
+
+      // A worse result must not overwrite a personal best. Returning undefined
+      // aborts the transaction cleanly instead of triggering permission_denied.
+      if (current && currentScore > snapshot.score) return undefined;
+
+      // For an equal valid personal best, update only the public nickname and
+      // metadata while preserving the immutable original timestamp.
+      if (currentIsReusable && currentScore === snapshot.score && currentPlayTime <= durationMs) {
+        const lines = Number(current.lines);
+        return {
+          uid,
+          name: profile.name,
+          score: currentScore,
+          lines,
+          level: Math.floor(lines / 10) + 1,
+          playTimeMs: currentPlayTime,
+          timestamp: Number(current.timestamp),
+          updatedAt,
+          version: GAME_VERSION,
+        };
       }
+
+      // Security Rules keep timestamp immutable on updates. Preserve it when a
+      // player improves an existing record; use the current time only on create.
       return {
         uid,
         name: profile.name,
@@ -1976,14 +2007,15 @@ class FirebaseService {
         lines: snapshot.lines,
         level: snapshot.level,
         playTimeMs: durationMs,
-        timestamp,
-        updatedAt: timestamp,
+        timestamp: Number(current?.timestamp) || updatedAt,
+        updatedAt,
         version: GAME_VERSION,
       };
     }, { applyLocally: false });
 
     this.activeSoloSessions.delete(sessionId);
     return {
+      published: transaction.committed,
       verified: false,
       validation: "client-replay",
       score: snapshot.score,
@@ -3402,6 +3434,7 @@ const elements = {
   resultTime: $("result-time"),
   resultVerification: $("result-verification"),
   resultPrimaryButton: $("result-primary-button"),
+  resultPublishButton: $("result-publish-button"),
   resultSecondaryButton: $("result-secondary-button"),
   toast: $("toast"),
 };
@@ -3430,7 +3463,10 @@ const state = {
   unsubChat: null,
   unsubMatchLoader: null,
   resultPrimaryAction: null,
+  resultPublishAction: null,
   resultSecondaryAction: null,
+  pendingSoloPublication: null,
+  profileSubmitPurpose: "profile",
   toastTimer: null,
 };
 
@@ -3551,6 +3587,25 @@ function closeDialog(dialog) {
   else dialog.removeAttribute("open");
 }
 
+function configureProfileDialog(purpose = "profile") {
+  const publishing = purpose === "publish-solo";
+  state.profileSubmitPurpose = publishing ? "publish-solo" : "profile";
+  const title = elements.profileDialog.querySelector("h2");
+  const hint = elements.profileDialog.querySelector(".modal-content > p");
+  if (title) title.textContent = publishing ? "Опубликовать результат" : "Имя игрока";
+  if (hint) hint.textContent = publishing
+    ? "Введите никнейм для таблицы рекордов (2–12 символов)."
+    : "От 2 до 12 символов.";
+}
+
+function cancelSoloPublicationName() {
+  if (state.profileSubmitPurpose !== "publish-solo") return false;
+  configureProfileDialog("profile");
+  closeDialog(elements.profileDialog);
+  openDialog(elements.resultDialog);
+  return true;
+}
+
 function renderIdentity() {
   const name = state.profile?.name ?? "Гость";
   elements.profileName.textContent = name;
@@ -3594,6 +3649,8 @@ function stopActiveMode() {
 }
 
 async function startSolo() {
+  state.pendingSoloPublication = null;
+  configureProfileDialog("profile");
   stopActiveMode();
   closeDialog(elements.resultDialog);
   closeLeaderboard();
@@ -3642,34 +3699,72 @@ async function startSolo() {
 
 async function handleSoloGameOver({ snapshot, durationMs, inputLog }) {
   state.controls.setEnabled(false);
+  const canPublish = Boolean(state.soloSession?.sessionId && state.firebaseReady);
+  state.pendingSoloPublication = canPublish
+    ? {
+        sessionId: state.soloSession.sessionId,
+        snapshot,
+        durationMs,
+        inputLog,
+      }
+    : null;
+
   showResult({
     kicker: "GAME OVER",
     title: "Игра окончена",
-    description: state.soloSession?.sessionId
-      ? "Проверяем журнал команд и сохраняем результат в Firebase."
+    description: canPublish
+      ? "Результат готов к публикации. Нажмите кнопку и укажите никнейм."
       : "Локальная партия завершена. Рекорд не будет сохранён в Firebase.",
     snapshot,
-    verification: state.soloSession?.sessionId ? "pending" : "neutral",
-    verificationText: state.soloSession?.sessionId ? "Проверка партии…" : "Локальный режим",
+    verification: "neutral",
+    verificationText: canPublish ? "Результат ещё не опубликован" : "Локальный режим",
     primaryText: "Play Again",
+    publishText: "Опубликовать результат",
     secondaryText: "Сетевая игра",
     primaryAction: startSolo,
+    publishAction: canPublish ? beginSoloPublication : null,
     secondaryAction: () => showHome(),
   });
+}
 
-  if (!state.soloSession?.sessionId || !state.firebaseReady) return;
-  try {
-    const result = await state.service.finishSoloGame(
-      state.soloSession.sessionId,
-      durationMs,
-      inputLog,
-    );
-    elements.resultDescription.textContent = "Результат воспроизведён локально и учтён в таблице рекордов.";
-    setVerification("success", `Сохранено в Firebase Spark · ${formatScore(result.score)} очков`);
-  } catch (error) {
-    elements.resultDescription.textContent = "Результат не записан. Локальной блокировки или автоматического бана нет.";
-    setVerification("error", friendlyError(error));
+function beginSoloPublication() {
+  if (!state.pendingSoloPublication || !state.firebaseReady) {
+    showToast(state.firebaseDiagnostic || "Firebase недоступен.", { error: true, duration: 6000 });
+    return;
   }
+  closeDialog(elements.resultDialog);
+  configureProfileDialog("publish-solo");
+  const currentName = sanitizeName(
+    state.profile?.name ?? localStorage.getItem("tetris_player_name_v3") ?? "",
+  );
+  elements.profileNameInput.value = currentName.startsWith("Игрок") ? "" : currentName;
+  elements.profileError.textContent = "";
+  openDialog(elements.profileDialog);
+  elements.profileNameInput.focus();
+  elements.profileNameInput.select?.();
+}
+
+async function publishPendingSoloResult() {
+  const pending = state.pendingSoloPublication;
+  if (!pending) throw new Error("Нет результата для публикации.");
+  const result = await state.service.finishSoloGame(
+    pending.sessionId,
+    pending.durationMs,
+    pending.inputLog,
+  );
+  state.pendingSoloPublication = null;
+  configureProfileDialog("profile");
+  elements.resultDescription.textContent = result.published
+    ? "Результат воспроизведён локально и опубликован в таблице рекордов."
+    : "Ваш предыдущий личный рекорд выше. Таблица рекордов не изменена.";
+  setVerification(
+    "success",
+    result.published
+      ? `Опубликовано · ${formatScore(result.score)} очков`
+      : `Личный рекорд сохранён без изменений`,
+  );
+  elements.resultPublishButton.hidden = true;
+  return result;
 }
 
 function showResult({
@@ -3680,8 +3775,10 @@ function showResult({
   verification,
   verificationText,
   primaryText,
+  publishText = "Опубликовать результат",
   secondaryText,
   primaryAction,
+  publishAction = null,
   secondaryAction,
   icon = "▦",
 }) {
@@ -3693,8 +3790,11 @@ function showResult({
   elements.resultLines.textContent = formatScore(snapshot?.lines);
   elements.resultTime.textContent = formatDuration(snapshot?.elapsedMs ?? snapshot?.durationMs);
   elements.resultPrimaryButton.textContent = primaryText;
+  elements.resultPublishButton.textContent = publishText;
+  elements.resultPublishButton.hidden = typeof publishAction !== "function";
   elements.resultSecondaryButton.textContent = secondaryText;
   state.resultPrimaryAction = primaryAction;
+  state.resultPublishAction = publishAction;
   state.resultSecondaryAction = secondaryAction;
   setVerification(verification, verificationText);
   openDialog(elements.resultDialog);
@@ -4138,6 +4238,7 @@ function bindEvents() {
   });
 
   elements.profileButton.addEventListener("click", () => {
+    configureProfileDialog("profile");
     elements.profileNameInput.value = state.profile?.name ?? localStorage.getItem("tetris_player_name_v3") ?? "";
     elements.profileError.textContent = "";
     openDialog(elements.profileDialog);
@@ -4145,8 +4246,18 @@ function bindEvents() {
   });
 
   for (const closeButton of document.querySelectorAll("[data-dialog-close]")) {
-    closeButton.addEventListener("click", () => closeDialog($(closeButton.dataset.dialogClose)));
+    closeButton.addEventListener("click", () => {
+      const dialog = $(closeButton.dataset.dialogClose);
+      if (dialog === elements.profileDialog && cancelSoloPublicationName()) return;
+      closeDialog(dialog);
+    });
   }
+
+  elements.profileDialog.addEventListener("cancel", (event) => {
+    if (state.profileSubmitPurpose !== "publish-solo") return;
+    event.preventDefault();
+    cancelSoloPublicationName();
+  });
 
   elements.profileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -4156,7 +4267,8 @@ function bindEvents() {
       return;
     }
     const submit = elements.profileForm.querySelector('button[type="submit"]');
-    setBusy(submit, true, "Сохранение…");
+    const publishingSolo = state.profileSubmitPurpose === "publish-solo";
+    setBusy(submit, true, publishingSolo ? "Публикация…" : "Сохранение…");
     try {
       if (state.firebaseReady) {
         state.profile = await state.service.updateProfile(name);
@@ -4165,9 +4277,17 @@ function bindEvents() {
       }
       localStorage.setItem("tetris_player_name_v3", name);
       renderIdentity();
-      closeDialog(elements.profileDialog);
+      if (publishingSolo) {
+        await publishPendingSoloResult();
+        closeDialog(elements.profileDialog);
+        openDialog(elements.resultDialog);
+      } else {
+        closeDialog(elements.profileDialog);
+      }
     } catch (error) {
-      elements.profileError.textContent = friendlyError(error);
+      elements.profileError.textContent = publishingSolo
+        ? firebaseDiagnostic(error, "Публикация результата")
+        : friendlyError(error);
     } finally {
       setBusy(submit, false);
     }
@@ -4297,6 +4417,10 @@ function bindEvents() {
   elements.resultPrimaryButton.addEventListener("click", async () => {
     const action = state.resultPrimaryAction;
     closeDialog(elements.resultDialog);
+    await action?.();
+  });
+  elements.resultPublishButton.addEventListener("click", async () => {
+    const action = state.resultPublishAction;
     await action?.();
   });
   elements.resultSecondaryButton.addEventListener("click", async () => {
