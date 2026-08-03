@@ -4892,7 +4892,7 @@ function bindEvents() {
 
   window.addEventListener("offline", () => setConnection("offline", "Нет сети"));
   window.addEventListener("online", () => {
-    if (state.firebaseReady) setConnection("online", "Firebase online");
+    if (state.firebaseReady) setConnection("online", "Online");
     else setConnection("connecting", "Подключение…");
   });
 
