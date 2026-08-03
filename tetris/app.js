@@ -582,7 +582,7 @@ class CoopEngine {
     this.score = 0;
     this.lines = 0;
     this.level = 1;
-    this.round = 0;
+    this.round = 1;
     this.gameOver = false;
     this.elapsedMs = 0;
     this.nextGravityAt = this.dropIntervalMs;
@@ -602,7 +602,8 @@ class CoopEngine {
         piecesLocked: 0,
       },
     };
-    this.spawnPair();
+    this.spawnSide(SIDES.LEFT);
+    if (!this.gameOver) this.spawnSide(SIDES.RIGHT);
     emit(this.listeners, "change", this.getSnapshot());
   }
 
@@ -619,31 +620,27 @@ class CoopEngine {
   }
 
   spawnSide(side) {
+    if (this.gameOver) return false;
     const player = this.players[side];
     const type = player.bag.next();
     const matrix = getPieceMatrix(type, 0);
     const lane = sideLane(side, this.laneWidth);
-    const laneStart = lane.minX;
     player.current = {
       type,
       id: PIECE_IDS[type],
       rotation: 0,
       matrix,
-      x: laneStart + Math.floor((this.laneWidth - matrix[0].length) / 2),
+      x: lane.minX + Math.floor((this.laneWidth - matrix[0].length) / 2),
       y: 0,
     };
     player.locked = false;
-  }
 
-  spawnPair() {
-    this.round += 1;
-    this.spawnSide(SIDES.LEFT);
-    this.spawnSide(SIDES.RIGHT);
-
-    if (this.collides(SIDES.LEFT) || this.collides(SIDES.RIGHT)) {
+    if (this.collides(side)) {
       this.gameOver = true;
       emit(this.listeners, "gameOver", this.getSnapshot());
+      return false;
     }
+    return true;
   }
 
   collides(side, piece = this.players[side]?.current, matrix = piece?.matrix, x = piece?.x, y = piece?.y) {
@@ -664,7 +661,7 @@ class CoopEngine {
 
   move(side, deltaX) {
     const player = this.players[side];
-    if (this.gameOver || player.locked || !player.current) return false;
+    if (this.gameOver || !player.current) return false;
     const targetX = player.current.x + deltaX;
     if (this.collides(side, player.current, player.current.matrix, targetX, player.current.y)) return false;
     player.current.x = targetX;
@@ -673,7 +670,7 @@ class CoopEngine {
 
   rotate(side) {
     const player = this.players[side];
-    if (this.gameOver || player.locked || !player.current) return false;
+    if (this.gameOver || !player.current) return false;
     const rotations = ROTATIONS[player.current.type];
     const nextRotation = (player.current.rotation + 1) % rotations.length;
     const matrix = getPieceMatrix(player.current.type, nextRotation);
@@ -695,7 +692,7 @@ class CoopEngine {
 
   stepDown(side) {
     const player = this.players[side];
-    if (this.gameOver || player.locked || !player.current) return false;
+    if (this.gameOver || !player.current) return false;
     if (!this.collides(side, player.current, player.current.matrix, player.current.x, player.current.y + 1)) {
       player.current.y += 1;
       return true;
@@ -706,7 +703,7 @@ class CoopEngine {
 
   hardDrop(side) {
     const player = this.players[side];
-    if (this.gameOver || player.locked || !player.current) return false;
+    if (this.gameOver || !player.current) return false;
     while (!this.collides(side, player.current, player.current.matrix, player.current.x, player.current.y + 1)) {
       player.current.y += 1;
     }
@@ -716,7 +713,11 @@ class CoopEngine {
 
   lockSide(side) {
     const player = this.players[side];
-    if (!player.current || player.locked || this.gameOver) return;
+    if (!player.current || this.gameOver) return;
+    const lockedPiece = {
+      ...player.current,
+      matrix: cloneMatrix(player.current.matrix),
+    };
     let lockedAboveBoard = false;
 
     for (let row = 0; row < player.current.matrix.length; row += 1) {
@@ -732,39 +733,67 @@ class CoopEngine {
       }
     }
 
-    player.locked = true;
+    player.current = null;
+    player.locked = false;
     player.piecesLocked += 1;
-    emit(this.listeners, "lock", { side, snapshot: this.getSnapshot() });
 
     if (lockedAboveBoard) {
       this.gameOver = true;
+      emit(this.listeners, "lock", { side, piece: lockedPiece, cleared: 0, snapshot: this.getSnapshot() });
       emit(this.listeners, "gameOver", this.getSnapshot());
       return;
     }
 
-    if (this.players[SIDES.LEFT].locked && this.players[SIDES.RIGHT].locked) {
-      this.resolveRound();
-    }
+    const clearedRows = this.clearCompletedLines();
+    this.round = Math.max(
+      this.players[SIDES.LEFT].piecesLocked,
+      this.players[SIDES.RIGHT].piecesLocked,
+    ) + 1;
+
+    if (!this.gameOver) this.spawnSide(side);
+    emit(this.listeners, "lock", {
+      side,
+      piece: lockedPiece,
+      cleared: clearedRows.length,
+      snapshot: this.getSnapshot(),
+    });
   }
 
-  resolveRound() {
-    const remaining = this.board.filter((row) => !row.every(Boolean));
-    const cleared = this.rows - remaining.length;
+  clearCompletedLines() {
+    const completedRows = [];
+    for (let row = 0; row < this.rows; row += 1) {
+      if (this.board[row].every(Boolean)) completedRows.push(row);
+    }
+    if (completedRows.length === 0) return completedRows;
 
-    if (cleared > 0) {
-      while (remaining.length < this.rows) {
-        remaining.unshift(Array(this.columns).fill(0));
+    const completed = new Set(completedRows);
+    const remaining = this.board.filter((_, row) => !completed.has(row));
+    while (remaining.length < this.rows) remaining.unshift(Array(this.columns).fill(0));
+    this.board = remaining;
+
+    const cleared = completedRows.length;
+    this.score += (LINE_POINTS[Math.min(cleared, 4)] ?? 0) * this.level;
+    this.lines += cleared;
+    this.level = Math.floor(this.lines / 10) + 1;
+
+    // A row can disappear while the teammate still has an active piece. Shift
+    // that piece together with the settled rows instead of freezing the lane.
+    for (const side of [SIDES.LEFT, SIDES.RIGHT]) {
+      const current = this.players[side].current;
+      if (!current) continue;
+      const bottom = current.y + current.matrix.length - 1;
+      const shift = completedRows.filter((row) => row > bottom).length;
+      current.y += shift;
+      while (current.y > -4 && this.collides(side)) current.y -= 1;
+      if (this.collides(side)) {
+        this.gameOver = true;
+        emit(this.listeners, "gameOver", this.getSnapshot());
+        break;
       }
-      this.board = remaining;
-      this.score += (LINE_POINTS[Math.min(cleared, 4)] ?? 0) * this.level;
-      this.lines += cleared;
-      this.level = Math.floor(this.lines / 10) + 1;
-      emit(this.listeners, "lines", { cleared, snapshot: this.getSnapshot() });
     }
 
-    if (!this.gameOver) {
-      this.spawnPair();
-    }
+    emit(this.listeners, "lines", { cleared, snapshot: this.getSnapshot() });
+    return completedRows;
   }
 
   advanceTo(targetElapsedMs) {
@@ -833,7 +862,7 @@ class CoopEngine {
 
   getGhostY(side) {
     const player = this.players[side];
-    if (!player.current || player.locked) return player.current?.y ?? 0;
+    if (!player.current) return 0;
     let y = player.current.y;
     while (!this.collides(side, player.current, player.current.matrix, player.current.x, y + 1)) {
       y += 1;
@@ -841,12 +870,53 @@ class CoopEngine {
     return y;
   }
 
+  importSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot.settled !== "string") {
+      throw new TypeError("Invalid cooperative snapshot");
+    }
+    this.board = deserializeBoard(snapshot.settled, this.columns, this.rows);
+    this.score = Math.max(0, Math.trunc(Number(snapshot.score) || 0));
+    this.lines = Math.max(0, Math.trunc(Number(snapshot.lines) || 0));
+    this.level = Math.max(1, Math.trunc(Number(snapshot.level) || 1));
+    this.round = Math.max(1, Math.trunc(Number(snapshot.round) || 1));
+    this.gameOver = Boolean(snapshot.gameOver);
+    this.elapsedMs = Math.max(0, Math.trunc(Number(snapshot.elapsedMs) || 0));
+    this.nextGravityAt = Math.max(
+      this.elapsedMs,
+      Math.trunc(Number(snapshot.nextGravityAt) || (this.elapsedMs + this.dropIntervalMs)),
+    );
+
+    for (const side of [SIDES.LEFT, SIDES.RIGHT]) {
+      const remote = snapshot.players?.[side] ?? {};
+      const piecesLocked = Math.max(0, Math.trunc(Number(remote.piecesLocked) || 0));
+      const bag = new SevenBag(sideSeed(this.seed, side));
+      const consumed = piecesLocked + (remote.current ? 1 : 0);
+      for (let index = 0; index < consumed; index += 1) bag.next();
+      this.players[side] = {
+        bag,
+        piecesLocked,
+        locked: false,
+        current: remote.current
+          ? {
+              type: remote.current.type,
+              id: Number(remote.current.id) || PIECE_IDS[remote.current.type],
+              rotation: Math.max(0, Math.trunc(Number(remote.current.rotation) || 0)),
+              matrix: getPieceMatrix(remote.current.type, Number(remote.current.rotation) || 0),
+              x: Math.trunc(Number(remote.current.x) || 0),
+              y: Math.trunc(Number(remote.current.y) || 0),
+            }
+          : null,
+      };
+    }
+    return this.getSnapshot();
+  }
+
   getSnapshot() {
     const players = {};
     for (const side of [SIDES.LEFT, SIDES.RIGHT]) {
       const player = this.players[side];
       players[side] = {
-        locked: player.locked,
+        locked: false,
         piecesLocked: player.piecesLocked,
         nextType: player.bag.peek(1)[0],
         current: player.current
@@ -878,6 +948,7 @@ class CoopEngine {
       round: this.round,
       gameOver: this.gameOver,
       elapsedMs: this.elapsedMs,
+      nextGravityAt: this.nextGravityAt,
       topRow: topOccupiedRow(this.board),
     };
   }
@@ -1112,9 +1183,6 @@ class BoardRenderer {
         : null;
     if (dividerColumn !== null) this.drawDivider(dividerColumn);
 
-    if (Array.isArray(options.waitingSides) && snapshot.laneWidth) {
-      for (const side of options.waitingSides) this.drawWaitingLane(side, snapshot.laneWidth);
-    }
 
     if (options.fog) {
       const topRow = Number.isInteger(snapshot.topRow)
@@ -1189,27 +1257,6 @@ class BoardRenderer {
     this.context.moveTo(x, 0);
     this.context.lineTo(x, this.canvas.height);
     this.context.stroke();
-    this.context.restore();
-  }
-
-  drawWaitingLane(side, laneWidth) {
-    const leftColumn = side === "right" ? laneWidth : 0;
-    this.context.save();
-    this.context.fillStyle = "rgba(8, 12, 20, 0.34)";
-    this.context.fillRect(
-      leftColumn * this.cellSize,
-      0,
-      laneWidth * this.cellSize,
-      this.canvas.height,
-    );
-    this.context.fillStyle = "rgba(240, 246, 252, 0.72)";
-    this.context.font = `700 ${Math.max(10, Math.floor(this.cellSize * 0.55))}px ui-monospace, monospace`;
-    this.context.textAlign = "center";
-    this.context.fillText(
-      "ОЖИДАНИЕ",
-      (leftColumn + laneWidth / 2) * this.cellSize,
-      this.cellSize * 1.15,
-    );
     this.context.restore();
   }
 
@@ -1471,6 +1518,32 @@ function assertDuration(value) {
     throw makeClientError("app/invalid-duration", "Некорректная длительность партии.");
   }
   return duration;
+}
+
+function buildCompetitiveScoreResult(match, submissions, finishedAt) {
+  const hostSubmission = submissions?.[match.hostUid];
+  const guestSubmission = submissions?.[match.guestUid];
+  if (!hostSubmission || !guestSubmission) return null;
+
+  const hostScore = Math.max(0, Math.trunc(Number(hostSubmission.score) || 0));
+  const guestScore = Math.max(0, Math.trunc(Number(guestSubmission.score) || 0));
+  const isDraw = hostScore === guestScore;
+  const winnerUid = isDraw ? "" : hostScore > guestScore ? match.hostUid : match.guestUid;
+  const loserUid = isDraw ? "" : winnerUid === match.hostUid ? match.guestUid : match.hostUid;
+
+  return {
+    outcome: "score-comparison",
+    hostUid: match.hostUid,
+    guestUid: match.guestUid,
+    hostScore,
+    guestScore,
+    winnerUid,
+    loserUid,
+    isDraw,
+    reason: "scores",
+    finishedAt,
+    version: GAME_VERSION,
+  };
 }
 
 async function loadFirebaseModules(version, includeAppCheck) {
@@ -2162,7 +2235,11 @@ class FirebaseService {
   async updateCompetitiveEntry(targetUid, matchId, result, scoreCandidate = 0) {
     const api = this.requireApi();
     const profile = (await api.get(api.ref(this.db, `profiles/${targetUid}`))).val() ?? {};
-    const outcome = result.winnerUid === targetUid ? "win" : "loss";
+    const outcome = result.isDraw === true
+      ? "draw"
+      : result.winnerUid === targetUid
+        ? "win"
+        : "loss";
     const entryRef = api.ref(this.db, `leaderboards/competitive/${targetUid}`);
     const now = this.serverNow();
 
@@ -2194,29 +2271,51 @@ class FirebaseService {
     }, { applyLocally: false });
   }
 
-  async updateCompetitiveLeaderboards(matchId, match, result, scoreByUid = {}) {
-    const loserScore = Math.max(0, Number(result.loserScore) || 0);
+  async updateCompetitiveLeaderboards(matchId, match, result) {
+    const scoreByUid = {
+      [match.hostUid]: Math.max(0, Math.trunc(Number(result.hostScore) || 0)),
+      [match.guestUid]: Math.max(0, Math.trunc(Number(result.guestScore) || 0)),
+    };
     await Promise.all([
-      this.updateCompetitiveEntry(
-        result.winnerUid,
-        matchId,
-        result,
-        Number(scoreByUid[result.winnerUid]) || 0,
-      ),
-      this.updateCompetitiveEntry(
-        result.loserUid,
-        matchId,
-        result,
-        Math.max(loserScore, Number(scoreByUid[result.loserUid]) || 0),
-      ),
+      this.updateCompetitiveEntry(match.hostUid, matchId, result, scoreByUid[match.hostUid]),
+      this.updateCompetitiveEntry(match.guestUid, matchId, result, scoreByUid[match.guestUid]),
     ]);
   }
 
-  async finishCompetitiveMatch(rawMatchId, durationValue, inputLog, claimsGameOver) {
+  async finalizeCompetitiveResult(matchId, match) {
+    const api = this.requireApi();
+    const submissions = (await api.get(api.ref(this.db, `matches/${matchId}/submissions`))).val() ?? {};
+    const payload = buildCompetitiveScoreResult(match, submissions, this.serverNow());
+    if (!payload) return null;
+
+    const resultRef = api.ref(this.db, `matches/${matchId}/result`);
+    const transaction = await api.runTransaction(
+      resultRef,
+      (current) => current ?? payload,
+      { applyLocally: false },
+    );
+    const result = transaction.snapshot.val() ?? payload;
+
+    await this.updateCompetitiveLeaderboards(matchId, match, result);
+    await this.markMatchFinished(matchId);
+    await this.resetLobbyAfterMatch(matchId, match, result);
+    return result;
+  }
+
+  async finishCompetitiveMatch(rawMatchId, durationValue, inputLog, finishReason = "top-out") {
     const api = this.requireApi();
     const uid = this.requireUser().uid;
     const matchId = assertFirebaseKey(rawMatchId, "Идентификатор матча");
     const durationMs = assertDuration(durationValue);
+    const reason = finishReason === true
+      ? "top-out"
+      : finishReason === false
+        ? "retired"
+        : String(finishReason || "top-out");
+    if (!["top-out", "retired"].includes(reason)) {
+      throw makeClientError("app/invalid-finish-reason", "Некорректная причина завершения матча.");
+    }
+
     const matchRef = api.ref(this.db, `matches/${matchId}`);
     const match = (await api.get(matchRef)).val();
     if (!match || match.mode !== "competitive" || !match.members?.[uid]) {
@@ -2232,49 +2331,63 @@ class FirebaseService {
         seed: match.seed,
         inputLog,
         durationMs,
-        requireGameOver: Boolean(claimsGameOver),
+        requireGameOver: reason === "top-out",
       });
     } catch (error) {
       throw makeClientError("app/replay-failed", `Результат не прошёл локальное воспроизведение: ${error.message}`);
     }
-
-    const resultRef = api.ref(this.db, `matches/${matchId}/result`);
-    let result = (await api.get(resultRef)).val();
-    if (claimsGameOver && replay.gameOver && !result) {
-      const otherUid = Object.keys(match.members).find((memberUid) => memberUid !== uid);
-      const payload = {
-        winnerUid: otherUid,
-        loserUid: uid,
-        reason: "top-out",
-        finishedAt: this.serverNow(),
-        loserDurationMs: durationMs,
-        loserScore: replay.score,
-        version: GAME_VERSION,
-      };
-      const transaction = await api.runTransaction(
-        resultRef,
-        (current) => (current === null ? payload : undefined),
-        { applyLocally: false },
-      );
-      result = transaction.committed
-        ? transaction.snapshot.val()
-        : (await api.get(resultRef)).val();
+    if (reason === "top-out" && !replay.gameOver) {
+      throw makeClientError("app/top-out-not-confirmed", "Поражение не подтверждено локальным воспроизведением.");
     }
 
-    if (result) {
-      await this.updateCompetitiveLeaderboards(matchId, match, result, { [uid]: replay.score });
-      await this.markMatchFinished(matchId);
-      await this.resetLobbyAfterMatch(matchId, match, result);
-    }
+    // Persist the replayed terminal state before creating an immutable
+    // submission. This removes a race between the last animation-frame publish
+    // and the Security Rule that compares the submission with competitiveState.
+    const stateRef = api.ref(this.db, `matches/${matchId}/competitiveState/${uid}`);
+    const previousState = (await api.get(stateRef)).val() ?? {};
+    const finalState = {
+      settled: replay.settled,
+      score: replay.score,
+      lines: replay.lines,
+      level: replay.level,
+      topRow: replay.topRow,
+      gameOver: reason === "top-out",
+      sequence: Math.max(0, Math.trunc(Number(previousState.sequence) || 0)) + 1,
+      updatedAt: api.serverTimestamp(),
+    };
+    await api.set(stateRef, finalState);
 
-    return {
-      verified: false,
-      validation: "client-replay",
+    const submission = {
+      uid,
       score: replay.score,
       lines: replay.lines,
       level: replay.level,
       durationMs,
-      gameOver: replay.gameOver,
+      gameOver: reason === "top-out",
+      reason,
+      finishedAt: this.serverNow(),
+      version: GAME_VERSION,
+    };
+
+    const submissionRef = api.ref(this.db, `matches/${matchId}/submissions/${uid}`);
+    const submissionTransaction = await api.runTransaction(
+      submissionRef,
+      (current) => current ?? submission,
+      { applyLocally: false },
+    );
+    const storedSubmission = submissionTransaction.snapshot.val() ?? submission;
+    const result = await this.finalizeCompetitiveResult(matchId, match);
+
+    return {
+      verified: false,
+      validation: "client-replay",
+      score: storedSubmission.score,
+      lines: storedSubmission.lines,
+      level: storedSubmission.level,
+      durationMs: storedSubmission.durationMs,
+      gameOver: storedSubmission.gameOver,
+      reason: storedSubmission.reason,
+      waitingForOpponent: !result,
       result,
     };
   }
@@ -2414,45 +2527,53 @@ class FirebaseService {
     }
 
     const finishedAt = this.serverNow();
-    const payload = match.mode === "competitive"
-      ? {
-          winnerUid: uid,
-          loserUid: otherUid,
-          reason: "disconnect",
-          finishedAt,
-          loserScore: Math.max(0, Number(match.competitiveState?.[otherUid]?.score) || 0),
-          version: GAME_VERSION,
-        }
-      : {
-          outcome: "team-disconnected",
-          disconnectedUid: otherUid,
-          claimantUid: uid,
-          reason: "disconnect",
-          score: Math.max(0, Number(match.coopState?.score) || 0),
-          lines: Math.max(0, Number(match.coopState?.lines) || 0),
-          level: Math.max(1, Number(match.coopState?.level) || 1),
-          durationMs: Math.max(0, finishedAt - Number(match.startedAt || finishedAt)),
-          finishedAt,
-          version: GAME_VERSION,
-        };
+    if (match.mode === "competitive") {
+      const state = match.competitiveState?.[otherUid] ?? {};
+      const lines = Math.max(0, Math.trunc(Number(state.lines) || 0));
+      const submission = {
+        uid: otherUid,
+        score: Math.max(0, Math.trunc(Number(state.score) || 0)),
+        lines,
+        level: Math.floor(lines / 10) + 1,
+        durationMs: Math.max(0, Math.trunc(finishedAt - Number(match.startedAt || finishedAt))),
+        gameOver: false,
+        reason: "disconnect",
+        finishedAt,
+        version: GAME_VERSION,
+      };
+      const transaction = await api.runTransaction(
+        api.ref(this.db, `matches/${matchId}/submissions/${otherUid}`),
+        (current) => current ?? submission,
+        { applyLocally: false },
+      );
+      const result = await this.finalizeCompetitiveResult(matchId, match);
+      return {
+        resolved: Boolean(result),
+        submissionCreated: transaction.committed,
+        result,
+      };
+    }
+
+    const payload = {
+      outcome: "team-disconnected",
+      disconnectedUid: otherUid,
+      claimantUid: uid,
+      reason: "disconnect",
+      score: Math.max(0, Number(match.coopState?.score) || 0),
+      lines: Math.max(0, Number(match.coopState?.lines) || 0),
+      level: Math.max(1, Number(match.coopState?.level) || 1),
+      durationMs: Math.max(0, finishedAt - Number(match.startedAt || finishedAt)),
+      finishedAt,
+      version: GAME_VERSION,
+    };
 
     const resultRef = api.ref(this.db, `matches/${matchId}/result`);
     const resultTransaction = await api.runTransaction(
       resultRef,
-      (current) => (current === null ? payload : undefined),
+      (current) => current ?? payload,
       { applyLocally: false },
     );
-    const result = resultTransaction.committed
-      ? resultTransaction.snapshot.val()
-      : (await api.get(resultRef)).val();
-
-    if (match.mode === "competitive" && result) {
-      await this.updateCompetitiveLeaderboards(matchId, match, result, {
-        [uid]: Math.max(0, Number(match.competitiveState?.[uid]?.score) || 0),
-        [otherUid]: Math.max(0, Number(match.competitiveState?.[otherUid]?.score) || 0),
-      });
-    }
-
+    const result = resultTransaction.snapshot.val() ?? payload;
     await this.markMatchFinished(matchId);
     await this.resetLobbyAfterMatch(matchId, match, result);
     return { resolved: true, result };
@@ -2540,9 +2661,61 @@ class FirebaseService {
     return api.onValue(api.ref(this.db, `lobbies/${lobbyId}`), (snapshot) => callback(snapshot.val()));
   }
 
-  subscribeMatch(matchId, callback) {
+  async getMatch(matchId) {
     const api = this.requireApi();
-    return api.onValue(api.ref(this.db, `matches/${matchId}`), (snapshot) => callback(snapshot.val()));
+    const keys = [
+      "lobbyId",
+      "hostUid",
+      "guestUid",
+      "mode",
+      "status",
+      "seed",
+      "createdAt",
+      "startedAt",
+      "finishedAt",
+      "version",
+      "members",
+      "result",
+    ];
+    const snapshots = await Promise.all(
+      keys.map((key) => api.get(api.ref(this.db, `matches/${matchId}/${key}`))),
+    );
+    const match = Object.fromEntries(
+      keys.map((key, index) => [key, snapshots[index].val()]),
+    );
+    return match.hostUid && match.guestUid ? match : null;
+  }
+
+  subscribeMatchResult(matchId, callback) {
+    const api = this.requireApi();
+    return api.onValue(
+      api.ref(this.db, `matches/${matchId}/result`),
+      (snapshot) => callback(snapshot.val()),
+    );
+  }
+
+  subscribeCompetitiveState(matchId, uid, callback) {
+    const api = this.requireApi();
+    return api.onValue(
+      api.ref(this.db, `matches/${matchId}/competitiveState/${uid}`),
+      (snapshot) => callback(snapshot.val()),
+    );
+  }
+
+  subscribeCompetitiveSubmission(matchId, uid, callback) {
+    const api = this.requireApi();
+    return api.onValue(
+      api.ref(this.db, `matches/${matchId}/submissions/${uid}`),
+      (snapshot) => callback(snapshot.val()),
+    );
+  }
+
+  subscribeCoopState(matchId, callback) {
+    const api = this.requireApi();
+    return api.onValue(
+      api.ref(this.db, `matches/${matchId}/coopState`),
+      (snapshot) => callback(snapshot.val()),
+    );
   }
 
   subscribePresence(uid, callback) {
@@ -2635,21 +2808,31 @@ class FirebaseService {
     return api.onChildAdded(commandQuery, (snapshot) => callback(snapshot.key, snapshot.val()));
   }
 
+  subscribeAcceptedCommands(matchId, callback) {
+    const api = this.requireApi();
+    const commandQuery = api.query(
+      api.ref(this.db, `matches/${matchId}/acceptedCommands`),
+      api.orderByKey(),
+    );
+    return api.onChildAdded(commandQuery, (snapshot) => callback(snapshot.key, snapshot.val()));
+  }
+
   appendAcceptedCommand(matchId, command) {
     const api = this.requireApi();
     const key = String(command.seq).padStart(8, "0");
     return api.set(api.ref(this.db, `matches/${matchId}/acceptedCommands/${key}`), {
       ...command,
+      clientSeq: Math.max(1, Math.trunc(Number(command.clientSeq) || 1)),
       createdAt: api.serverTimestamp(),
     });
   }
 
-  publishCoopState(matchId, snapshot, sequence) {
+  publishCoopState(matchId, snapshot, sequence, sync = {}) {
     const api = this.requireApi();
     const uid = this.requireUser().uid;
     const players = Object.fromEntries(
       Object.entries(snapshot.players ?? {}).map(([side, player]) => [side, {
-        locked: Boolean(player?.locked),
+        locked: false,
         piecesLocked: Math.max(0, Math.trunc(Number(player?.piecesLocked) || 0)),
         nextType: player?.nextType,
         current: player?.current
@@ -2674,6 +2857,9 @@ class FirebaseService {
       topRow: snapshot.topRow,
       gameOver: snapshot.gameOver,
       elapsedMs: snapshot.elapsedMs,
+      nextGravityAt: snapshot.nextGravityAt,
+      acceptedSequence: Math.max(0, Math.trunc(Number(sync.acceptedSequence) || 0)),
+      acceptedByUid: sync.acceptedByUid ?? {},
       sequence,
       updatedAt: api.serverTimestamp(),
     });
@@ -2782,6 +2968,7 @@ class CompetitiveMode {
     previewCanvas,
     onUpdate,
     onStatus,
+    onLocalFinished,
     onFinished,
   }) {
     this.service = service;
@@ -2796,16 +2983,23 @@ class CompetitiveMode {
     this.preview = new PreviewRenderer(previewCanvas, { cellSize: 18 });
     this.onUpdate = onUpdate;
     this.onStatus = onStatus;
+    this.onLocalFinished = onLocalFinished;
     this.onFinished = onFinished;
     this.running = false;
     this.finished = false;
-    this.finishSubmitted = false;
+    this.detached = false;
+    this.localFinished = false;
+    this.localFinishReason = null;
+    this.localFrozenState = null;
+    this.submissionPromise = null;
     this.finishNotified = false;
     this.animationFrame = 0;
     this.publishSequence = 0;
     this.lastPublishAt = 0;
     this.opponentState = null;
-    this.unsubscribeMatch = null;
+    this.unsubscribeOpponentState = null;
+    this.unsubscribeOwnSubmission = null;
+    this.unsubscribeResult = null;
     this.unsubscribePresence = null;
     this.disconnectTimer = null;
     this.opponentOffline = false;
@@ -2813,58 +3007,104 @@ class CompetitiveMode {
     this.resultRetryTimer = null;
     this.resultRetryCount = 0;
 
-    this.engine.on("lock", () => this.publishState());
+    this.engine.on("lock", () => {
+      if (!this.localFinished) void this.publishState();
+    });
     this.engine.on("gameOver", (snapshot) => this.handleOwnGameOver(snapshot));
   }
 
   start() {
     this.running = true;
-    this.unsubscribeMatch = this.service.subscribeMatch(this.matchId, (match) => {
-      if (!match) return;
-      this.match = match;
-      this.opponentState = this.otherUid
-        ? match.competitiveState?.[this.otherUid] ?? null
-        : null;
-      if (match.status === "finished") {
-        this.handleServerFinished(match);
-      }
-    });
+
     if (this.otherUid) {
+      this.unsubscribeOpponentState = this.service.subscribeCompetitiveState(
+        this.matchId,
+        this.otherUid,
+        (snapshot) => {
+          this.opponentState = snapshot;
+          this.render();
+        },
+      );
       this.unsubscribePresence = this.service.subscribePresence(
         this.otherUid,
         (presence) => this.handleOpponentPresence(presence),
       );
     }
+
+    this.unsubscribeOwnSubmission = this.service.subscribeCompetitiveSubmission(
+      this.matchId,
+      this.localUid,
+      (submission) => {
+        if (!submission || this.localFinished) return;
+        this.localFinished = true;
+        this.localFinishReason = submission.reason ?? "top-out";
+        const engineSnapshot = this.engine.getSnapshot();
+        this.localFrozenState = {
+          ...engineSnapshot,
+          score: Number(submission.score) || engineSnapshot.score,
+          lines: Number(submission.lines) || engineSnapshot.lines,
+          level: Number(submission.level) || engineSnapshot.level,
+          gameOver: submission.gameOver === true,
+          current: null,
+        };
+        this.onLocalFinished?.({
+          reason: this.localFinishReason,
+          waitingForOpponent: true,
+          submission,
+        });
+        this.render();
+      },
+    );
+
+    this.unsubscribeResult = this.service.subscribeMatchResult(this.matchId, (result) => {
+      if (!result) return;
+      this.handleServerFinished({ ...this.match, status: "finished", result });
+    });
+
     this.frame = this.frame.bind(this);
     this.animationFrame = requestAnimationFrame(this.frame);
   }
 
   elapsedNow() {
-    return Math.trunc(this.service.serverNow() - this.startedAt);
+    return Math.max(0, Math.trunc(this.service.serverNow() - this.startedAt));
   }
 
   frame() {
     if (!this.running) return;
     const elapsed = this.elapsedNow();
-    if (elapsed <= 0) {
-      this.onStatus?.(`Старт через ${Math.ceil(Math.abs(elapsed) / 1000)}`);
+    if (this.service.serverNow() < this.startedAt) {
+      this.onStatus?.(`Старт через ${Math.ceil((this.startedAt - this.service.serverNow()) / 1000)}`);
     } else {
-      this.engine.advanceTo(elapsed);
-      this.onStatus?.(
-        this.opponentOffline
-          ? "Соперник не в сети · ожидание переподключения"
-          : "Соревновательный матч",
-      );
+      if (!this.localFinished) this.engine.advanceTo(elapsed);
+      if (this.localFinished) {
+        this.onStatus?.(
+          this.opponentOffline
+            ? "Ваш результат зафиксирован · соперник не в сети"
+            : "Ваш результат зафиксирован · наблюдение за соперником",
+        );
+      } else {
+        this.onStatus?.(
+          this.opponentOffline
+            ? "Соперник не в сети · ожидание переподключения"
+            : "Соревновательный матч",
+        );
+      }
     }
+
     this.render();
-    if (elapsed - this.lastPublishAt >= 900) this.publishState();
+    if (!this.localFinished && elapsed - this.lastPublishAt >= 650) void this.publishState();
     if (this.running) this.animationFrame = requestAnimationFrame(this.frame);
   }
 
   render() {
-    const own = this.engine.getSnapshot();
-    this.ownRenderer.draw(own, { showActive: true, showGhost: true });
-    this.preview.draw(own.nextType);
+    const own = this.localFinished && this.localFrozenState
+      ? this.localFrozenState
+      : this.engine.getSnapshot();
+    this.ownRenderer.draw(own, {
+      showActive: !this.localFinished,
+      showGhost: !this.localFinished,
+    });
+    this.preview.draw(this.localFinished ? null : own.nextType);
 
     const opponent = this.opponentState ?? {
       settled: "0".repeat(200),
@@ -2872,13 +3112,14 @@ class CompetitiveMode {
       lines: 0,
       level: 1,
       topRow: 20,
+      gameOver: false,
     };
     this.opponentRenderer.draw(opponent, { showActive: false, fog: true });
-    this.onUpdate?.({ own, opponent });
+    this.onUpdate?.({ own, opponent, localFinished: this.localFinished });
   }
 
   handleAction(action) {
-    if (!this.running || this.engine.gameOver || this.elapsedNow() < 0) return;
+    if (!this.running || this.localFinished || this.engine.gameOver || this.service.serverNow() < this.startedAt) return;
     this.engine.applyAction(action, this.elapsedNow());
     this.render();
   }
@@ -2914,19 +3155,19 @@ class CompetitiveMode {
       const result = response?.result ?? null;
       if (result) {
         this.handleServerFinished({ ...this.match, status: "finished", result });
+      } else if (response?.submissionCreated) {
+        this.onStatus?.("Соперник отключился · его очки зафиксированы");
       }
     } catch (error) {
-      // A failed claim usually means that the player reconnected during the
-      // grace period. Presence updates will re-arm the timer if needed.
       console.warn("Disconnect result claim failed", error);
     } finally {
       this.disconnectClaimPending = false;
     }
   }
 
-  async publishState() {
-    if (!this.running && !this.engine.gameOver) return;
-    const snapshot = this.engine.getSnapshot();
+  async publishState(snapshotOverride = null) {
+    if (!this.running && !this.localFinished) return;
+    const snapshot = snapshotOverride ?? this.engine.getSnapshot();
     this.publishSequence += 1;
     this.lastPublishAt = snapshot.elapsedMs;
     try {
@@ -2936,67 +3177,93 @@ class CompetitiveMode {
     }
   }
 
-  async submitResult(gameOver) {
-    if (this.finishSubmitted) return;
-    this.finishSubmitted = true;
+  async finishLocalRun(reason) {
+    if (this.localFinished) return this.submissionPromise;
+    const elapsed = this.elapsedNow();
+    if (!this.engine.gameOver) this.engine.advanceTo(elapsed);
+    if (this.localFinished) return this.submissionPromise;
     const snapshot = this.engine.getSnapshot();
-    try {
-      const result = await this.service.finishCompetitiveMatch(
-        this.matchId,
-        snapshot.elapsedMs,
-        this.engine.exportInputLog(),
-        gameOver,
-      );
-      window.clearTimeout(this.resultRetryTimer);
-      this.resultRetryTimer = null;
-      this.resultRetryCount = 0;
-      this.notifyFinished({ result, snapshot, match: this.match });
-    } catch (error) {
-      this.finishSubmitted = false;
-      this.onStatus?.(error?.message || "Не удалось сохранить матч");
-      console.error(error);
-      if (gameOver && this.engine.gameOver && this.running && !this.finished) {
-        const delay = Math.min(15000, 2000 * (2 ** Math.min(this.resultRetryCount, 3)));
-        this.resultRetryCount += 1;
-        window.clearTimeout(this.resultRetryTimer);
-        this.resultRetryTimer = window.setTimeout(() => {
-          this.resultRetryTimer = null;
-          void this.submitResult(true);
-        }, delay);
-      }
-    }
+    this.localFinished = true;
+    this.localFinishReason = reason;
+    this.localFrozenState = { ...snapshot, current: null };
+    this.onLocalFinished?.({ reason, waitingForOpponent: true, snapshot: this.localFrozenState });
+    this.render();
+    await this.publishState(snapshot);
+    return this.submitResult(reason);
   }
 
-  handleOwnGameOver() {
-    if (this.finished) return;
-    this.publishState();
-    this.submitResult(true);
+  submitResult(reason) {
+    if (this.submissionPromise) return this.submissionPromise;
+    const snapshot = this.engine.getSnapshot();
+    this.submissionPromise = this.service.finishCompetitiveMatch(
+      this.matchId,
+      snapshot.elapsedMs,
+      this.engine.exportInputLog(),
+      reason,
+    )
+      .then((response) => {
+        window.clearTimeout(this.resultRetryTimer);
+        this.resultRetryTimer = null;
+        this.resultRetryCount = 0;
+        if (response?.result) {
+          this.notifyFinished({ result: response, snapshot: this.localFrozenState ?? snapshot, match: this.match });
+        } else {
+          this.onStatus?.("Результат зафиксирован · ждём завершения соперника");
+        }
+        return response;
+      })
+      .catch((error) => {
+        this.submissionPromise = null;
+        this.onStatus?.(error?.message || "Не удалось сохранить результат матча");
+        console.error(error);
+        if (this.running && this.localFinished && !this.finished) {
+          const delay = Math.min(15000, 2000 * (2 ** Math.min(this.resultRetryCount, 3)));
+          this.resultRetryCount += 1;
+          window.clearTimeout(this.resultRetryTimer);
+          this.resultRetryTimer = window.setTimeout(() => {
+            this.resultRetryTimer = null;
+            void this.submitResult(reason);
+          }, delay);
+        }
+        throw error;
+      });
+    return this.submissionPromise;
+  }
+
+  handleOwnGameOver(snapshot) {
+    if (this.localFinished || this.finished) return;
+    this.localFinished = true;
+    this.localFinishReason = "top-out";
+    this.localFrozenState = { ...snapshot, current: null };
+    this.onLocalFinished?.({ reason: "top-out", waitingForOpponent: true, snapshot: this.localFrozenState });
+    this.render();
+    void this.publishState(snapshot).then(() => this.submitResult("top-out"));
+  }
+
+  async leaveToLobby() {
+    if (!this.localFinished) await this.finishLocalRun("retired");
+    else if (this.submissionPromise) await this.submissionPromise;
+    this.detached = true;
+    this.stop();
+    return { waitingForOpponent: true };
   }
 
   handleServerFinished(match) {
     if (this.finished) return;
     this.finished = true;
     this.match = match;
-    if (!this.engine.gameOver) {
-      this.engine.advanceTo(this.elapsedNow());
-    }
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
     this.render();
-
-    // Submit the local replay once so the winner's maximum score can also be
-    // included. Notification is idempotent because the realtime database update
-    // and the local replay result can arrive in either order.
-    void this.submitResult(this.engine.gameOver);
     this.notifyFinished({
       result: match.result ?? null,
-      snapshot: this.engine.getSnapshot(),
+      snapshot: this.localFrozenState ?? this.engine.getSnapshot(),
       match,
     });
   }
 
   notifyFinished(context) {
-    if (this.finishNotified) return;
+    if (this.finishNotified || this.detached) return;
     const result = context?.result?.result ?? context?.result ?? context?.match?.result ?? null;
     if (!result) return;
     this.finishNotified = true;
@@ -3006,18 +3273,21 @@ class CompetitiveMode {
   stop() {
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
-    this.unsubscribeMatch?.();
+    this.unsubscribeOpponentState?.();
+    this.unsubscribeOwnSubmission?.();
+    this.unsubscribeResult?.();
     this.unsubscribePresence?.();
     window.clearTimeout(this.disconnectTimer);
     window.clearTimeout(this.resultRetryTimer);
-    this.unsubscribeMatch = null;
+    this.unsubscribeOpponentState = null;
+    this.unsubscribeOwnSubmission = null;
+    this.unsubscribeResult = null;
     this.unsubscribePresence = null;
     this.disconnectTimer = null;
     this.resultRetryTimer = null;
   }
 }
 
-/* ===== modes/coop-mode.js ===== */
 class CoopMode {
   constructor({
     service,
@@ -3041,6 +3311,7 @@ class CoopMode {
     this.startedAt = Number(match.startedAt) || service.serverNow();
     this.renderer = new BoardRenderer(canvas, { columns: 20, rows: 20, cellSize: 24 });
     this.engine = this.isHost ? new CoopEngine({ seed: match.seed }) : null;
+    this.predictionEngine = this.isHost ? null : new CoopEngine({ seed: match.seed });
     this.remoteSnapshot = null;
     this.onUpdate = onUpdate;
     this.onStatus = onStatus;
@@ -3051,12 +3322,23 @@ class CoopMode {
     this.finishNotified = false;
     this.commandSequence = 0;
     this.acceptedSequence = 0;
+    this.authoritativeAcceptedSequence = 0;
+    this.authoritativeStateSequence = 0;
+    this.acceptedByUid = {
+      [this.hostUid]: 0,
+      [this.otherUid]: 0,
+    };
     this.stateSequence = 0;
     this.lastStatePublish = 0;
     this.processedCommandKeys = new Set();
+    this.processedAcceptedKeys = new Set();
+    this.acceptedCommandBuffer = new Map();
+    this.pendingLocalCommands = new Map();
     this.animationFrame = 0;
-    this.unsubscribeMatch = null;
+    this.unsubscribeCoopState = null;
+    this.unsubscribeResult = null;
     this.unsubscribeCommands = null;
+    this.unsubscribeAcceptedCommands = null;
     this.unsubscribePresence = null;
     this.disconnectTimer = null;
     this.partnerOffline = false;
@@ -3065,9 +3347,11 @@ class CoopMode {
     this.gameOverPending = false;
     this.resultRetryTimer = null;
     this.resultRetryCount = 0;
+    this.publishInFlight = null;
+    this.publishQueued = null;
 
     if (this.engine) {
-      this.engine.on("lock", () => this.publishState(true));
+      this.engine.on("lock", () => void this.publishState(true));
       this.engine.on("gameOver", () => {
         this.gameOverPending = true;
       });
@@ -3076,14 +3360,6 @@ class CoopMode {
 
   start() {
     this.running = true;
-    this.unsubscribeMatch = this.service.subscribeMatch(this.matchId, (match) => {
-      if (!match) return;
-      this.match = match;
-      if (!this.isHost && match.coopState) {
-        this.remoteSnapshot = this.normalizeRemoteState(match.coopState);
-      }
-      if (match.status === "finished") this.handleServerFinished(match);
-    });
 
     if (this.isHost && this.otherUid) {
       this.unsubscribeCommands = this.service.subscribeCommands(
@@ -3091,7 +3367,27 @@ class CoopMode {
         this.otherUid,
         (key, command) => this.acceptRemoteCommand(key, command),
       );
+      void this.publishState(true);
     }
+
+    if (!this.isHost) {
+      this.unsubscribeCoopState = this.service.subscribeCoopState(
+        this.matchId,
+        (state) => {
+          if (state) this.reconcilePrediction(this.normalizeRemoteState(state));
+        },
+      );
+      this.unsubscribeAcceptedCommands = this.service.subscribeAcceptedCommands(
+        this.matchId,
+        (key, command) => this.handleAcceptedCommand(key, command),
+      );
+    }
+
+    this.unsubscribeResult = this.service.subscribeMatchResult(this.matchId, (result) => {
+      if (!result) return;
+      this.handleServerFinished({ ...this.match, status: "finished", result });
+    });
+
     if (this.otherUid) {
       this.unsubscribePresence = this.service.subscribePresence(
         this.otherUid,
@@ -3104,17 +3400,18 @@ class CoopMode {
   }
 
   elapsedNow() {
-    return Math.trunc(this.service.serverNow() - this.startedAt);
+    return Math.max(0, Math.trunc(this.service.serverNow() - this.startedAt));
   }
 
   frame() {
     if (!this.running) return;
+    const beforeStart = this.service.serverNow() < this.startedAt;
     const elapsed = this.elapsedNow();
-    if (elapsed <= 0) {
-      this.onStatus?.(`Старт через ${Math.ceil(Math.abs(elapsed) / 1000)}`);
+    if (beforeStart) {
+      this.onStatus?.(`Старт через ${Math.ceil((this.startedAt - this.service.serverNow()) / 1000)}`);
     } else if (this.isHost) {
       this.engine.advanceTo(elapsed);
-      if (elapsed - this.lastStatePublish >= 120) this.publishState(false);
+      if (elapsed - this.lastStatePublish >= 220) void this.publishState(false);
       this.maybeFinishGame();
       this.onStatus?.(
         this.partnerOffline
@@ -3122,6 +3419,7 @@ class CoopMode {
           : "Кооперативный матч · ведущий",
       );
     } else {
+      this.predictionEngine.advanceTo(elapsed);
       this.onStatus?.(
         this.partnerOffline
           ? "Напарник не в сети · ожидание переподключения"
@@ -3186,44 +3484,86 @@ class CoopMode {
       topRow: Number(state.topRow) || 20,
       gameOver: Boolean(state.gameOver),
       elapsedMs: Number(state.elapsedMs) || 0,
+      nextGravityAt: Number(state.nextGravityAt) || 0,
+      acceptedSequence: Math.max(0, Math.trunc(Number(state.acceptedSequence) || 0)),
+      acceptedByUid: state.acceptedByUid ?? {},
+      sequence: Math.max(0, Math.trunc(Number(state.sequence) || 0)),
     };
+  }
+
+  reconcilePrediction(snapshot) {
+    const stateSequence = Math.max(0, Math.trunc(Number(snapshot.sequence) || 0));
+    if (stateSequence <= this.authoritativeStateSequence) return;
+    this.authoritativeStateSequence = stateSequence;
+    this.remoteSnapshot = snapshot;
+    this.authoritativeAcceptedSequence = snapshot.acceptedSequence;
+
+    for (const sequence of [...this.acceptedCommandBuffer.keys()]) {
+      if (sequence <= this.authoritativeAcceptedSequence) {
+        this.acceptedCommandBuffer.delete(sequence);
+      }
+    }
+
+    const acknowledged = Math.max(
+      0,
+      Math.trunc(Number(snapshot.acceptedByUid?.[this.localUid]) || 0),
+    );
+    for (const sequence of [...this.pendingLocalCommands.keys()]) {
+      if (sequence <= acknowledged) this.pendingLocalCommands.delete(sequence);
+    }
+
+    try {
+      this.predictionEngine.importSnapshot(snapshot);
+      const commands = [
+        ...[...this.acceptedCommandBuffer.entries()].map(([sequence, command]) => ({
+          side: command.side,
+          action: command.action,
+          atMs: Math.max(0, Math.trunc(Number(command.atMs) || 0)),
+          order: sequence,
+        })),
+        ...[...this.pendingLocalCommands.entries()].map(([sequence, command]) => ({
+          side: this.localSide,
+          action: command.action,
+          atMs: command.atMs,
+          order: 1000000 + sequence,
+        })),
+      ].sort((a, b) => a.atMs - b.atMs || a.order - b.order);
+
+      for (const command of commands) {
+        this.predictionEngine.applyAction(
+          command.side,
+          command.action,
+          Math.max(this.predictionEngine.elapsedMs, command.atMs),
+          { record: false },
+        );
+      }
+      this.predictionEngine.advanceTo(this.elapsedNow());
+      this.render();
+    } catch (error) {
+      console.warn("Cooperative prediction reconciliation failed", error);
+    }
   }
 
   render() {
     const snapshot = this.isHost
       ? this.engine.getSnapshot()
-      : this.remoteSnapshot ?? {
-          mode: "coop",
-          columns: 20,
-          rows: 20,
-          laneWidth: 10,
-          settled: "0".repeat(400),
-          players: {},
-          score: 0,
-          lines: 0,
-          level: 1,
-          round: 1,
-          gameOver: false,
-          elapsedMs: 0,
-        };
-    const waitingSides = Object.entries(snapshot.players ?? {})
-      .filter(([, player]) => player?.locked)
-      .map(([side]) => side);
+      : this.predictionEngine.getSnapshot();
     this.renderer.draw(snapshot, {
       showActive: true,
-      showGhost: this.isHost,
+      showGhost: true,
       dividerX: 10,
-      localSide: this.localSide,
-      waitingSides,
     });
     this.onUpdate?.({ snapshot, localSide: this.localSide, isHost: this.isHost });
   }
 
   async handleAction(action) {
-    if (!this.running || this.elapsedNow() < 0) return;
-    const snapshot = this.isHost ? this.engine?.getSnapshot() : this.remoteSnapshot;
-    if (snapshot?.players?.[this.localSide]?.locked || snapshot?.gameOver) return;
+    if (!this.running || this.service.serverNow() < this.startedAt) return;
+    const engine = this.isHost ? this.engine : this.predictionEngine;
+    const snapshot = engine?.getSnapshot();
+    if (snapshot?.gameOver) return;
+
     this.commandSequence += 1;
+    const clientSeq = this.commandSequence;
     const atMs = this.elapsedNow();
 
     if (this.isHost) {
@@ -3231,17 +3571,19 @@ class CoopMode {
       try {
         this.engine.applyAction(this.localSide, action, atMs);
         this.acceptedSequence += 1;
+        this.acceptedByUid[this.localUid] = clientSeq;
         await Promise.allSettled([
-          this.service.appendRawCommand(this.matchId, this.commandSequence, action, atMs),
+          this.service.appendRawCommand(this.matchId, clientSeq, action, atMs),
           this.service.appendAcceptedCommand(this.matchId, {
             seq: this.acceptedSequence,
+            clientSeq,
             uid: this.localUid,
             side: this.localSide,
             action,
             atMs: this.engine.elapsedMs,
           }),
         ]);
-        this.publishState(true);
+        void this.publishState(true);
         this.render();
       } finally {
         this.pendingCommandWrites -= 1;
@@ -3250,9 +3592,13 @@ class CoopMode {
       return;
     }
 
+    this.pendingLocalCommands.set(clientSeq, { action, atMs });
+    this.predictionEngine.applyAction(this.localSide, action, atMs, { record: false });
+    this.render();
     try {
-      await this.service.appendRawCommand(this.matchId, this.commandSequence, action, atMs);
+      await this.service.appendRawCommand(this.matchId, clientSeq, action, atMs);
     } catch (error) {
+      this.pendingLocalCommands.delete(clientSeq);
       console.warn("Command publish failed", error);
       this.onStatus?.("Команда не отправлена: проверьте соединение");
     }
@@ -3262,6 +3608,7 @@ class CoopMode {
     if (!this.isHost || !this.running || this.processedCommandKeys.has(key)) return;
     this.processedCommandKeys.add(key);
     const action = command?.action;
+    const clientSeq = Math.max(1, Math.trunc(Number(command?.seq) || 1));
     const reportedAt = Math.max(0, Math.trunc(Number(command?.atMs) || 0));
     const acceptedAt = Math.max(
       this.engine.elapsedMs,
@@ -3271,14 +3618,19 @@ class CoopMode {
     try {
       this.engine.applyAction(this.otherSide, action, acceptedAt);
       this.acceptedSequence += 1;
+      this.acceptedByUid[this.otherUid] = Math.max(
+        Number(this.acceptedByUid[this.otherUid]) || 0,
+        clientSeq,
+      );
       await this.service.appendAcceptedCommand(this.matchId, {
         seq: this.acceptedSequence,
+        clientSeq,
         uid: this.otherUid,
         side: this.otherSide,
         action,
         atMs: this.engine.elapsedMs,
       });
-      this.publishState(true);
+      void this.publishState(true);
     } catch (error) {
       console.warn("Remote command rejected", error);
     } finally {
@@ -3287,22 +3639,69 @@ class CoopMode {
     }
   }
 
-  async publishState(force) {
-    if (!this.isHost || !this.engine) return;
-    const snapshot = this.engine.getSnapshot();
-    if (!force && snapshot.elapsedMs - this.lastStatePublish < 120) return;
-    this.lastStatePublish = snapshot.elapsedMs;
-    this.stateSequence += 1;
+  handleAcceptedCommand(key, command) {
+    if (this.isHost || !this.running || this.processedAcceptedKeys.has(key)) return;
+    this.processedAcceptedKeys.add(key);
+    const sequence = Math.max(0, Math.trunc(Number(command?.seq) || 0));
+    if (sequence <= this.authoritativeAcceptedSequence) return;
+
+    // The local command was already predicted. Keep it pending until a compact
+    // coopState snapshot explicitly acknowledges the client sequence; otherwise
+    // a slower state frame could briefly roll the guest backwards.
+    if (command?.uid === this.localUid) return;
+
+    this.acceptedCommandBuffer.set(sequence, command);
     try {
-      await this.service.publishCoopState(this.matchId, snapshot, this.stateSequence);
+      this.predictionEngine.applyAction(
+        command?.side,
+        command?.action,
+        Math.max(this.predictionEngine.elapsedMs, Math.trunc(Number(command?.atMs) || 0)),
+        { record: false },
+      );
+      this.render();
     } catch (error) {
-      console.warn("Cooperative state publish failed", error);
+      console.warn("Accepted cooperative command could not be predicted", error);
     }
+  }
+
+  publishState(force) {
+    if (!this.isHost || !this.engine) return Promise.resolve();
+    const snapshot = this.engine.getSnapshot();
+    if (!force && snapshot.elapsedMs - this.lastStatePublish < 220) return this.publishInFlight ?? Promise.resolve();
+    this.lastStatePublish = snapshot.elapsedMs;
+    this.publishQueued = snapshot;
+    if (this.publishInFlight) return this.publishInFlight;
+
+    const drain = async () => {
+      while (this.publishQueued) {
+        const next = this.publishQueued;
+        this.publishQueued = null;
+        this.stateSequence += 1;
+        try {
+          await this.service.publishCoopState(
+            this.matchId,
+            next,
+            this.stateSequence,
+            {
+              acceptedSequence: this.acceptedSequence,
+              acceptedByUid: this.acceptedByUid,
+            },
+          );
+        } catch (error) {
+          console.warn("Cooperative state publish failed", error);
+        }
+      }
+    };
+    this.publishInFlight = drain().finally(() => {
+      this.publishInFlight = null;
+      if (this.publishQueued) void this.publishState(true);
+    });
+    return this.publishInFlight;
   }
 
   maybeFinishGame() {
     if (this.gameOverPending && this.pendingCommandWrites === 0) {
-      this.handleGameOver();
+      void this.handleGameOver();
     }
   }
 
@@ -3310,7 +3709,7 @@ class CoopMode {
     if (!this.isHost || this.finishSubmitted) return;
     this.gameOverPending = false;
     this.finishSubmitted = true;
-    this.publishState(true);
+    await this.publishState(true);
     try {
       const result = await this.service.finishCoopMatch(
         this.matchId,
@@ -3345,7 +3744,7 @@ class CoopMode {
     this.render();
     this.notifyFinished({
       result: match.result ?? null,
-      snapshot: this.isHost ? this.engine.getSnapshot() : this.remoteSnapshot,
+      snapshot: this.isHost ? this.engine.getSnapshot() : this.predictionEngine.getSnapshot(),
       match,
     });
   }
@@ -3361,16 +3760,23 @@ class CoopMode {
   stop() {
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
-    this.unsubscribeMatch?.();
+    this.unsubscribeCoopState?.();
+    this.unsubscribeResult?.();
     this.unsubscribeCommands?.();
+    this.unsubscribeAcceptedCommands?.();
     this.unsubscribePresence?.();
     window.clearTimeout(this.disconnectTimer);
     window.clearTimeout(this.resultRetryTimer);
-    this.unsubscribeMatch = null;
+    this.unsubscribeCoopState = null;
+    this.unsubscribeResult = null;
     this.unsubscribeCommands = null;
+    this.unsubscribeAcceptedCommands = null;
     this.unsubscribePresence = null;
     this.disconnectTimer = null;
     this.resultRetryTimer = null;
+    this.publishQueued = null;
+    this.acceptedCommandBuffer.clear();
+    this.pendingLocalCommands.clear();
   }
 }
 
@@ -3475,6 +3881,7 @@ const state = {
   lobby: null,
   currentMatchId: null,
   startedMatchId: null,
+  waitingCompetitiveResult: false,
   resultShownFor: new Set(),
   selectedLeaderboard: "solo",
   leaderboards: { solo: [], competitive: [], coop: [] },
@@ -3850,7 +4257,7 @@ async function enterLobby(lobbyId) {
     state.lobby = lobby;
     renderLobby(lobby);
     if (lobby.matchId && lobby.matchId !== state.startedMatchId) {
-      loadMatch(lobby.matchId);
+      void loadMatch(lobby.matchId);
     }
   });
 
@@ -3903,13 +4310,16 @@ function renderLobby(lobby) {
   elements.startMatchButton.hidden = !isHost;
   elements.startMatchButton.disabled = !isHost || !configuring || !allReady;
   elements.lobbyStatusBadge.textContent = lobby.status === "playing"
-    ? "Матч"
+    ? state.waitingCompetitiveResult ? "Ожидание" : "Матч"
     : lobby.status === "starting"
       ? "Запуск"
       : "Настройка";
-  elements.lobbyHint.textContent = lobby.status === "playing" || lobby.status === "starting"
-    ? "Матч уже запускается."
-    : !isHost
+  if (lobby.status !== "playing") state.waitingCompetitiveResult = false;
+  elements.lobbyHint.textContent = lobby.status === "playing" && state.waitingCompetitiveResult
+    ? "Ваши очки зафиксированы. Матч продолжится до завершения второго игрока."
+    : lobby.status === "playing" || lobby.status === "starting"
+      ? "Матч уже запускается."
+      : !isHost
       ? "Выберите готовность и дождитесь запуска создателем лобби."
       : anyReady && !allReady
         ? "Ожидаем готовность второго игрока."
@@ -3949,16 +4359,16 @@ function renderChat(messages) {
   if (nearBottom) elements.chatList.scrollTop = elements.chatList.scrollHeight;
 }
 
-function loadMatch(matchId) {
-  state.unsubMatchLoader?.();
-  let unsubscribe = () => {};
-  unsubscribe = state.service.subscribeMatch(matchId, (match) => {
+async function loadMatch(matchId) {
+  if (!matchId || state.startedMatchId === matchId) return;
+  try {
+    const match = await state.service.getMatch(matchId);
     if (!match || state.startedMatchId === matchId) return;
-    unsubscribe();
-    state.unsubMatchLoader = null;
     startNetworkMatch(matchId, match);
-  });
-  state.unsubMatchLoader = unsubscribe;
+  } catch (error) {
+    console.error("Match loading failed", error);
+    showToast(friendlyError(error), { error: true, duration: 6000 });
+  }
 }
 
 function startNetworkMatch(matchId, match) {
@@ -3966,6 +4376,7 @@ function startNetworkMatch(matchId, match) {
   closeDialog(elements.resultDialog);
   state.currentMatchId = matchId;
   state.startedMatchId = matchId;
+  state.waitingCompetitiveResult = false;
   showView("game");
 
   const localUid = state.user.uid;
@@ -3996,7 +4407,13 @@ function startNetworkMatch(matchId, match) {
         elements.competitiveOpponentScore.textContent = formatScore(opponent.score);
       },
       onStatus: (status) => {
-        elements.gameModeKicker.textContent = String(status).toUpperCase().slice(0, 30);
+        elements.gameModeKicker.textContent = String(status).toUpperCase().slice(0, 42);
+      },
+      onLocalFinished: ({ reason }) => {
+        state.controls.setEnabled(false);
+        elements.gameModeTitle.textContent = reason === "retired"
+          ? "Результат зафиксирован"
+          : "Наблюдение за соперником";
       },
       onFinished: (context) => handleNetworkResult("competitive", matchId, context),
     });
@@ -4060,19 +4477,21 @@ function handleNetworkResult(mode, matchId, context) {
   let icon;
 
   if (mode === "competitive") {
-    const won = result?.winnerUid === state.user.uid;
-    const disconnected = result?.reason === "disconnect";
-    title = won ? "Победа" : "Поражение";
-    icon = won ? "★" : "×";
-    if (disconnected) {
-      description = won
-        ? "Соперник не переподключился за отведённое время. Победа учтена в рейтинге."
-        : "Соединение с матчем было потеряно. Сервер присудил техническое поражение.";
-    } else {
-      description = won
-        ? "Противник достиг верхней границы. Победа добавлена в отдельный рейтинг."
-        : "Ваше поле достигло верхней границы. Результат записан в Firebase.";
-    }
+    const isDraw = result?.isDraw === true;
+    const won = !isDraw && result?.winnerUid === state.user.uid;
+    const localScore = state.user.uid === result?.hostUid
+      ? Number(result?.hostScore) || 0
+      : Number(result?.guestScore) || 0;
+    const opponentScore = state.user.uid === result?.hostUid
+      ? Number(result?.guestScore) || 0
+      : Number(result?.hostScore) || 0;
+    title = isDraw ? "Ничья" : won ? "Победа" : "Поражение";
+    icon = isDraw ? "=" : won ? "★" : "×";
+    description = isDraw
+      ? `Оба игрока завершили партию с результатом ${formatScore(localScore)}.`
+      : won
+        ? `Оба игрока завершили партию. ${formatScore(localScore)} против ${formatScore(opponentScore)} — победа по очкам.`
+        : `Оба игрока завершили партию. ${formatScore(localScore)} против ${formatScore(opponentScore)} — победил соперник.`;
   } else {
     title = "Совместная партия завершена";
     icon = "∞";
@@ -4248,16 +4667,35 @@ function bindEvents() {
     }
   });
 
-  elements.gameExitButton.addEventListener("click", () => {
+  elements.gameExitButton.addEventListener("click", async () => {
     if (state.activeModeName === "solo") {
-      void startSolo();
+      await startSolo();
+      return;
+    }
+    if (state.activeModeName === "competitive" && state.activeMode?.leaveToLobby) {
+      const mode = state.activeMode;
+      setBusy(elements.gameExitButton, true, "Фиксация…");
+      try {
+        await mode.leaveToLobby();
+        state.controls.setEnabled(false);
+        state.activeMode = null;
+        state.activeModeName = null;
+        state.waitingCompetitiveResult = true;
+        showView(state.lobbyId ? "lobby" : "home");
+        if (state.lobby) renderLobby(state.lobby);
+        showToast("Ваши очки зафиксированы. Матч продолжится до завершения второго игрока.");
+      } catch (error) {
+        showToast(friendlyError(error), { error: true, duration: 6000 });
+      } finally {
+        setBusy(elements.gameExitButton, false);
+      }
       return;
     }
     if (state.currentMatchId && state.resultShownFor.has(state.currentMatchId)) {
       showView(state.lobbyId ? "lobby" : "home");
       return;
     }
-    showToast("Во время сетевого матча выход отключён, чтобы не рассинхронизировать игру.", { error: true });
+    showToast("Из кооперативного матча нельзя выйти отдельно от напарника.", { error: true });
   });
 
   elements.profileButton.addEventListener("click", () => {
@@ -4397,7 +4835,7 @@ function bindEvents() {
     setBusy(elements.startMatchButton, true, "Запуск…");
     try {
       const result = await state.service.startMatch(state.lobbyId);
-      if (result.matchId) loadMatch(result.matchId);
+      if (result.matchId) void loadMatch(result.matchId);
     } catch (error) {
       showToast(friendlyError(error), { error: true });
     } finally {
