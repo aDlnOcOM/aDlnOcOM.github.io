@@ -474,6 +474,32 @@ body {
   text-align: center;
 }
 
+.coop-preview-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.coop-preview-box {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.coop-preview-box canvas {
+  width: 52px;
+  height: 52px;
+}
+
 .coop-canvas {
   width: min(100%, 480px);
   height: auto;
@@ -1351,8 +1377,22 @@ fieldset:disabled {
     min-height: 0;
   }
 
+  .coop-preview-row {
+    gap: 5px;
+  }
+
+  .coop-preview-box {
+    padding: 3px 5px;
+    font-size: 8px;
+  }
+
+  .coop-preview-box canvas {
+    width: 42px;
+    height: 42px;
+  }
+
   .coop-canvas {
-    width: min(100%, calc(100dvh - 220px));
+    width: min(100%, calc(100dvh - 270px));
   }
 
 

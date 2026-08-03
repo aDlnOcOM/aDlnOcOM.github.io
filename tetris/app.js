@@ -1462,6 +1462,7 @@ const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const INVITE_LENGTH = 6;
 const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 const DISCONNECT_GRACE_MS = 15000;
+const STALE_LOBBY_MS = 45000;
 
 const LEADERBOARD_ORDER = Object.freeze({
   solo: "score",
@@ -1815,6 +1816,85 @@ class FirebaseService {
     const value = snapshot.val();
     return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
   }
+  async cleanupOwnStaleLobby({ force = false } = {}) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const lobbyId = uid;
+    const lobbyRef = api.ref(this.db, `lobbies/${lobbyId}`);
+    const lobby = (await api.get(lobbyRef)).val();
+    if (!lobby || lobby.hostUid !== uid || lobby.status !== "configuring") return false;
+
+    const now = this.serverNow();
+    const updatedAt = Number(lobby.updatedAt) || Number(lobby.createdAt) || 0;
+    if (!force && (!updatedAt || now - updatedAt < STALE_LOBBY_MS)) return false;
+
+    const guestUid = String(lobby.guestUid ?? "");
+    const hostPointer = (await api.get(api.ref(this.db, `userLobby/${uid}`))).val();
+    let guestPointer = null;
+    let guestConnections = null;
+    let guestLastOnline = null;
+    if (guestUid) {
+      const snapshots = await Promise.all([
+        api.get(api.ref(this.db, `userLobby/${guestUid}`)),
+        api.get(api.ref(this.db, `presence/${guestUid}/connections`)),
+        api.get(api.ref(this.db, `presence/${guestUid}/lastOnline`)),
+      ]);
+      guestPointer = snapshots[0].val();
+      guestConnections = snapshots[1].val();
+      guestLastOnline = snapshots[2].val();
+    }
+
+    const pointersValid = hostPointer === lobbyId && guestPointer === lobbyId;
+    const guestOnline = Boolean(
+      guestConnections
+      && typeof guestConnections === "object"
+      && Object.keys(guestConnections).length > 0,
+    );
+    const lastOnline = Number(guestLastOnline);
+    const guestStale = !guestOnline && (
+      !Number.isFinite(lastOnline) || now - lastOnline >= STALE_LOBBY_MS
+    );
+    if (pointersValid && !guestStale) return false;
+
+    const transaction = await api.runTransaction(
+      lobbyRef,
+      (current) => {
+        const currentUpdatedAt = Number(current?.updatedAt) || Number(current?.createdAt) || 0;
+        return current
+          && current.hostUid === uid
+          && current.status === "configuring"
+          && String(current.guestUid ?? "") === guestUid
+          && currentUpdatedAt === updatedAt
+            ? null
+            : undefined;
+      },
+      { applyLocally: false },
+    );
+    if (!transaction.committed) return false;
+
+    const cleanupTasks = [
+      api.remove(api.ref(this.db, `lobbyChats/${lobbyId}`)),
+      api.runTransaction(
+        api.ref(this.db, `userLobby/${uid}`),
+        (current) => (current === lobbyId ? null : undefined),
+        { applyLocally: false },
+      ),
+    ];
+    if (guestUid) {
+      cleanupTasks.push(api.runTransaction(
+        api.ref(this.db, `userLobby/${guestUid}`),
+        (current) => (current === lobbyId ? null : undefined),
+        { applyLocally: false },
+      ));
+    }
+    const cleanupResults = await Promise.allSettled(cleanupTasks);
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") {
+        console.warn("Stale lobby residue cleanup failed", result.reason);
+      }
+    }
+    return true;
+  }
 
   async clearStaleLobbyAssignment(uid) {
     const api = this.requireApi();
@@ -1952,11 +2032,12 @@ class FirebaseService {
     const pointer = (await api.get(pointerRef)).val();
     if (!pointer || String(pointer).startsWith("__joining__")) {
       await api.remove(pointerRef);
+      await this.cleanupOwnStaleLobby({ force: true });
       return { left: true };
     }
-
     const lobbyId = String(pointer);
-    const lobby = (await api.get(api.ref(this.db, `lobbies/${lobbyId}`))).val();
+    const lobbyRef = api.ref(this.db, `lobbies/${lobbyId}`);
+    const lobby = (await api.get(lobbyRef)).val();
     if (!lobby) {
       await api.remove(pointerRef);
       return { left: true };
@@ -1966,23 +2047,27 @@ class FirebaseService {
       throw makeClientError("app/match-active", "Нельзя покинуть лобби во время активного матча.");
     }
 
-    // Delete the chat while membership still exists, then clear pointers and
-    // finally delete the lobby. Each write is authorized at its exact path.
-    // The chat rule permits an idempotent parent delete, so no unrestricted
-    // read of the chat node is needed.
+    // Delete chat while membership still authorizes it, then delete the
+    // authoritative lobby before the self-healing user pointers. A tab crash can
+    // no longer leave an orphan lobby that blocks the next connection.
     await api.remove(api.ref(this.db, `lobbyChats/${lobbyId}`));
-    for (const memberUid of Object.keys(lobby.members ?? {})) {
-      await api.runTransaction(
-        api.ref(this.db, `userLobby/${memberUid}`),
-        (current) => (current === lobbyId ? null : undefined),
-        { applyLocally: false },
-      );
-    }
     await api.runTransaction(
-      api.ref(this.db, `lobbies/${lobbyId}`),
+      lobbyRef,
       (current) => (current ? null : undefined),
       { applyLocally: false },
     );
+    const pointerResults = await Promise.allSettled(
+      Object.keys(lobby.members ?? {}).map((memberUid) => api.runTransaction(
+        api.ref(this.db, `userLobby/${memberUid}`),
+        (current) => (current === lobbyId ? null : undefined),
+        { applyLocally: false },
+      )),
+    );
+    for (const result of pointerResults) {
+      if (result.status === "rejected") {
+        console.warn("Lobby pointer cleanup failed", result.reason);
+      }
+    }
     return { left: true };
   }
 
@@ -2276,10 +2361,15 @@ class FirebaseService {
       [match.hostUid]: Math.max(0, Math.trunc(Number(result.hostScore) || 0)),
       [match.guestUid]: Math.max(0, Math.trunc(Number(result.guestScore) || 0)),
     };
-    await Promise.all([
+    const updates = await Promise.allSettled([
       this.updateCompetitiveEntry(match.hostUid, matchId, result, scoreByUid[match.hostUid]),
       this.updateCompetitiveEntry(match.guestUid, matchId, result, scoreByUid[match.guestUid]),
     ]);
+    for (const update of updates) {
+      if (update.status === "rejected") {
+        console.warn("Competitive leaderboard update failed", update.reason);
+      }
+    }
   }
 
   async finalizeCompetitiveResult(matchId, match) {
@@ -2287,7 +2377,6 @@ class FirebaseService {
     const submissions = (await api.get(api.ref(this.db, `matches/${matchId}/submissions`))).val() ?? {};
     const payload = buildCompetitiveScoreResult(match, submissions, this.serverNow());
     if (!payload) return null;
-
     const resultRef = api.ref(this.db, `matches/${matchId}/result`);
     const transaction = await api.runTransaction(
       resultRef,
@@ -2296,9 +2385,26 @@ class FirebaseService {
     );
     const result = transaction.snapshot.val() ?? payload;
 
-    await this.updateCompetitiveLeaderboards(matchId, match, result);
+    // Match/lobby finalization must not be held hostage by a leaderboard write.
     await this.markMatchFinished(matchId);
     await this.resetLobbyAfterMatch(matchId, match, result);
+    await this.updateCompetitiveLeaderboards(matchId, match, result);
+    return result;
+  }
+  async settleCompetitiveResult(rawMatchId) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+    const matchId = assertFirebaseKey(rawMatchId, "Идентификатор матча");
+    const match = (await api.get(api.ref(this.db, `matches/${matchId}`))).val();
+    if (!match || match.mode !== "competitive" || !match.members?.[uid]) {
+      throw makeClientError("app/match-not-found", "Соревновательный матч не найден.");
+    }
+    const result = match.result
+      ?? (await api.get(api.ref(this.db, `matches/${matchId}/result`))).val();
+    if (!result) return null;
+    await this.markMatchFinished(matchId);
+    await this.resetLobbyAfterMatch(matchId, match, result);
+    await this.updateCompetitiveLeaderboards(matchId, match, result);
     return result;
   }
 
@@ -2506,6 +2612,10 @@ class FirebaseService {
 
     const existing = (await api.get(api.ref(this.db, `matches/${matchId}/result`))).val();
     if (existing) {
+      if (match.mode === "competitive") {
+        const result = await this.settleCompetitiveResult(matchId);
+        return { resolved: true, result: result ?? existing };
+      }
       await this.markMatchFinished(matchId);
       await this.resetLobbyAfterMatch(matchId, match, existing);
       return { resolved: true, result: existing };
@@ -3058,6 +3168,9 @@ class CompetitiveMode {
 
     this.unsubscribeResult = this.service.subscribeMatchResult(this.matchId, (result) => {
       if (!result) return;
+      void this.service.settleCompetitiveResult(this.matchId).catch((error) => {
+        console.warn("Competitive result settlement failed", error);
+      });
       this.handleServerFinished({ ...this.match, status: "finished", result });
     });
 
@@ -3295,6 +3408,8 @@ class CoopMode {
     match,
     localUid,
     canvas,
+    leftPreviewCanvas,
+    rightPreviewCanvas,
     onUpdate,
     onStatus,
     onFinished,
@@ -3310,6 +3425,8 @@ class CoopMode {
     this.otherSide = match.members?.[this.otherUid]?.side ?? (this.localSide === SIDES.LEFT ? SIDES.RIGHT : SIDES.LEFT);
     this.startedAt = Number(match.startedAt) || service.serverNow();
     this.renderer = new BoardRenderer(canvas, { columns: 20, rows: 20, cellSize: 24 });
+    this.leftPreview = new PreviewRenderer(leftPreviewCanvas, { cellSize: 16 });
+    this.rightPreview = new PreviewRenderer(rightPreviewCanvas, { cellSize: 16 });
     this.engine = this.isHost ? new CoopEngine({ seed: match.seed }) : null;
     this.predictionEngine = this.isHost ? null : new CoopEngine({ seed: match.seed });
     this.remoteSnapshot = null;
@@ -3553,6 +3670,9 @@ class CoopMode {
       showGhost: true,
       dividerX: 10,
     });
+    const previewsHidden = snapshot.gameOver === true;
+    this.leftPreview.draw(previewsHidden ? null : snapshot.players?.left?.nextType);
+    this.rightPreview.draw(previewsHidden ? null : snapshot.players?.right?.nextType);
     this.onUpdate?.({ snapshot, localSide: this.localSide, isHost: this.isHost });
   }
 
@@ -4438,6 +4558,8 @@ function startNetworkMatch(matchId, match) {
     match,
     localUid,
     canvas: $("coop-board"),
+    leftPreviewCanvas: $("coop-left-preview"),
+    rightPreviewCanvas: $("coop-right-preview"),
     onUpdate: ({ snapshot, localSide: side }) => {
       updateGameStats(snapshot);
       elements.coopRound.textContent = String(snapshot.round || 1);
@@ -4958,12 +5080,17 @@ async function bootstrap() {
     return;
   }
 
+  try {
+    await state.service.cleanupOwnStaleLobby();
+  } catch (error) {
+    console.warn("Stale lobby cleanup failed", error);
+  }
   state.firebaseReady = true;
   state.firebaseDiagnostic = "Firebase Spark подключён.";
   localStorage.setItem("tetris_player_name_v3", state.profile.name);
   renderIdentity();
   elements.offlineBanner.hidden = true;
-  setConnection("online", APP_CONFIG.useEmulators ? "Emulator online" : "Firebase online");
+  setConnection("online", APP_CONFIG.useEmulators ? "Emulator online" : "Online");
 
   if (state.pendingSoloPublication && elements.resultDialog.open) {
     elements.resultDescription.textContent = "Результат готов к публикации. Нажмите кнопку и укажите никнейм.";
@@ -4982,6 +5109,12 @@ async function bootstrap() {
       if (state.currentView === "lobby") showHome({ stopGame: false });
     }
   });
+  window.setInterval(() => {
+    if (!state.firebaseReady) return;
+    void state.service.cleanupOwnStaleLobby().catch((error) => {
+      console.warn("Periodic stale lobby cleanup failed", error);
+    });
+  }, 15000);
   subscribeLeaderboards();
 }
 

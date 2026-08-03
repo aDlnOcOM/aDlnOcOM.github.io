@@ -80,6 +80,16 @@
             <span>ЛЕВАЯ ПОЛОВИНА</span>
             <span>ПРАВАЯ ПОЛОВИНА</span>
           </div>
+          <div class="coop-preview-row" aria-label="Следующие фигуры игроков">
+            <section class="coop-preview-box">
+              <span>ЛЕВАЯ · NEXT</span>
+              <canvas id="coop-left-preview" width="64" height="64" aria-label="Следующая фигура левого игрока"></canvas>
+            </section>
+            <section class="coop-preview-box">
+              <span>ПРАВАЯ · NEXT</span>
+              <canvas id="coop-right-preview" width="64" height="64" aria-label="Следующая фигура правого игрока"></canvas>
+            </section>
+          </div>
           <canvas id="coop-board" class="coop-canvas" aria-label="Общее кооперативное поле"></canvas>
           <p class="coop-meta">
             Раунд <strong id="coop-round">1</strong> · ваша сторона: <strong id="coop-side">левая</strong>
