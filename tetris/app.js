@@ -1939,11 +1939,31 @@ class FirebaseService {
     return session;
   }
 
-  async finishSoloGame(sessionId, durationValue, inputLog) {
+  async finishSoloGame(sessionOrId, durationValue, inputLog) {
     const api = this.requireApi();
     const uid = this.requireUser().uid;
     const durationMs = assertDuration(durationValue);
-    const session = this.activeSoloSessions.get(sessionId);
+
+    const suppliedSession = sessionOrId && typeof sessionOrId === "object"
+      ? sessionOrId
+      : null;
+    const sessionId = suppliedSession?.sessionId ?? String(sessionOrId ?? "");
+    let session = this.activeSoloSessions.get(sessionId) ?? suppliedSession;
+
+    // The first classic game starts immediately, before Firebase finishes
+    // connecting. Adopt that already-running local session at publication time
+    // so the first GAME OVER can be submitted without visiting the network UI.
+    if (session && !this.activeSoloSessions.has(sessionId)) {
+      session = {
+        sessionId: sessionId || `local_${uid}_${Date.now()}`,
+        seed: Number(session.seed) >>> 0 || 1,
+        status: "playing",
+        startedAt: this.serverNow() - durationMs,
+        version: GAME_VERSION,
+      };
+      this.activeSoloSessions.set(session.sessionId, session);
+    }
+
     if (!session) throw makeClientError("app/session-missing", "Локальная сессия партии не найдена.");
     if (durationMs > this.serverNow() - session.startedAt + 30000) {
       throw makeClientError("app/duration-in-future", "Длительность партии находится в будущем.");
@@ -3672,8 +3692,11 @@ async function startSolo() {
     }
   }
   state.soloSession = session ?? {
-    sessionId: null,
+    sessionId: `local_${Date.now()}_${randomLocalSeed()}`,
     seed: randomLocalSeed(),
+    status: "playing",
+    startedAt: Date.now(),
+    version: GAME_VERSION,
     offline: true,
   };
 
@@ -3699,30 +3722,27 @@ async function startSolo() {
 
 async function handleSoloGameOver({ snapshot, durationMs, inputLog }) {
   state.controls.setEnabled(false);
-  const canPublish = Boolean(state.soloSession?.sessionId && state.firebaseReady);
-  state.pendingSoloPublication = canPublish
-    ? {
-        sessionId: state.soloSession.sessionId,
-        snapshot,
-        durationMs,
-        inputLog,
-      }
-    : null;
+  state.pendingSoloPublication = {
+    session: { ...state.soloSession },
+    snapshot,
+    durationMs,
+    inputLog,
+  };
 
   showResult({
     kicker: "GAME OVER",
     title: "Игра окончена",
-    description: canPublish
+    description: state.firebaseReady
       ? "Результат готов к публикации. Нажмите кнопку и укажите никнейм."
-      : "Локальная партия завершена. Рекорд не будет сохранён в Firebase.",
+      : "Результат сохранён локально. Его можно опубликовать после подключения Firebase.",
     snapshot,
     verification: "neutral",
-    verificationText: canPublish ? "Результат ещё не опубликован" : "Локальный режим",
+    verificationText: state.firebaseReady ? "Результат ещё не опубликован" : "Ожидание Firebase",
     primaryText: "Play Again",
     publishText: "Опубликовать результат",
     secondaryText: "Сетевая игра",
     primaryAction: startSolo,
-    publishAction: canPublish ? beginSoloPublication : null,
+    publishAction: beginSoloPublication,
     secondaryAction: () => showHome(),
   });
 }
@@ -3748,7 +3768,7 @@ async function publishPendingSoloResult() {
   const pending = state.pendingSoloPublication;
   if (!pending) throw new Error("Нет результата для публикации.");
   const result = await state.service.finishSoloGame(
-    pending.sessionId,
+    pending.session,
     pending.durationMs,
     pending.inputLog,
   );
@@ -4113,14 +4133,15 @@ function renderLeaderboardInto(list, mode, entries, { compact = false } = {}) {
       const name = document.createElement("span");
       const score = document.createElement("span");
       const meta = document.createElement("span");
-      const date = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString() : "—";
-      const time = entry.playTimeMs ? `${Math.round(entry.playTimeMs / 1000)}s` : "";
+      const date = entry.timestamp
+        ? new Date(entry.timestamp).toLocaleDateString("ru-RU")
+        : "—";
       name.className = "lb-name";
       score.className = "lb-score";
       meta.className = "lb-meta";
       name.textContent = `#${index + 1} ${entry.name || "Anon"}`;
       score.textContent = formatScore(entry.score);
-      meta.textContent = `${date} · L${formatScore(entry.level || 1)} · ${formatScore(entry.lines)}ln${time ? ` · ${time}` : ""}`;
+      meta.textContent = date;
       item.append(name, document.createTextNode(" "), score, meta);
       list.append(item);
       return;
@@ -4142,7 +4163,9 @@ function renderLeaderboardInto(list, mode, entries, { compact = false } = {}) {
 
     if (mode === "solo") {
       name.textContent = entry.name || "Игрок";
-      meta.textContent = `${formatScore(entry.lines)} линий · уровень ${formatScore(entry.level)}`;
+      meta.textContent = entry.timestamp
+        ? new Date(entry.timestamp).toLocaleDateString("ru-RU")
+        : "—";
       value.textContent = formatScore(entry.score);
     } else if (mode === "competitive") {
       name.textContent = entry.name || "Игрок";
@@ -4431,7 +4454,7 @@ function bindEvents() {
 
   window.addEventListener("offline", () => setConnection("offline", "Нет сети"));
   window.addEventListener("online", () => {
-    if (state.firebaseReady) setConnection("online", "Online");
+    if (state.firebaseReady) setConnection("online", "Firebase online");
     else setConnection("connecting", "Подключение…");
   });
 
@@ -4458,8 +4481,8 @@ async function bootstrap() {
   setConnection("connecting", "Подключение…");
 
   // The board starts immediately, just like the original lightweight page.
-  // Firebase connects in parallel; the next solo round will then use a
-  // client-side session and become eligible for the shared Firebase leaderboard.
+  // Firebase connects in parallel. The first local round can be adopted and
+  // published after connection, so visiting the network screen is unnecessary.
   await startSolo();
 
   try {
@@ -4503,6 +4526,13 @@ async function bootstrap() {
   renderIdentity();
   elements.offlineBanner.hidden = true;
   setConnection("online", APP_CONFIG.useEmulators ? "Emulator online" : "Firebase online");
+
+  if (state.pendingSoloPublication && elements.resultDialog.open) {
+    elements.resultDescription.textContent = "Результат готов к публикации. Нажмите кнопку и укажите никнейм.";
+    setVerification("neutral", "Результат ещё не опубликован");
+    elements.resultPublishButton.hidden = false;
+    state.resultPublishAction = beginSoloPublication;
+  }
 
   state.unsubUserLobby = state.service.subscribeUserLobby(state.user.uid, (lobbyId) => {
     if (lobbyId && !String(lobbyId).startsWith("__joining__")) {
