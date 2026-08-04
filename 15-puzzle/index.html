@@ -416,6 +416,47 @@
       winDescEl.textContent = `Moves: ${moves} | Time: ${timerEl.textContent}`;
       overlayEl.classList.add('visible');
     }
+    // контрол
+
+    // Обработка управления стрелочками клавиатуры
+    document.addEventListener('keydown', (e) => {
+      // Игнорируем нажатия, если игра уже пройдена (показан экран победы)
+      if (overlayEl.classList.contains('visible')) return;
+
+      const emptyIndex = tiles.indexOf(0);
+      const row = Math.floor(emptyIndex / gridSize);
+      const col = emptyIndex % gridSize;
+      
+      let targetIndex = -1;
+
+      switch (e.key) {
+        case 'ArrowRight':
+          // Двигаем тайл СЛЕВА направо (в пустую ячейку)
+          if (col > 0) targetIndex = emptyIndex - 1;
+          break;
+        case 'ArrowLeft':
+          // Двигаем тайл СПРАВА налево
+          if (col < gridSize - 1) targetIndex = emptyIndex + 1;
+          break;
+        case 'ArrowDown':
+          // Двигаем тайл СВЕРХУ вниз
+          if (row > 0) targetIndex = emptyIndex - gridSize;
+          break;
+        case 'ArrowUp':
+          // Двигаем тайл СНИЗУ вверх
+          if (row < gridSize - 1) targetIndex = emptyIndex + gridSize;
+          break;
+        default:
+          // Если нажата другая клавиша - ничего не делаем
+          return; 
+      }
+
+      // Если найден подходящий соседний тайл, совершаем ход
+      if (targetIndex !== -1) {
+        e.preventDefault(); // Предотвращаем скроллинг страницы стрелочками
+        handleMove(targetIndex);
+      }
+    });
 
     // Инициализация при старте
     initGame();
