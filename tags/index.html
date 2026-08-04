@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Пятнашки | 15 Puzzle</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --panel: #141417;
+      --border: #27272a;
+      --tile-bg: #1e1e24;
+      --tile-hover: #2d2d35;
+      --text: #f4f4f5;
+      --text-dim: #71717a;
+      --accent: #ffffff;
+      --board-size: min(88vw, 440px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 10px;
+    }
+
+    .container {
+      width: var(--board-size);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 15px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      letter-spacing: 4px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .subtitle {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+
+    /* Селектор сложности */
+    .difficulty-selector {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      background: var(--panel);
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .diff-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 8px 0;
+      font-family: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-radius: 2px;
+    }
+
+    .diff-btn:hover {
+      color: var(--text);
+    }
+
+    .diff-btn.active {
+      background: var(--border);
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    /* Статистика */
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 12px 20px;
+      border-radius: 4px;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    .stat-value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Игровое поле */
+    .board-wrapper {
+      position: relative;
+    }
+
+    .board {
+      width: var(--board-size);
+      height: var(--board-size);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: grid;
+      gap: 4px;
+      padding: 4px;
+    }
+
+    .tile {
+      background: var(--tile-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s ease, background 0.15s ease;
+      border-radius: 2px;
+    }
+
+    .tile:hover {
+      background: var(--tile-hover);
+      border-color: #3f3f46;
+    }
+
+    .tile.empty {
+      background: transparent;
+      border-color: transparent;
+      cursor: default;
+    }
+
+    /* Экран победы */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(9, 9, 11, 0.92);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      border: 1px solid var(--border);
+    }
+
+    .overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .win-title {
+      font-size: 1.4rem;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .win-desc {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* Кнопка действия */
+    .action-btn {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-radius: 4px;
+    }
+
+    .action-btn:hover {
+      background: var(--border);
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>15-PUZZLE</h1>
+      <div class="subtitle">MINIMALIST EDITION</div>
+    </header>
+
+    <div class="difficulty-selector">
+      <button class="diff-btn active" data-size="3">3x3</button>
+      <button class="diff-btn" data-size="5">5x5</button>
+      <button class="diff-btn" data-size="7">7x7</button>
+      <button class="diff-btn" data-size="9">9x9</button>
+      <button class="diff-btn" data-size="11">11x11</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-label">MOVES</span>
+        <span class="stat-value" id="moves-count">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">TIME</span>
+        <span class="stat-value" id="timer">00:00</span>
+      </div>
+    </div>
+
+    <div class="board-wrapper">
+      <div id="board" class="board"></div>
+
+      <div id="overlay" class="overlay">
+        <div class="win-title">SOLVED</div>
+        <div class="win-desc" id="win-desc">Moves: 0 | Time: 00:00</div>
+        <button class="action-btn" style="width: auto; padding: 10px 24px;" onclick="initGame()">PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <button class="action-btn" onclick="initGame()">RESTART</button>
+  </div>
+
+  <script>
+    let gridSize = 3;
+    let tiles = [];
+    let moves = 0;
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let gameStarted = false;
+
+    const boardEl = document.getElementById('board');
+    const movesEl = document.getElementById('moves-count');
+    const timerEl = document.getElementById('timer');
+    const overlayEl = document.getElementById('overlay');
+    const winDescEl = document.getElementById('win-desc');
+    const diffBtns = document.querySelectorAll('.diff-btn');
+
+    // Переключение сложности
+    diffBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        diffBtns.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        gridSize = parseInt(e.target.dataset.size);
+        initGame();
+      });
+    });
+
+    // Получение допустимых ходов вокруг пустой ячейки
+    function getValidNeighbors(emptyIndex, size) {
+      const neighbors = [];
+      const row = Math.floor(emptyIndex / size);
+      const col = emptyIndex % size;
+
+      if (row > 0) neighbors.push(emptyIndex - size); // Вверх
+      if (row < size - 1) neighbors.push(emptyIndex + size); // Вниз
+      if (col > 0) neighbors.push(emptyIndex - 1); // Влево
+      if (col < size - 1) neighbors.push(emptyIndex + 1); // Вправо
+
+      return neighbors;
+    }
+
+    // Генерация гарантированно решаемой конфигурации через обратное перемешивание
+    function generateSolvableBoard(size) {
+      const total = size * size;
+      let arr = Array.from({ length: total }, (_, i) => (i === total - 1 ? 0 : i + 1));
+      let emptyIdx = total - 1;
+      let lastIdx = -1;
+
+      // Количество случайных ходов зависит от размера сетки
+      const shuffleSteps = size * size * 40;
+
+      for (let i = 0; i < shuffleSteps; i++) {
+        const neighbors = getValidNeighbors(emptyIdx, size);
+        // Не возвращаемся сразу назад для лучшего перемешивания
+        const validChoices = neighbors.filter(idx => idx !== lastIdx);
+        const choice = validChoices.length > 0
+          ? validChoices[Math.floor(Math.random() * validChoices.length)]
+          : neighbors[Math.floor(Math.random() * neighbors.length)];
+
+        // Меняем местами
+        arr[emptyIdx] = arr[choice];
+        arr[choice] = 0;
+
+        lastIdx = emptyIdx;
+        emptyIdx = choice;
+      }
+
+      return arr;
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      secondsElapsed = 0;
+      timerEl.textContent = '00:00';
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+        const secs = String(secondsElapsed % 60).padStart(2, '0');
+        timerEl.textContent = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+    }
+
+    function initGame() {
+      stopTimer();
+      gameStarted = false;
+      moves = 0;
+      movesEl.textContent = '0';
+      timerEl.textContent = '00:00';
+      overlayEl.classList.remove('visible');
+
+      tiles = generateSolvableBoard(gridSize);
+      renderBoard();
+    }
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      boardEl.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+
+      // Адаптивный размер шрифта под количество плиток
+      const fontSize = Math.max(0.6, 2.2 - (gridSize * 0.15)) + 'rem';
+
+      tiles.forEach((val, idx) => {
+        const tile = document.createElement('div');
+        tile.classList.add('tile');
+        tile.style.fontSize = fontSize;
+
+        if (val === 0) {
+          tile.classList.add('empty');
+        } else {
+          tile.textContent = val;
+          tile.addEventListener('click', () => handleMove(idx));
+        }
+
+        boardEl.appendChild(tile);
+      });
+    }
+
+    function handleMove(index) {
+      const emptyIndex = tiles.indexOf(0);
+      const neighbors = getValidNeighbors(emptyIndex, gridSize);
+
+      if (neighbors.includes(index)) {
+        if (!gameStarted) {
+          gameStarted = true;
+          startTimer();
+        }
+
+        // Меняем местами плитку и пустую ячейку
+        tiles[emptyIndex] = tiles[index];
+        tiles[index] = 0;
+
+        moves++;
+        movesEl.textContent = moves;
+
+        renderBoard();
+        checkWin();
+      }
+    }
+
+    function checkWin() {
+      const total = gridSize * gridSize;
+      for (let i = 0; i < total - 1; i++) {
+        if (tiles[i] !== i + 1) return;
+      }
+
+      stopTimer();
+      winDescEl.textContent = `Moves: ${moves} | Time: ${timerEl.textContent}`;
+      overlayEl.classList.add('visible');
+    }
+
+    // Инициализация при старте
+    initGame();
+  </script>
+</body>
+</html>
