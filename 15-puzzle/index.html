@@ -394,14 +394,42 @@
           startTimer();
         }
 
-        // Меняем местами плитку и пустую ячейку
+        // --- НАЧАЛО АНИМАЦИИ (FLIP техника) ---
+        // 1. First: Запоминаем позицию тайла ДО перерисовки
+        const tileEl = boardEl.children[index];
+        const rect = tileEl.getBoundingClientRect();
+
+        // Обновляем состояние в массиве
         tiles[emptyIndex] = tiles[index];
         tiles[index] = 0;
 
         moves++;
         movesEl.textContent = moves;
 
+        // 2. Last: Перерисовываем доску (тайл получает новую позицию в DOM)
         renderBoard();
+
+        // 3. Находим этот же тайл на его новом месте (теперь его индекс - emptyIndex)
+        const movedTile = boardEl.children[emptyIndex];
+        const newRect = movedTile.getBoundingClientRect();
+
+        // 4. Invert: Вычисляем разницу координат
+        const dx = rect.left - newRect.left;
+        const dy = rect.top - newRect.top;
+
+        // Мгновенно смещаем тайл на его старую позицию (отключая анимацию)
+        movedTile.style.transition = 'none';
+        movedTile.style.transform = `translate(${dx}px, ${dy}px)`;
+
+        // Форсируем перерисовку (Reflow) страницы, чтобы браузер "увидел" смещение
+        movedTile.offsetHeight;
+
+        // 5. Play: Убираем инлайн-стили. Включается CSS-анимация класса .tile, 
+        // и тайл плавно "скользит" на свое законное место (0, 0)
+        movedTile.style.transition = '';
+        movedTile.style.transform = '';
+        // --- КОНЕЦ АНИМАЦИИ ---
+
         checkWin();
       }
     }
