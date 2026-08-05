@@ -2796,6 +2796,60 @@ class FirebaseService {
     return match.hostUid && match.guestUid ? match : null;
   }
 
+  async getCoopResumeData(matchId) {
+    const api = this.requireApi();
+    const uid = this.requireUser().uid;
+
+    const [
+      stateSnapshot,
+      localCommandsSnapshot,
+      acceptedCommandsSnapshot,
+    ] = await Promise.all([
+      api.get(api.ref(this.db, `matches/${matchId}/coopState`)),
+      api.get(api.ref(this.db, `matches/${matchId}/commands/${uid}`)),
+      api.get(api.ref(this.db, `matches/${matchId}/acceptedCommands`)),
+    ]);
+
+    const normalizeEntries = (value) => Object.entries(value ?? {})
+      .map(([key, entry]) => ({
+        key,
+        ...(entry ?? {}),
+      }))
+      .sort((a, b) => {
+        const sequenceDifference =
+          (Number(a.seq) || 0) - (Number(b.seq) || 0);
+
+        return sequenceDifference
+          || String(a.key).localeCompare(String(b.key));
+      });
+
+    const localCommands = normalizeEntries(
+      localCommandsSnapshot.val(),
+    );
+
+    const acceptedCommands = normalizeEntries(
+      acceptedCommandsSnapshot.val(),
+    );
+
+    const localCommandSequence = localCommands.reduce(
+      (maximum, command) => Math.max(
+        maximum,
+        Math.max(
+          0,
+          Math.trunc(Number(command.seq) || 0),
+        ),
+      ),
+      0,
+    );
+
+    return {
+      state: stateSnapshot.val(),
+      localCommands,
+      acceptedCommands,
+      localCommandSequence,
+    };
+  }
+
   subscribeMatchResult(matchId, callback) {
     const api = this.requireApi();
     return api.onValue(
@@ -2927,14 +2981,55 @@ class FirebaseService {
     return api.onChildAdded(commandQuery, (snapshot) => callback(snapshot.key, snapshot.val()));
   }
 
-  appendAcceptedCommand(matchId, command) {
+    async appendAcceptedCommand(matchId, command) {
     const api = this.requireApi();
     const key = String(command.seq).padStart(8, "0");
-    return api.set(api.ref(this.db, `matches/${matchId}/acceptedCommands/${key}`), {
+
+    const commandRef = api.ref(
+      this.db,
+      `matches/${matchId}/acceptedCommands/${key}`,
+    );
+
+    const payload = {
       ...command,
-      clientSeq: Math.max(1, Math.trunc(Number(command.clientSeq) || 1)),
+      clientSeq: Math.max(
+        1,
+        Math.trunc(Number(command.clientSeq) || 1),
+      ),
       createdAt: api.serverTimestamp(),
-    });
+    };
+
+    try {
+      await api.set(commandRef, payload);
+      return payload;
+    } catch (error) {
+      /*
+       * Firebase мог сохранить команду, но клиент мог потерять
+       * подтверждение из-за разрыва соединения.
+       */
+      try {
+        const existing = (await api.get(commandRef)).val();
+
+        const sameCommand = existing
+          && Number(existing.seq) === Number(payload.seq)
+          && Number(existing.clientSeq) === Number(payload.clientSeq)
+          && existing.uid === payload.uid
+          && existing.side === payload.side
+          && existing.action === payload.action
+          && Number(existing.atMs) === Number(payload.atMs);
+
+        if (sameCommand) {
+          return existing;
+        }
+      } catch (readError) {
+        console.warn(
+          "Accepted command verification failed",
+          readError,
+        );
+      }
+
+      throw error;
+    }
   }
 
   publishCoopState(matchId, snapshot, sequence, sync = {}) {
@@ -3434,6 +3529,8 @@ class CoopMode {
     this.onStatus = onStatus;
     this.onFinished = onFinished;
     this.running = false;
+    this.ready = false;
+    this.restoring = false;
     this.finished = false;
     this.finishSubmitted = false;
     this.finishNotified = false;
@@ -3468,52 +3565,341 @@ class CoopMode {
     this.publishQueued = null;
 
     if (this.engine) {
-      this.engine.on("lock", () => void this.publishState(true));
+      this.engine.on("lock", () => {
+        if (!this.restoring) {
+          void this.publishState(true);
+        }
+      });
+
       this.engine.on("gameOver", () => {
         this.gameOverPending = true;
       });
     }
   }
 
-  start() {
+  async start() {
     this.running = true;
+    this.ready = false;
+    this.restoring = true;
+
+    this.onStatus?.(
+      "Восстановление кооперативной сессии…",
+    );
+
+    try {
+      await this.restoreSession();
+} catch (error) {
+  console.error(
+    "Cooperative session restore failed",
+    error,
+  );
+
+  this.running = false;
+  this.ready = false;
+
+  this.onStatus?.(
+    "Не удалось загрузить состояние матча · обновите страницу",
+  );
+
+  return;
+} finally {
+  this.restoring = false;
+}
+
+    if (!this.running) {
+      return;
+    }
 
     if (this.isHost && this.otherUid) {
-      this.unsubscribeCommands = this.service.subscribeCommands(
-        this.matchId,
-        this.otherUid,
-        (key, command) => this.acceptRemoteCommand(key, command),
-      );
+      this.unsubscribeCommands =
+        this.service.subscribeCommands(
+          this.matchId,
+          this.otherUid,
+          (key, command) => {
+            void this.acceptRemoteCommand(key, command);
+          },
+        );
+
       void this.publishState(true);
     }
 
     if (!this.isHost) {
-      this.unsubscribeCoopState = this.service.subscribeCoopState(
+      this.unsubscribeCoopState =
+        this.service.subscribeCoopState(
+          this.matchId,
+          (state) => {
+            if (state) {
+              this.reconcilePrediction(
+                this.normalizeRemoteState(state),
+              );
+            }
+          },
+        );
+
+      this.unsubscribeAcceptedCommands =
+        this.service.subscribeAcceptedCommands(
+          this.matchId,
+          (key, command) => {
+            this.handleAcceptedCommand(key, command);
+          },
+        );
+    }
+
+    this.unsubscribeResult =
+      this.service.subscribeMatchResult(
         this.matchId,
-        (state) => {
-          if (state) this.reconcilePrediction(this.normalizeRemoteState(state));
+        (result) => {
+          if (!result) {
+            return;
+          }
+
+          this.handleServerFinished({
+            ...this.match,
+            status: "finished",
+            result,
+          });
         },
       );
-      this.unsubscribeAcceptedCommands = this.service.subscribeAcceptedCommands(
-        this.matchId,
-        (key, command) => this.handleAcceptedCommand(key, command),
-      );
-    }
-
-    this.unsubscribeResult = this.service.subscribeMatchResult(this.matchId, (result) => {
-      if (!result) return;
-      this.handleServerFinished({ ...this.match, status: "finished", result });
-    });
 
     if (this.otherUid) {
-      this.unsubscribePresence = this.service.subscribePresence(
-        this.otherUid,
-        (presence) => this.handlePartnerPresence(presence),
+      this.unsubscribePresence =
+        this.service.subscribePresence(
+          this.otherUid,
+          (presence) => {
+            this.handlePartnerPresence(presence);
+          },
+        );
+    }
+
+    this.ready = true;
+    this.frame = this.frame.bind(this);
+    this.animationFrame =
+      requestAnimationFrame(this.frame);
+
+    this.maybeFinishGame();
+  }
+
+  async restoreSession() {
+    const resume =
+      await this.service.getCoopResumeData(
+        this.matchId,
+      );
+
+    const snapshot = resume.state
+      ? this.normalizeRemoteState(resume.state)
+      : null;
+
+    if (snapshot) {
+      this.stateSequence = snapshot.sequence;
+      this.authoritativeStateSequence =
+        snapshot.sequence;
+
+      this.acceptedSequence =
+        snapshot.acceptedSequence;
+
+      this.authoritativeAcceptedSequence =
+        snapshot.acceptedSequence;
+
+      this.acceptedByUid = {
+        [this.hostUid]: Math.max(
+          0,
+          Math.trunc(
+            Number(
+              snapshot.acceptedByUid?.[this.hostUid],
+            ) || 0,
+          ),
+        ),
+
+        [this.otherUid]: Math.max(
+          0,
+          Math.trunc(
+            Number(
+              snapshot.acceptedByUid?.[this.otherUid],
+            ) || 0,
+          ),
+        ),
+      };
+
+      this.lastStatePublish = snapshot.elapsedMs;
+      this.remoteSnapshot = snapshot;
+    }
+
+    this.commandSequence = Math.max(
+      Math.max(
+        0,
+        Math.trunc(
+          Number(resume.localCommandSequence) || 0,
+        ),
+      ),
+      Math.max(
+        0,
+        Math.trunc(
+          Number(
+            this.acceptedByUid[this.localUid],
+          ) || 0,
+        ),
+      ),
+    );
+
+    /*
+     * Восстановление ведущего.
+     */
+    if (this.isHost) {
+      if (snapshot) {
+        this.engine.importSnapshot(snapshot);
+      }
+
+      /*
+       * coopState может немного отставать от
+       * acceptedCommands. Применяем только команды,
+       * которых ещё нет в снимке.
+       */
+      for (const command of resume.acceptedCommands) {
+        const sequence = Math.max(
+          0,
+          Math.trunc(Number(command?.seq) || 0),
+        );
+
+        if (sequence <= this.acceptedSequence) {
+          continue;
+        }
+
+        if (
+          !VALID_SIDES.has(command?.side)
+          || !VALID_ACTIONS.has(command?.action)
+        ) {
+          continue;
+        }
+
+        this.engine.applyAction(
+          command.side,
+          command.action,
+          Math.max(
+            this.engine.elapsedMs,
+            Math.max(
+              0,
+              Math.trunc(
+                Number(command.atMs) || 0,
+              ),
+            ),
+          ),
+          {
+            record: false,
+          },
+        );
+
+        this.acceptedSequence = sequence;
+        this.authoritativeAcceptedSequence =
+          sequence;
+
+        if (
+          command.uid
+          && Object.hasOwn(
+            this.acceptedByUid,
+            command.uid,
+          )
+        ) {
+          this.acceptedByUid[command.uid] =
+            Math.max(
+              Number(
+                this.acceptedByUid[command.uid],
+              ) || 0,
+              Math.max(
+                0,
+                Math.trunc(
+                  Number(command.clientSeq) || 0,
+                ),
+              ),
+            );
+        }
+      }
+
+      this.commandSequence = Math.max(
+        this.commandSequence,
+        Math.max(
+          0,
+          Math.trunc(
+            Number(
+              this.acceptedByUid[this.localUid],
+            ) || 0,
+          ),
+        ),
+      );
+
+      this.engine.advanceTo(this.elapsedNow());
+
+      if (this.engine.gameOver) {
+        this.gameOverPending = true;
+      }
+
+      return;
+    }
+
+    /*
+     * Восстановление гостя.
+     */
+    if (snapshot) {
+      this.predictionEngine.importSnapshot(
+        snapshot,
       );
     }
 
-    this.frame = this.frame.bind(this);
-    this.animationFrame = requestAnimationFrame(this.frame);
+    const acknowledged = Math.max(
+      0,
+      Math.trunc(
+        Number(
+          this.acceptedByUid[this.localUid],
+        ) || 0,
+      ),
+    );
+
+    /*
+     * Возвращаем локальное предсказание команд,
+     * которые уже записались в Firebase, но ещё
+     * не были подтверждены снимком coopState.
+     */
+    for (const command of resume.localCommands) {
+      const sequence = Math.max(
+        0,
+        Math.trunc(Number(command?.seq) || 0),
+      );
+
+      if (
+        sequence <= acknowledged
+        || !VALID_ACTIONS.has(command?.action)
+      ) {
+        continue;
+      }
+
+      const atMs = Math.max(
+        0,
+        Math.trunc(Number(command.atMs) || 0),
+      );
+
+      this.pendingLocalCommands.set(
+        sequence,
+        {
+          action: command.action,
+          atMs,
+        },
+      );
+
+      this.predictionEngine.applyAction(
+        this.localSide,
+        command.action,
+        Math.max(
+          this.predictionEngine.elapsedMs,
+          atMs,
+        ),
+        {
+          record: false,
+        },
+      );
+    }
+
+    this.predictionEngine.advanceTo(
+      this.elapsedNow(),
+    );
   }
 
   elapsedNow() {
@@ -3521,7 +3907,9 @@ class CoopMode {
   }
 
   frame() {
-    if (!this.running) return;
+    if (!this.running || !this.ready) {
+      return;
+    }
     const beforeStart = this.service.serverNow() < this.startedAt;
     const elapsed = this.elapsedNow();
     if (beforeStart) {
@@ -3615,6 +4003,38 @@ class CoopMode {
     this.remoteSnapshot = snapshot;
     this.authoritativeAcceptedSequence = snapshot.acceptedSequence;
 
+    this.acceptedByUid = {
+      [this.hostUid]: Math.max(
+        0,
+        Math.trunc(
+          Number(
+            snapshot.acceptedByUid?.[this.hostUid],
+          ) || 0,
+        ),
+      ),
+
+      [this.otherUid]: Math.max(
+        0,
+        Math.trunc(
+          Number(
+            snapshot.acceptedByUid?.[this.otherUid],
+          ) || 0,
+        ),
+      ),
+    };
+
+    this.commandSequence = Math.max(
+      this.commandSequence,
+      Math.max(
+        0,
+        Math.trunc(
+          Number(
+            this.acceptedByUid[this.localUid],
+          ) || 0,
+        ),
+      ),
+    );
+
     for (const sequence of [...this.acceptedCommandBuffer.keys()]) {
       if (sequence <= this.authoritativeAcceptedSequence) {
         this.acceptedCommandBuffer.delete(sequence);
@@ -3676,83 +4096,327 @@ class CoopMode {
     this.onUpdate?.({ snapshot, localSide: this.localSide, isHost: this.isHost });
   }
 
+  async persistAcceptedCommand(command) {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        return await this.service.appendAcceptedCommand(
+          this.matchId,
+          command,
+        );
+      } catch (error) {
+        lastError = error;
+
+        if (!this.running || attempt === 3) {
+          break;
+        }
+
+        const delay = 180 * (2 ** attempt);
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, delay);
+        });
+      }
+    }
+
+    throw lastError
+      ?? new Error(
+        "Не удалось подтвердить кооперативную команду",
+      );
+  }
+
   async handleAction(action) {
-    if (!this.running || this.service.serverNow() < this.startedAt) return;
-    const engine = this.isHost ? this.engine : this.predictionEngine;
+    if (
+      !this.running
+      || !this.ready
+      || this.service.serverNow() < this.startedAt
+    ) {
+      return;
+    }
+
+    if (!VALID_ACTIONS.has(action)) {
+      return;
+    }
+
+    const engine = this.isHost
+      ? this.engine
+      : this.predictionEngine;
+
     const snapshot = engine?.getSnapshot();
-    if (snapshot?.gameOver) return;
+
+    if (snapshot?.gameOver) {
+      return;
+    }
 
     this.commandSequence += 1;
+
     const clientSeq = this.commandSequence;
     const atMs = this.elapsedNow();
 
+    /*
+     * Команда ведущего.
+     */
     if (this.isHost) {
       this.pendingCommandWrites += 1;
+
+      const acceptedSequence =
+        this.acceptedSequence + 1;
+
+      const acceptedAt = Math.max(
+        this.engine.elapsedMs,
+        atMs,
+      );
+
       try {
-        this.engine.applyAction(this.localSide, action, atMs);
-        this.acceptedSequence += 1;
-        this.acceptedByUid[this.localUid] = clientSeq;
-        await Promise.allSettled([
-          this.service.appendRawCommand(this.matchId, clientSeq, action, atMs),
-          this.service.appendAcceptedCommand(this.matchId, {
-            seq: this.acceptedSequence,
+        this.engine.applyAction(
+          this.localSide,
+          action,
+          acceptedAt,
+        );
+
+        this.acceptedSequence =
+          acceptedSequence;
+
+        this.authoritativeAcceptedSequence =
+          acceptedSequence;
+
+        this.acceptedByUid[this.localUid] =
+          clientSeq;
+
+        await this.persistAcceptedCommand({
+          seq: acceptedSequence,
+          clientSeq,
+          uid: this.localUid,
+          side: this.localSide,
+          action,
+          atMs: acceptedAt,
+        });
+
+        /*
+         * Сырая команда ведущего нужна для
+         * диагностики и восстановления clientSeq.
+         */
+        try {
+          await this.service.appendRawCommand(
+            this.matchId,
             clientSeq,
-            uid: this.localUid,
-            side: this.localSide,
             action,
-            atMs: this.engine.elapsedMs,
-          }),
-        ]);
-        void this.publishState(true);
+            atMs,
+          );
+        } catch (error) {
+          console.warn(
+            "Host raw command publish failed",
+            error,
+          );
+        }
+
+        await this.publishState(true);
         this.render();
+      } catch (error) {
+        console.warn(
+          "Host cooperative command could not be persisted",
+          error,
+        );
+
+        this.onStatus?.(
+          "Ошибка синхронизации команды · проверьте Firebase Rules и соединение",
+        );
       } finally {
         this.pendingCommandWrites -= 1;
         this.maybeFinishGame();
       }
+
       return;
     }
 
-    this.pendingLocalCommands.set(clientSeq, { action, atMs });
-    this.predictionEngine.applyAction(this.localSide, action, atMs, { record: false });
+    /*
+     * Команда гостя сначала применяется локально.
+     */
+    this.pendingLocalCommands.set(
+      clientSeq,
+      {
+        action,
+        atMs,
+      },
+    );
+
+    this.predictionEngine.applyAction(
+      this.localSide,
+      action,
+      atMs,
+      {
+        record: false,
+      },
+    );
+
     this.render();
+
     try {
-      await this.service.appendRawCommand(this.matchId, clientSeq, action, atMs);
+      await this.service.appendRawCommand(
+        this.matchId,
+        clientSeq,
+        action,
+        atMs,
+      );
     } catch (error) {
       this.pendingLocalCommands.delete(clientSeq);
-      console.warn("Command publish failed", error);
-      this.onStatus?.("Команда не отправлена: проверьте соединение");
+
+      console.warn(
+        "Command publish failed",
+        error,
+      );
+
+      this.onStatus?.(
+        "Команда не отправлена: проверьте соединение",
+      );
+
+      /*
+       * Откатываем локальное предсказание к последнему
+       * подтверждённому состоянию.
+       */
+      if (this.remoteSnapshot) {
+        try {
+          this.predictionEngine.importSnapshot(
+            this.remoteSnapshot,
+          );
+
+          const pendingCommands = [
+            ...this.pendingLocalCommands.entries(),
+          ].sort((a, b) => a[0] - b[0]);
+
+          for (
+            const [, pending]
+            of pendingCommands
+          ) {
+            this.predictionEngine.applyAction(
+              this.localSide,
+              pending.action,
+              Math.max(
+                this.predictionEngine.elapsedMs,
+                pending.atMs,
+              ),
+              {
+                record: false,
+              },
+            );
+          }
+
+          this.predictionEngine.advanceTo(
+            this.elapsedNow(),
+          );
+
+          this.render();
+        } catch (rebuildError) {
+          console.warn(
+            "Prediction rollback failed",
+            rebuildError,
+          );
+        }
+      }
     }
   }
 
   async acceptRemoteCommand(key, command) {
-    if (!this.isHost || !this.running || this.processedCommandKeys.has(key)) return;
-    this.processedCommandKeys.add(key);
+    if (
+      !this.isHost
+      || !this.running
+      || this.processedCommandKeys.has(key)
+    ) {
+      return;
+    }
+
     const action = command?.action;
-    const clientSeq = Math.max(1, Math.trunc(Number(command?.seq) || 1));
-    const reportedAt = Math.max(0, Math.trunc(Number(command?.atMs) || 0));
+
+    const clientSeq = Math.max(
+      1,
+      Math.trunc(Number(command?.seq) || 1),
+    );
+
+    if (!VALID_ACTIONS.has(action)) {
+      console.warn(
+        "Invalid remote cooperative command",
+        command,
+      );
+
+      this.processedCommandKeys.add(key);
+      return;
+    }
+
+    /*
+     * onChildAdded после переподключения повторно
+     * возвращает старые команды. Уже подтверждённые
+     * команды нельзя применять второй раз.
+     */
+    const alreadyAccepted = Math.max(
+      0,
+      Math.trunc(
+        Number(
+          this.acceptedByUid[this.otherUid],
+        ) || 0,
+      ),
+    );
+
+    if (clientSeq <= alreadyAccepted) {
+      this.processedCommandKeys.add(key);
+      return;
+    }
+
+    this.processedCommandKeys.add(key);
+
+    const reportedAt = Math.max(
+      0,
+      Math.trunc(Number(command?.atMs) || 0),
+    );
+
     const acceptedAt = Math.max(
       this.engine.elapsedMs,
-      Math.min(this.elapsedNow(), reportedAt),
+      Math.min(
+        this.elapsedNow(),
+        reportedAt,
+      ),
     );
+
+    const acceptedSequence =
+      this.acceptedSequence + 1;
+
     this.pendingCommandWrites += 1;
+
     try {
-      this.engine.applyAction(this.otherSide, action, acceptedAt);
-      this.acceptedSequence += 1;
-      this.acceptedByUid[this.otherUid] = Math.max(
-        Number(this.acceptedByUid[this.otherUid]) || 0,
-        clientSeq,
+      this.engine.applyAction(
+        this.otherSide,
+        action,
+        acceptedAt,
       );
-      await this.service.appendAcceptedCommand(this.matchId, {
-        seq: this.acceptedSequence,
+
+      this.acceptedSequence =
+        acceptedSequence;
+
+      this.authoritativeAcceptedSequence =
+        acceptedSequence;
+
+      this.acceptedByUid[this.otherUid] =
+        clientSeq;
+
+      await this.persistAcceptedCommand({
+        seq: acceptedSequence,
         clientSeq,
         uid: this.otherUid,
         side: this.otherSide,
         action,
-        atMs: this.engine.elapsedMs,
+        atMs: acceptedAt,
       });
-      void this.publishState(true);
+
+      await this.publishState(true);
     } catch (error) {
-      console.warn("Remote command rejected", error);
+      console.warn(
+        "Remote command rejected",
+        error,
+      );
+
+      this.onStatus?.(
+        "Не удалось подтвердить команду напарника · повторная попытка",
+      );
     } finally {
       this.pendingCommandWrites -= 1;
       this.maybeFinishGame();
@@ -3760,62 +4424,156 @@ class CoopMode {
   }
 
   handleAcceptedCommand(key, command) {
-    if (this.isHost || !this.running || this.processedAcceptedKeys.has(key)) return;
+    if (
+      this.isHost
+      || !this.running
+      || this.processedAcceptedKeys.has(key)
+    ) {
+      return;
+    }
+
     this.processedAcceptedKeys.add(key);
-    const sequence = Math.max(0, Math.trunc(Number(command?.seq) || 0));
-    if (sequence <= this.authoritativeAcceptedSequence) return;
 
-    // The local command was already predicted. Keep it pending until a compact
-    // coopState snapshot explicitly acknowledges the client sequence; otherwise
-    // a slower state frame could briefly roll the guest backwards.
-    if (command?.uid === this.localUid) return;
+    const sequence = Math.max(
+      0,
+      Math.trunc(Number(command?.seq) || 0),
+    );
 
-    this.acceptedCommandBuffer.set(sequence, command);
+    if (
+      sequence <=
+      this.authoritativeAcceptedSequence
+    ) {
+      return;
+    }
+
+    if (
+      !VALID_SIDES.has(command?.side)
+      || !VALID_ACTIONS.has(command?.action)
+    ) {
+      return;
+    }
+
+    /*
+     * Собственная команда гостя уже была применена
+     * локально. Она удалится из pending после
+     * подтверждения в coopState.
+     */
+    if (command?.uid === this.localUid) {
+      return;
+    }
+
+    this.acceptedCommandBuffer.set(
+      sequence,
+      command,
+    );
+
     try {
       this.predictionEngine.applyAction(
-        command?.side,
-        command?.action,
-        Math.max(this.predictionEngine.elapsedMs, Math.trunc(Number(command?.atMs) || 0)),
-        { record: false },
+        command.side,
+        command.action,
+        Math.max(
+          this.predictionEngine.elapsedMs,
+          Math.trunc(
+            Number(command.atMs) || 0,
+          ),
+        ),
+        {
+          record: false,
+        },
       );
+
       this.render();
     } catch (error) {
-      console.warn("Accepted cooperative command could not be predicted", error);
+      console.warn(
+        "Accepted cooperative command could not be predicted",
+        error,
+      );
     }
   }
 
   publishState(force) {
-    if (!this.isHost || !this.engine) return Promise.resolve();
-    const snapshot = this.engine.getSnapshot();
-    if (!force && snapshot.elapsedMs - this.lastStatePublish < 220) return this.publishInFlight ?? Promise.resolve();
-    this.lastStatePublish = snapshot.elapsedMs;
-    this.publishQueued = snapshot;
-    if (this.publishInFlight) return this.publishInFlight;
+    if (!this.isHost || !this.engine) {
+      return Promise.resolve();
+    }
+
+    const snapshot =
+      this.engine.getSnapshot();
+
+    if (
+      !force
+      && snapshot.elapsedMs
+        - this.lastStatePublish
+        < 220
+    ) {
+      return this.publishInFlight
+        ?? Promise.resolve();
+    }
+
+    this.lastStatePublish =
+      snapshot.elapsedMs;
+
+    /*
+     * Снимок и подтверждения должны сохраняться
+     * одним пакетом. Иначе старый снимок может
+     * получить новые acceptedSequence.
+     */
+    this.publishQueued = {
+      snapshot,
+      acceptedSequence:
+        this.acceptedSequence,
+
+      acceptedByUid: {
+        ...this.acceptedByUid,
+      },
+    };
+
+    if (this.publishInFlight) {
+      return this.publishInFlight;
+    }
 
     const drain = async () => {
       while (this.publishQueued) {
-        const next = this.publishQueued;
+        const packet =
+          this.publishQueued;
+
         this.publishQueued = null;
         this.stateSequence += 1;
+
         try {
           await this.service.publishCoopState(
             this.matchId,
-            next,
+            packet.snapshot,
             this.stateSequence,
             {
-              acceptedSequence: this.acceptedSequence,
-              acceptedByUid: this.acceptedByUid,
+              acceptedSequence:
+                packet.acceptedSequence,
+
+              acceptedByUid:
+                packet.acceptedByUid,
             },
           );
         } catch (error) {
-          console.warn("Cooperative state publish failed", error);
+          console.warn(
+            "Cooperative state publish failed",
+            error,
+          );
+
+          this.onStatus?.(
+            "Снимок игры не отправлен · проверяется соединение",
+          );
         }
       }
     };
-    this.publishInFlight = drain().finally(() => {
-      this.publishInFlight = null;
-      if (this.publishQueued) void this.publishState(true);
-    });
+
+    this.publishInFlight =
+      drain().finally(() => {
+        this.publishInFlight = null;
+
+        if (this.publishQueued) {
+          void this.publishState(true);
+        }
+      });
+
     return this.publishInFlight;
   }
 
@@ -3860,6 +4618,7 @@ class CoopMode {
     this.finished = true;
     this.match = match;
     this.running = false;
+    this.ready = false;
     cancelAnimationFrame(this.animationFrame);
     this.render();
     this.notifyFinished({
@@ -3879,6 +4638,7 @@ class CoopMode {
 
   stop() {
     this.running = false;
+    this.ready = false;
     cancelAnimationFrame(this.animationFrame);
     this.unsubscribeCoopState?.();
     this.unsubscribeResult?.();
@@ -4541,7 +5301,7 @@ function startNetworkMatch(matchId, match) {
     state.activeModeName = "competitive";
     state.controls.setHandler((action) => mode.handleAction(action));
     state.controls.setEnabled(true);
-    mode.start();
+    void mode.start();
     return;
   }
 
@@ -4574,7 +5334,7 @@ function startNetworkMatch(matchId, match) {
   state.activeModeName = "coop";
   state.controls.setHandler((action) => mode.handleAction(action));
   state.controls.setEnabled(true);
-  mode.start();
+  void mode.start();
 }
 
 function extractMatchResult(context) {
