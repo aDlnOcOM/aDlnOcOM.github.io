@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#05070c">
+  <meta name="description" content="VoidSpace — пиксельная стратегия со спрайтовой графикой 16×16 о строительстве последней станции человечества. Автор: aDlnOcOM.">
+  <title>VoidSpace — aDlnOcOM</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <noscript class="noscript">Для запуска VoidSpace требуется JavaScript.</noscript>
+
+  <div id="bootScreen" class="screen screen--boot is-visible" aria-modal="true" role="dialog">
+    <div class="boot-noise" aria-hidden="true"></div>
+    <section class="boot-card">
+      <p class="eyebrow">LAST HUMANITY ORBITAL // 16×16 SPRITE SYSTEM</p>
+      <h1 class="logo" aria-label="VoidSpace">VOID<span>SPACE</span></h1>
+      <p class="author">автор <strong>aDlnOcOM</strong></p>
+      <div class="lore">
+        <p>Планета погибла в гамма-всплеске, вызванном пролётом чёрной дыры. Станция стала последним приютом человечества и была выброшена на далёкую устойчивую орбиту сверхмассивного объекта.</p>
+        <p>Вы — владелец, пилот и капитан станции. Расширяйте каркас, перерабатывайте астероиды, спасайте экипаж и выдерживайте регулярные вражеские волны.</p>
+      </div>
+      <div class="boot-actions">
+        <button id="newGameBtn" class="btn btn--primary">Новая станция</button>
+        <button id="continueBtn" class="btn" disabled>Продолжить</button>
+      </div>
+      <div class="boot-meta">
+        <span>ЛКМ / удержание — действие / линия</span>
+        <span>ПКМ + движение — перемещение</span>
+        <span>Колесо — зум</span>
+        <span>R — поворот</span>
+        <span>H — тепловизор</span>
+        <span>Space — пауза</span>
+      </div>
+      <p id="assetStatus" class="boot-note">Загрузка локального набора симметричных PNG-спрайтов 16×16…</p>
+    </section>
+  </div>
+
+  <div id="gameShell" class="game-shell" aria-hidden="true">
+    <header class="topbar chrome-panel">
+      <div class="brand-block">
+        <strong class="brand">VOID<span>SPACE</span></strong>
+        <small>aDlnOcOM // CAPTAIN CONSOLE</small>
+      </div>
+
+      <label class="station-switcher">
+        <span>Станция</span>
+        <select id="stationSelect" aria-label="Активная станция"></select>
+      </label>
+
+      <div class="wave-box">
+        <span class="label">ВОЛНА <b id="waveNumber">0</b></span>
+        <strong id="waveTimer">ОБУЧЕНИЕ</strong>
+        <div class="mini-progress"><i id="waveProgress"></i></div>
+      </div>
+
+      <div class="top-stat"><span>СЧЁТ</span><strong id="scoreValue">0</strong></div>
+      <div class="top-stat"><span>НАУКА</span><strong id="researchValue">0</strong></div>
+
+      <div class="speed-controls" aria-label="Скорость симуляции">
+        <button class="icon-btn speed-btn is-active" data-speed="1">×1</button>
+        <button class="icon-btn speed-btn" data-speed="2">×2</button>
+        <button class="icon-btn speed-btn" data-speed="4">×4</button>
+        <button id="pauseBtn" class="icon-btn" title="Пауза (Space)">Ⅱ</button>
+      </div>
+    </header>
+
+    <main class="main-grid">
+      <aside class="sidebar sidebar--left chrome-panel">
+        <section class="side-section">
+          <div class="section-title">
+            <h2>Станция</h2>
+            <button id="thermalToggle" class="micro-btn" title="Тепловизор (H)">THERM</button>
+          </div>
+          <div class="status-grid">
+            <div class="metric"><span>Корпус</span><b id="hullMetric">100%</b><i><em id="hullBar"></em></i></div>
+            <div class="metric"><span>Энергия</span><b id="powerMetric">0 / 0</b><i><em id="powerBar"></em></i></div>
+            <div class="metric"><span>Экипаж</span><b id="crewMetric">0 / 0</b><i><em id="crewBar"></em></i></div>
+            <div class="metric"><span>Температура</span><b id="tempMetric">0 K</b><i><em id="tempBar"></em></i></div>
+            <div class="metric"><span>Радиация</span><b id="radiationMetric">0 мЗв</b><i><em id="radiationBar"></em></i></div>
+            <div class="metric"><span>Груз</span><b id="storageMetric">0 / 0</b><i><em id="storageBar"></em></i></div>
+          </div>
+        </section>
+
+        <section class="side-section resource-section">
+          <div class="section-title">
+            <h2>Ресурсы</h2>
+            <button id="resourceModeBtn" class="micro-btn">ВСЕ</button>
+          </div>
+          <div id="resourceList" class="resource-list" aria-live="polite"></div>
+        </section>
+
+        <section class="side-section compact-section">
+          <div class="section-title"><h2>Сводка</h2></div>
+          <div id="compactStats" class="compact-stats"></div>
+        </section>
+      </aside>
+
+      <section class="viewport-column">
+        <div id="canvasFrame" class="canvas-frame">
+          <canvas id="gameCanvas" width="896" height="576" aria-label="Космическая станция VoidSpace"></canvas>
+          <div class="corner corner--tl"></div><div class="corner corner--tr"></div>
+          <div class="corner corner--bl"></div><div class="corner corner--br"></div>
+          <div id="hoverTooltip" class="hover-tooltip" hidden></div>
+          <div id="combatBanner" class="combat-banner" hidden></div>
+          <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+          <section id="tutorialPanel" class="tutorial-panel" hidden>
+            <div class="tutorial-head">
+              <span>ПРОТОКОЛ ВЫЖИВАНИЯ</span>
+              <b id="tutorialCounter">01/10</b>
+            </div>
+            <h3 id="tutorialTitle">Вводный инструктаж</h3>
+            <p id="tutorialText"></p>
+            <div id="tutorialRequirement" class="tutorial-requirement"></div>
+            <div class="tutorial-actions">
+              <button id="tutorialActionBtn" class="btn btn--primary btn--small">Продолжить</button>
+              <button id="tutorialAutoBtn" class="btn btn--small">Автопостройка</button>
+            </div>
+            <small>Учебные постройки бесплатны, а остальные модули заблокированы: стартовые ресурсы невозможно потратить ошибочно.</small>
+          </section>
+        </div>
+
+        <div class="viewport-toolbar chrome-panel">
+          <button id="buildModeBtn" class="tool-btn is-active"><span>▦</span>Строительство</button>
+          <button id="inspectModeBtn" class="tool-btn"><span>⌖</span>Осмотр</button>
+          <button id="demolishModeBtn" class="tool-btn"><span>×</span>Разборка</button>
+          <button id="rotateBtn" class="tool-btn"><span>↻</span>Повернуть</button>
+          <div class="toolbar-spacer"></div>
+          <button id="researchBtn" class="tool-btn tool-btn--cyan"><span>◈</span>Исследования</button>
+          <button id="codexBtn" class="tool-btn"><span>≡</span>Кодекс</button>
+          <button id="saveBtn" class="tool-btn"><span>▣</span>Сохранить</button>
+        </div>
+
+        <div class="event-strip chrome-panel">
+          <span class="event-label">СТАНЦИОННЫЙ ЖУРНАЛ</span>
+          <div id="eventLog" class="event-log"></div>
+        </div>
+      </section>
+
+      <aside class="sidebar sidebar--right chrome-panel">
+        <section id="buildPanel" class="panel-view is-visible">
+          <div class="section-title">
+            <h2>Модули</h2>
+            <span id="rotationIndicator" class="rotation-indicator">R 0°</span>
+          </div>
+          <input id="buildSearch" class="search-input" type="search" placeholder="Поиск модуля..." autocomplete="off">
+          <div id="categoryTabs" class="category-tabs"></div>
+          <div id="buildList" class="build-list"></div>
+        </section>
+
+        <section id="inspectPanel" class="panel-view">
+          <div class="section-title"><h2>Инспектор</h2><button id="closeInspectBtn" class="micro-btn">ЗАКРЫТЬ</button></div>
+          <div id="inspectContent" class="inspect-content empty-state">Выберите модуль или объект на поле.</div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="researchOverlay" class="overlay-panel" hidden>
+    <section class="overlay-card overlay-card--wide">
+      <header class="overlay-header">
+        <div>
+          <p class="eyebrow">VOIDSPACE SCIENCE NETWORK</p>
+          <h2>Дерево исследований</h2>
+          <p id="researchCapText"></p>
+        </div>
+        <div class="overlay-header-actions">
+          <div class="science-pill">◈ <b id="researchOverlayPoints">0</b></div>
+          <button class="close-overlay icon-btn" data-close="researchOverlay">×</button>
+        </div>
+      </header>
+      <div id="researchTree" class="research-tree"></div>
+    </section>
+  </div>
+
+  <div id="codexOverlay" class="overlay-panel" hidden>
+    <section class="overlay-card overlay-card--wide">
+      <header class="overlay-header">
+        <div><p class="eyebrow">CAPTAIN KNOWLEDGE BASE</p><h2>Кодекс VoidSpace</h2></div>
+        <button class="close-overlay icon-btn" data-close="codexOverlay">×</button>
+      </header>
+      <nav id="codexTabs" class="codex-tabs">
+        <button class="is-active" data-codex="resources">Ресурсы</button>
+        <button data-codex="recipes">Цепочки</button>
+        <button data-codex="enemies">Враги</button>
+        <button data-codex="systems">Системы</button>
+      </nav>
+      <div id="codexContent" class="codex-content"></div>
+    </section>
+  </div>
+
+  <div id="modalOverlay" class="overlay-panel" hidden>
+    <section class="overlay-card modal-card">
+      <p id="modalEyebrow" class="eyebrow">SYSTEM</p>
+      <h2 id="modalTitle">Сообщение</h2>
+      <div id="modalBody"></div>
+      <div id="modalActions" class="modal-actions"></div>
+    </section>
+  </div>
+
+  <template id="resourceRowTemplate">
+    <div class="resource-row">
+      <img class="resource-icon" alt="" draggable="false">
+      <span class="resource-name"></span>
+      <b class="resource-amount"></b>
+    </div>
+  </template>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
