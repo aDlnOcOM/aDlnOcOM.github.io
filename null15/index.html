@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#05070a">
+  <meta name="description" content="NULL//15 — одностраничный dark-cyberpunk puzzle roguelike на основе механики пятнашек.">
+  <title>NULL//15 — Infinite Roll</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <button id="brandButton" class="brand" type="button" aria-label="В главное меню">
+        <span class="brand-mark">NULL</span><span class="brand-slash">//</span><span>15</span>
+      </button>
+      <div id="runHud" class="run-hud is-hidden" aria-live="polite"></div>
+      <div class="topbar-actions">
+        <button id="inventoryButton" class="icon-button is-hidden" type="button" title="Инвентарь" aria-label="Открыть инвентарь">▣</button>
+        <button id="helpButton" class="icon-button" type="button" title="Кодекс и управление" aria-label="Кодекс и управление">?</button>
+        <button id="soundButton" class="icon-button" type="button" title="Звук" aria-label="Переключить звук">◉</button>
+        <button id="menuButton" class="icon-button is-hidden" type="button" title="Меню" aria-label="Открыть меню">≡</button>
+      </div>
+    </header>
+
+    <main id="screen" class="screen" tabindex="-1"></main>
+
+    <footer class="footer">
+      <span>SHIFT THE GRID. BREAK THE LOOP.</span>
+      <span id="buildLabel">BUILD 1.1.2 // VANILLA</span>
+    </footer>
+  </div>
+
+  <div id="modalRoot" class="modal-root" aria-live="polite"></div>
+  <div id="tutorialRoot" class="tutorial-root" aria-live="polite"></div>
+  <div id="toastRoot" class="toast-root" aria-live="assertive"></div>
+
+  <template id="scanlineTemplate">
+    <div class="scanline" aria-hidden="true"></div>
+  </template>
+
+  <script src="script.js"></script>
+</body>
+</html>
