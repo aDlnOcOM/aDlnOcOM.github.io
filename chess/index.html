@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chess</title>
+<title>Шахматы</title>
 <style>
   :root {
     --bg: #0f0f0f;
@@ -85,11 +85,16 @@
   .piece { line-height: 1; pointer-events: none; }
   .white { color: #f5f5f5; text-shadow: 0 1px 2px #000, 0 0 1px #000; }
   .black { color: #1a1a1a; text-shadow: 0 1px 1px #fff3, 0 0 1px #fff3; }
-  #restart {
+  #controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #restart, #switch {
     display: none;
-    margin-top: 4px;
-    padding: 10px 28px;
-    font-size: 16px;
+    padding: 10px 22px;
+    font-size: 15px;
     background: #2a2a2a;
     color: var(--text);
     border: 1px solid #555;
@@ -97,7 +102,9 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  #restart:hover { background: #3a3a3a; }
+  #restart { display: none; }
+  #switch { display: inline-block; }
+  #restart:hover, #switch:hover { background: #3a3a3a; }
   #thinking {
     font-size: 13px;
     opacity: 0.6;
@@ -110,7 +117,10 @@
   <div id="status">Ваш ход</div>
   <div id="board"></div>
   <div id="thinking"></div>
-  <button id="restart">Заново</button>
+  <div id="controls">
+    <button id="switch">Сменить сторону</button>
+    <button id="restart">Заново</button>
+  </div>
 </div>
 
 <script>
@@ -120,7 +130,6 @@
     k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟"
   };
   const VAL = { p:100, n:320, b:330, r:500, q:900, k:20000 };
-  // Piece-square tables (white perspective, rank 0 = white's 1st rank)
   const PST = {
     p: [
       [0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],
@@ -160,7 +169,8 @@
     ]
   };
 
-  let board, turn, selected, possible, lastMove, gameOver, castling, ep, history;
+  let board, turn, selected, possible, lastMove, gameOver, castling, ep;
+  let playerColor = "w";   // "w" или "b" — цвет, которым играет человек
 
   function init() {
     board = [
@@ -180,17 +190,22 @@
     gameOver = false;
     castling = { K:true, Q:true, k:true, q:true };
     ep = null;
-    history = [];
     document.getElementById("restart").style.display = "none";
     document.getElementById("thinking").textContent = "";
     updateStatus();
     render();
+
+    // Если игрок играет чёрными — сразу ходит бот (белыми)
+    if (playerColor === "b") {
+      setTimeout(() => aiMove(), 80);
+    }
   }
 
   function isWhite(p) { return p && p === p.toUpperCase(); }
   function isBlack(p) { return p && p === p.toLowerCase(); }
   function enemy(color) { return color === "w" ? "b" : "w"; }
   function inBounds(r,c) { return r>=0 && r<8 && c>=0 && c<8; }
+  function aiColor() { return playerColor === "w" ? "b" : "w"; }
 
   function cloneBoard(b) {
     return b.map(row => row.slice());
@@ -207,7 +222,6 @@
       n: [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]],
       k: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]
     };
-    // knights
     for (const [dr,dc] of dirs.n) {
       const nr=r+dr, nc=c+dc;
       if (inBounds(nr,nc)) {
@@ -215,7 +229,6 @@
         if (p && ((byColor==="w" && p==="N") || (byColor==="b" && p==="n"))) return true;
       }
     }
-    // king
     for (const [dr,dc] of dirs.k) {
       const nr=r+dr, nc=c+dc;
       if (inBounds(nr,nc)) {
@@ -223,7 +236,6 @@
         if (p && ((byColor==="w" && p==="K") || (byColor==="b" && p==="k"))) return true;
       }
     }
-    // pawns
     if (byColor === "w") {
       for (const dc of [-1,1]) {
         const nr=r+1, nc=c+dc;
@@ -235,7 +247,6 @@
         if (inBounds(nr,nc) && b[nr][nc]==="p") return true;
       }
     }
-    // sliding
     const slide = (deltas, pieces) => {
       for (const [dr,dc] of deltas) {
         let nr=r+dr, nc=c+dc;
@@ -283,16 +294,14 @@
       const dir = color === "w" ? -1 : 1;
       const start = color === "w" ? 6 : 1;
       const promoRank = color === "w" ? 0 : 7;
-      // forward
-      if (!b[r+dir][c]) {
+      if (!b[r+dir]?.[c]) {
         if (r+dir === promoRank) {
           for (const pr of ["q","r","b","n"]) add(r+dir,c, color==="w"?pr.toUpperCase():pr);
         } else {
           add(r+dir,c);
-          if (r === start && !b[r+2*dir][c]) add(r+2*dir,c);
+          if (r === start && !b[r+2*dir]?.[c]) add(r+2*dir,c);
         }
       }
-      // captures
       for (const dc of [-1,1]) {
         const nr=r+dir, nc=c+dc;
         if (!inBounds(nr,nc)) continue;
@@ -303,12 +312,9 @@
           } else add(nr,nc);
         }
       }
-      // en passant
       if (enpas) {
         const [er,ec] = enpas;
-        if (r+dir === er && Math.abs(c-ec)===1) {
-          add(er,ec);
-        }
+        if (r+dir === er && Math.abs(c-ec)===1) add(er,ec);
       }
     } else if (type === "n") {
       for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])
@@ -332,7 +338,6 @@
     } else if (type === "k") {
       for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]])
         add(r+dr,c+dc);
-      // castling
       if (color==="w" && r===7 && c===4) {
         if (cast.K && !b[7][5] && !b[7][6] && b[7][7]==="R" &&
             !isAttacked(b,7,4,"b") && !isAttacked(b,7,5,"b") && !isAttacked(b,7,6,"b"))
@@ -358,18 +363,15 @@
     const p = nb[m.fr][m.fc];
     nb[m.tr][m.tc] = m.promo || p;
     nb[m.fr][m.fc] = null;
-    // en passant capture
     if (p.toLowerCase()==="p" && enpas && m.tr===enpas[0] && m.tc===enpas[1] && !b[m.tr][m.tc]) {
       nb[m.fr][m.tc] = null;
     }
-    // castling rook move
     if (m.castle) {
       if (m.castle==="K") { nb[7][5]="R"; nb[7][7]=null; }
       if (m.castle==="Q") { nb[7][3]="R"; nb[7][0]=null; }
       if (m.castle==="k") { nb[0][5]="r"; nb[0][7]=null; }
       if (m.castle==="q") { nb[0][3]="r"; nb[0][0]=null; }
     }
-    // new castling rights
     const nc = {...cast};
     if (p==="K") { nc.K=false; nc.Q=false; }
     if (p==="k") { nc.k=false; nc.q=false; }
@@ -377,9 +379,6 @@
     if (p==="R" && m.fr===7 && m.fc===7) nc.K=false;
     if (p==="r" && m.fr===0 && m.fc===0) nc.q=false;
     if (p==="r" && m.fr===0 && m.fc===7) nc.k=false;
-    if (nb[m.tr][m.tc]==="R" && m.tr===7 && m.tc===0) nc.Q=false;
-    if (nb[m.tr][m.tc]==="R" && m.tr===7 && m.tc===7) nc.K=false;
-    // new ep
     let nep = null;
     if (p.toLowerCase()==="p" && Math.abs(m.tr-m.fr)===2) {
       nep = [(m.fr+m.tr)/2, m.fc];
@@ -419,10 +418,7 @@
         if (table) score -= table[7-r][c];
       }
     }
-    // mobility (light)
-    const wMoves = legalMoves(b,"w",{K:true,Q:true,k:true,q:true},null).length;
-    const bMoves = legalMoves(b,"b",{K:true,Q:true,k:true,q:true},null).length;
-    score += (wMoves - bMoves) * 2;
+    // Лёгкая мобильность (для ускорения считаем грубо)
     return score;
   }
 
@@ -431,10 +427,9 @@
     const color = maximizing ? "w" : "b";
     const moves = legalMoves(b, color, cast, enpas);
     if (moves.length === 0) {
-      if (inCheck(b, color)) return maximizing ? -99999 + (4-depth) : 99999 - (4-depth);
-      return 0; // stalemate
+      if (inCheck(b, color)) return maximizing ? -99999 + (5-depth) : 99999 - (5-depth);
+      return 0;
     }
-    // simple move ordering: captures first
     moves.sort((a,b) => {
       const ca = board[a.tr]?.[a.tc] ? 1 : 0;
       const cb = board[b.tr]?.[b.tc] ? 1 : 0;
@@ -465,23 +460,26 @@
 
   function aiMove() {
     if (gameOver) return;
+    const bot = aiColor();
     document.getElementById("thinking").textContent = "Бот думает…";
-    // allow UI update
     setTimeout(() => {
-      const moves = legalMoves(board, "b", castling, ep);
+      const moves = legalMoves(board, bot, castling, ep);
       if (moves.length === 0) {
-        endGame(inCheck(board,"b") ? "win" : "draw");
+        endGame(inCheck(board, bot) ? (bot === playerColor ? "lose" : "win") : "draw");
         return;
       }
-      let best = null, bestScore = Infinity;
-      // iterative deepening style: depth 3 for speed + strength balance
-      const depth = moves.length > 20 ? 3 : 4;
+      let best = null;
+      // Бот минимизирует, если играет чёрными, и максимизирует, если играет белыми
+      let bestScore = bot === "b" ? Infinity : -Infinity;
+      const depth = moves.length > 22 ? 3 : 4;
+
       for (const m of moves) {
         const res = applyMove(board, m, castling, ep);
-        const score = minimax(res.board, depth-1, -Infinity, Infinity, true, res.castling, res.ep);
-        if (score < bestScore) {
-          bestScore = score;
-          best = m;
+        const score = minimax(res.board, depth-1, -Infinity, Infinity, bot === "b", res.castling, res.ep);
+        if (bot === "b") {
+          if (score < bestScore) { bestScore = score; best = m; }
+        } else {
+          if (score > bestScore) { bestScore = score; best = m; }
         }
       }
       if (best) doMove(best);
@@ -499,18 +497,18 @@
     possible = [];
     turn = enemy(turn);
     render();
-    // check end
+
     const ms = legalMoves(board, turn, castling, ep);
     if (ms.length === 0) {
       if (inCheck(board, turn)) {
-        endGame(turn === "w" ? "lose" : "win");
+        endGame(turn === playerColor ? "lose" : "win");
       } else {
         endGame("draw");
       }
       return;
     }
     updateStatus();
-    if (turn === "b") aiMove();
+    if (turn === aiColor()) aiMove();
   }
 
   function endGame(result) {
@@ -519,46 +517,61 @@
     if (result === "win") st.textContent = "Вы победили!";
     else if (result === "lose") st.textContent = "Вы проиграли";
     else st.textContent = "Ничья";
-    document.getElementById("restart").style.display = "block";
+    document.getElementById("restart").style.display = "inline-block";
     document.getElementById("thinking").textContent = "";
   }
 
   function updateStatus() {
     if (gameOver) return;
     const st = document.getElementById("status");
-    if (turn === "w") {
-      st.textContent = inCheck(board,"w") ? "Шах! Ваш ход" : "Ваш ход";
+    const side = playerColor === "w" ? "белыми" : "чёрными";
+    if (turn === playerColor) {
+      st.textContent = inCheck(board, playerColor) ? `Шах! Ваш ход (${side})` : `Ваш ход (${side})`;
     } else {
-      st.textContent = inCheck(board,"b") ? "Шах! Ход бота" : "Ход бота";
+      st.textContent = inCheck(board, aiColor()) ? "Шах! Ход бота" : "Ход бота";
     }
+  }
+
+  // Преобразование координат с учётом ориентации доски
+  function toBoard(r, c) {
+    if (playerColor === "w") return [r, c];
+    return [7 - r, 7 - c];
+  }
+  function toDisplay(r, c) {
+    if (playerColor === "w") return [r, c];
+    return [7 - r, 7 - c];
   }
 
   function render() {
     const el = document.getElementById("board");
     el.innerHTML = "";
-    for (let r=0;r<8;r++) {
-      for (let c=0;c<8;c++) {
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const [r, c] = toBoard(row, col);
         const sq = document.createElement("div");
-        sq.className = "sq " + ((r+c)%2===0 ? "light" : "dark");
-        if (selected && selected[0]===r && selected[1]===c) sq.classList.add("selected");
-        if (lastMove && ((lastMove.fr===r && lastMove.fc===c) || (lastMove.tr===r && lastMove.tc===c)))
+        // Цвет клетки зависит от реальных координат, чтобы при перевороте сохранялась правильная раскраска
+        sq.className = "sq " + ((r + c) % 2 === 0 ? "light" : "dark");
+
+        if (selected && selected[0] === r && selected[1] === c) sq.classList.add("selected");
+        if (lastMove && ((lastMove.fr === r && lastMove.fc === c) || (lastMove.tr === r && lastMove.tc === c)))
           sq.classList.add("last");
-        if (possible.some(m => m.tr===r && m.tc===c)) {
+        if (possible.some(m => m.tr === r && m.tc === c)) {
           sq.classList.add("possible");
           if (board[r][c]) sq.classList.add("capture");
         }
+
         const p = board[r][c];
         if (p) {
           const span = document.createElement("span");
           span.className = "piece " + (isWhite(p) ? "white" : "black");
           span.textContent = PIECES[p];
           sq.appendChild(span);
-          // highlight king in check
-          if ((p==="K" && inCheck(board,"w")) || (p==="k" && inCheck(board,"b")))
+          if ((p === "K" && inCheck(board, "w")) || (p === "k" && inCheck(board, "b")))
             sq.classList.add("check");
         }
-        sq.dataset.r = r;
-        sq.dataset.c = c;
+
+        sq.dataset.row = row;
+        sq.dataset.col = col;
         sq.addEventListener("click", onClick);
         el.appendChild(sq);
       }
@@ -566,31 +579,37 @@
   }
 
   function onClick(e) {
-    if (gameOver || turn !== "w") return;
-    const r = +e.currentTarget.dataset.r;
-    const c = +e.currentTarget.dataset.c;
+    if (gameOver || turn !== playerColor) return;
+    const row = +e.currentTarget.dataset.row;
+    const col = +e.currentTarget.dataset.col;
+    const [r, c] = toBoard(row, col);
     const p = board[r][c];
 
-    // if click on possible move
-    const move = possible.find(m => m.tr===r && m.tc===c);
+    const move = possible.find(m => m.tr === r && m.tc === c);
     if (move) {
       doMove(move);
       return;
     }
-    // select own piece
-    if (p && isWhite(p)) {
-      selected = [r,c];
-      possible = legalMoves(board,"w",castling,ep).filter(m => m.fr===r && m.fc===c);
+
+    if (p && ((playerColor === "w" && isWhite(p)) || (playerColor === "b" && isBlack(p)))) {
+      selected = [r, c];
+      possible = legalMoves(board, playerColor, castling, ep).filter(m => m.fr === r && m.fc === c);
       render();
       return;
     }
-    // deselect
+
     selected = null;
     possible = [];
     render();
   }
 
   document.getElementById("restart").addEventListener("click", init);
+
+  document.getElementById("switch").addEventListener("click", () => {
+    playerColor = playerColor === "w" ? "b" : "w";
+    init();
+  });
+
   init();
 })();
 </script>
