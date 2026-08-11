@@ -476,7 +476,7 @@ h3 {
   place-items: center;
   border: 1px solid var(--line-bright);
   background: linear-gradient(150deg, rgba(17, 25, 34, 0.96), rgba(8, 12, 16, 0.96));
-  font-size: clamp(16px, 3vw, 42px);
+  font-size: clamp(11px, 2vw, 24px);
   font-weight: 900;
 }
 
@@ -1030,7 +1030,9 @@ h3 {
   place-items: center;
   border: 1px solid var(--line-bright);
   background: var(--panel-2);
-  font-size: 23px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
   box-shadow: inset 0 0 14px rgba(255, 255, 255, 0.025);
 }
 
@@ -1169,9 +1171,9 @@ h3 {
 }
 
 .tile-number {
-  font-size: clamp(21px, 4vw, 46px);
+  font-size: clamp(14px, 2.7vw, 30px);
   font-weight: 900;
-  letter-spacing: -0.05em;
+  letter-spacing: 0.01em;
 }
 
 .tile-face {

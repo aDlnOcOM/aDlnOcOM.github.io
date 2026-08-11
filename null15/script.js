@@ -1,16 +1,16 @@
 "use strict";
 
 /*
-  NULL//15 — Infinite Roll
+  NULL-15 — Zero-Day Stack
   Standalone vanilla JavaScript prototype.
   No dependencies, no build step, no external assets.
 */
 
 const STORAGE_KEY = "null15-infinite-roll-save-v1";
 const SETTINGS_KEY = "null15-infinite-roll-settings-v1";
-const BUILD = "1.1.2";
+const BUILD = "2.0.0";
 const BOARD_ANIMATION_MS = 180;
-const DICE = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+const DICE = ["", "001", "010", "011", "100", "101", "110"];
 const PRIME_VALUES = new Set([2, 3, 5, 7, 11, 13]);
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -18,6 +18,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const pct = (value, max) => `${clamp((value / Math.max(1, max)) * 100, 0, 100)}%`;
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
+const bitAddress = (value) => Number(value).toString(2).padStart(4, "0");
 
 function escapeHTML(value) {
   return String(value)
@@ -39,53 +40,53 @@ function hashSeed(seed) {
 }
 
 const PATTERNS = [
-  { id: "LINE", name: "LINE", label: "Линия", desc: "Три или четыре плитки в строке либо столбце." },
-  { id: "SEQUENCE", name: "SEQUENCE", label: "Последовательность", desc: "Три соседних числа идут по возрастанию или убыванию." },
-  { id: "MIRROR", name: "MIRROR", label: "Зеркало", desc: "Соседние пары дают сумму 16." },
-  { id: "QUAD", name: "QUAD", label: "Квадрат", desc: "Заполненный сектор 2×2." },
-  { id: "CROSS", name: "CROSS", label: "Крест", desc: "Пять плиток образуют крест." },
-  { id: "ORBIT", name: "ORBIT", label: "Орбита VOID", desc: "Пустота замкнула маршрут минимум из четырёх ходов." },
-  { id: "EDGE", name: "EDGE", label: "Периметр", desc: "Три соседние плитки на внешней границе." },
-  { id: "SOLVED", name: "SOLVED", label: "Порядок", desc: "Минимум три плитки стоят на правильных позициях." },
+  { id: "LINE", name: "ROW_CHAIN", label: "Цепочка строк", desc: "Три или четыре ячейки занимают одну строку либо колонку стека." },
+  { id: "SEQUENCE", name: "ASC_SORT", label: "Сортировка", desc: "Три соседних адреса идут по возрастанию или убыванию без разрывов." },
+  { id: "MIRROR", name: "PAIR_0x10", label: "Пара 0x10", desc: "Две соседние ячейки образуют контрольную сумму 16." },
+  { id: "QUAD", name: "STACK_2x2", label: "Стек 2×2", desc: "Все четыре ячейки блока 2×2 заняты данными." },
+  { id: "CROSS", name: "CROSS_CALL", label: "Перекрёстный вызов", desc: "Пять ячеек образуют вызов из центра в четыре направления." },
+  { id: "ORBIT", name: "LOOP_BACK", label: "Замкнутый цикл", desc: "NULL pointer вернулся в прежний адрес минимум через четыре bit-shift." },
+  { id: "EDGE", name: "EDGE_CASE", label: "Граничный случай", desc: "Три соседние ячейки находятся на внешней границе памяти." },
+  { id: "SOLVED", name: "COMPILED", label: "Скомпилировано", desc: "Минимум три ячейки записаны по своим правильным адресам." },
 ];
 
 const EFFECTS = [
-  { id: "CUT", name: "CUT", label: "Точный удар", category: "attack" },
-  { id: "RAIL", name: "RAIL", label: "Пробитие пачки", category: "attack" },
-  { id: "DRAIN", name: "DRAIN", label: "Похищение", category: "attack" },
-  { id: "AEGIS", name: "AEGIS", label: "Щит", category: "defence" },
-  { id: "RIPOSTE", name: "RIPOSTE", label: "Контратака", category: "defence" },
-  { id: "JAM", name: "JAM", label: "Задержка", category: "utility" },
-  { id: "PATCH", name: "PATCH", label: "Восстановление", category: "utility" },
-  { id: "REWRITE", name: "REWRITE", label: "Перезапись поля", category: "utility" },
+  { id: "CUT", name: "INJECT", label: "Инъекция в одну цель", category: "attack" },
+  { id: "RAIL", name: "BROADCAST", label: "Пакет по всем процессам", category: "attack" },
+  { id: "DRAIN", name: "SIPHON", label: "Кража системных ресурсов", category: "attack" },
+  { id: "AEGIS", name: "FIREWALL", label: "Правило межсетевого экрана", category: "defence" },
+  { id: "RIPOSTE", name: "CALLBACK", label: "Ответный вызов", category: "defence" },
+  { id: "JAM", name: "TIMEOUT", label: "Задержка системных процессов", category: "utility" },
+  { id: "PATCH", name: "HOTFIX", label: "Восстановление целостности", category: "utility" },
+  { id: "REWRITE", name: "REFACTOR", label: "Безопасная перезапись стека", category: "utility" },
 ];
 
 const PROTOCOLS = [
-  { id: "MATCH", name: "MATCH", label: "Совпадение", desc: "Группа содержит обе выпавшие грани." },
-  { id: "SUM", name: "SUM", label: "Сумма", desc: "Пара граней равна сумме двух костей." },
-  { id: "GAP", name: "GAP", label: "Разница", desc: "Разница пары равна разнице костей." },
+  { id: "MATCH", name: "EQUALS", label: "Равенство", desc: "В наборе есть значения обоих entropy-регистров ZERO и ONE." },
+  { id: "SUM", name: "ADD", label: "Сложение", desc: "Сумма двух значений ячеек равна сумме регистров ZERO и ONE." },
+  { id: "GAP", name: "DIFF", label: "Разность", desc: "Разность двух значений ячеек равна разности регистров ZERO и ONE." },
 ];
 
 const COMBO_PREFIX = {
-  LINE: "Needle",
-  SEQUENCE: "Ascendant",
-  MIRROR: "Twin",
-  QUAD: "Checksum",
-  CROSS: "EMP",
-  ORBIT: "Black Orbit",
-  EDGE: "Perimeter",
-  SOLVED: "Zero State",
+  LINE: "Row-Chain",
+  SEQUENCE: "Sorted",
+  MIRROR: "0x10 Pair",
+  QUAD: "Stack-Square",
+  CROSS: "Cross-Call",
+  ORBIT: "Loopback",
+  EDGE: "Edge-Case",
+  SOLVED: "Compiled",
 };
 
 const COMBO_SUFFIX = {
-  CUT: "Cut",
-  RAIL: "Rail",
-  DRAIN: "Leech",
-  AEGIS: "Bastion",
-  RIPOSTE: "Counter",
-  JAM: "Silence",
-  PATCH: "Restore",
-  REWRITE: "Recompile",
+  CUT: "Injection",
+  RAIL: "Broadcast",
+  DRAIN: "Siphon",
+  AEGIS: "Firewall",
+  RIPOSTE: "Callback",
+  JAM: "Timeout",
+  PATCH: "Hotfix",
+  REWRITE: "Refactor",
 };
 
 const HEROES = [
@@ -93,193 +94,193 @@ const HEROES = [
     id: "vanta",
     index: "01",
     glyph: "V",
-    name: "VANTA//BLADE",
-    role: "Линии · темп · критический урон",
-    desc: "Ускоряет бой, собирая разные направления движения. Лучше всего раскрывается через LINE и SEQUENCE.",
+    name: "POINTER//RACER",
+    role: "Указатели · hot path · burst-урон",
+    desc: "Разгоняет исполнение разными направлениями bit-shift. Особенно эффективен с ROW_CHAIN и ASC_SORT.",
     hp: 76,
     energy: 8,
     passive: {
       id: "v_momentum",
-      name: "VECTOR MOMENTUM",
-      desc: "Четыре разных направления за цикл усиливают следующую атаку на 50%.",
+      name: "BRANCH PREDICTOR",
+      desc: "Четыре разных направления bit-shift за execution cycle усиливают следующий атакующий payload на 50%.",
     },
     abilities: [
-      { id: "v_cutline", name: "CUTLINE", desc: "Удар по цели; усиливается за собранные линии.", cost: 2, cooldown: 1 },
-      { id: "v_rail", name: "RAIL CASCADE", desc: "Пробивающий урон всей вражеской пачке.", cost: 3, cooldown: 2 },
-      { id: "v_blink", name: "BLINK CANCEL", desc: "Следующие два сдвига не двигают таймеры врагов.", cost: 2, cooldown: 3 },
-      { id: "v_afterimage", name: "AFTERIMAGE", desc: "Следующая комбинация повторяется с меньшей силой.", cost: 3, cooldown: 3 },
-      { id: "v_ult", name: "BLACK VECTOR", desc: "VOID наносит волновой урон за каждые четыре уникальные плитки пути.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "v_cutline", name: "HOT PATH", desc: "Инъекция в выбранный процесс; усиливается за найденные строки и сортировки.", cost: 2, cooldown: 1 },
+      { id: "v_rail", name: "SIMD BURST", desc: "Параллельный пакет с пробитием ко всем активным процессам.", cost: 3, cooldown: 2 },
+      { id: "v_blink", name: "NOOP TICK", desc: "Следующие два bit-shift не уменьшают таймеры системных процессов.", cost: 2, cooldown: 3 },
+      { id: "v_afterimage", name: "ASYNC ECHO", desc: "Следующий эксплойт выполняется повторно с меньшей мощностью.", cost: 3, cooldown: 3 },
+      { id: "v_ult", name: "BUFFER OVERRUN", desc: "NULL pointer отправляет волну урона за каждые четыре уникальные ячейки маршрута.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
   {
     id: "bulwark",
     index: "02",
     glyph: "B",
-    name: "BULWARK-0",
-    role: "Броня · якоря · контратака",
-    desc: "Конвертирует порядок поля в броню и отражает вражеские атаки. Надёжен против плотных пачек.",
+    name: "FIREWALL//01",
+    role: "Firewall · sandbox · callback",
+    desc: "Конвертирует корректные адреса стека в FIREWALL и возвращает системные атаки отправителю.",
     hp: 106,
     energy: 8,
     passive: {
       id: "b_stable",
-      name: "STABLE STATE",
-      desc: "В начале цикла получает броню за правильно расположенные плитки.",
+      name: "IMMUTABLE STATE",
+      desc: "В начале execution cycle создаёт FIREWALL за ячейки, записанные по правильным адресам.",
     },
     abilities: [
-      { id: "b_lock", name: "HARD LOCK", desc: "Защищает две правильные плитки и даёт броню.", cost: 2, cooldown: 2 },
-      { id: "b_parry", name: "PARRY SQUARE", desc: "Получает щит и готовит контратаку.", cost: 2, cooldown: 2 },
-      { id: "b_anchor", name: "ANCHOR PROTOCOL", desc: "Отменяет следующее заражение или блокировку поля.", cost: 2, cooldown: 3 },
-      { id: "b_fortress", name: "FORTRESS LINE", desc: "Броня за правильные плитки и завершённые линии.", cost: 3, cooldown: 2 },
-      { id: "b_ult", name: "CLOSED SYSTEM", desc: "Замораживает все вражеские таймеры на шесть сдвигов.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "b_lock", name: "CONST LOCK", desc: "Помечает две корректные ячейки как immutable и поднимает FIREWALL.", cost: 2, cooldown: 2 },
+      { id: "b_parry", name: "CATCH BLOCK", desc: "Создаёт FIREWALL и готовит ответный callback.", cost: 2, cooldown: 2 },
+      { id: "b_anchor", name: "SANDBOX", desc: "Отменяет следующую порчу или блокировку памяти.", cost: 2, cooldown: 3 },
+      { id: "b_fortress", name: "STACK GUARD", desc: "Даёт FIREWALL за корректные ячейки и полностью собранные строки.", cost: 3, cooldown: 2 },
+      { id: "b_ult", name: "AIR GAP", desc: "Изолирует все враждебные процессы на шесть bit-shift.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
   {
     id: "hex",
     index: "03",
     glyph: "H",
-    name: "HEX-13",
-    role: "Взлом · заражение · изменение правил",
-    desc: "Переписывает грани плиток, распространяет цифровой урон и очищает вражеские вмешательства.",
+    name: "ZERO//DAY",
+    role: "0-day · root-доступ · rule injection",
+    desc: "Эксплуатирует неизвестные уязвимости, переписывает значения ячеек и снимает системные ограничения.",
     hp: 82,
     energy: 9,
     passive: {
       id: "h_exploit",
-      name: "EXPLOIT",
-      desc: "Первое снятое заражение каждого цикла возвращает 2 NULL ENERGY.",
+      name: "CVE-0",
+      desc: "Первое снятое повреждение памяти в каждом execution cycle возвращает 2 BIT CHARGE.",
     },
     abilities: [
-      { id: "h_bitflip", name: "BITFLIP", desc: "На шесть сдвигов инвертирует значения граней плиток.", cost: 2, cooldown: 2 },
-      { id: "h_fork", name: "FORK PROCESS", desc: "Следующая комбинация получает +2 силы.", cost: 2, cooldown: 2 },
-      { id: "h_bomb", name: "SYNTAX BOMB", desc: "Накладывает сильный периодический урон на цель.", cost: 3, cooldown: 2 },
-      { id: "h_purge", name: "ROOT PURGE", desc: "Очищает поле и наносит урон за снятые состояния.", cost: 3, cooldown: 3 },
-      { id: "h_ult", name: "KERNEL PANIC", desc: "Инвертирует кости и немедленно запускает все заражения.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "h_bitflip", name: "XOR FLIP", desc: "На шесть bit-shift инвертирует значения entropy-меток всех ячеек.", cost: 2, cooldown: 2 },
+      { id: "h_fork", name: "PRIVILEGE ESCALATION", desc: "Следующий эксплойт получает +2 к мощности.", cost: 2, cooldown: 2 },
+      { id: "h_bomb", name: "MEMORY LEAK", desc: "Запускает сильную периодическую утечку целостности выбранного процесса.", cost: 3, cooldown: 2 },
+      { id: "h_purge", name: "ROOTKIT PURGE", desc: "Очищает стек и наносит урон за каждое удалённое ограничение.", cost: 3, cooldown: 3 },
+      { id: "h_ult", name: "KERNEL PANIC", desc: "Инвертирует регистры ZERO/ONE и немедленно выполняет все MEMORY LEAK.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
   {
     id: "casino",
     index: "04",
     glyph: "6",
-    name: "CASINO//SIX",
-    role: "Кости · риск · двойные активации",
-    desc: "Управляет бросками и ставит здоровье на мощные повторные комбинации.",
+    name: "FUZZER//ONE",
+    role: "Fuzzing · entropy · double execution",
+    desc: "Перебирает входные данные, управляет регистрами ZERO/ONE и рискует INTEGRITY ради повторных запусков.",
     hp: 80,
     energy: 9,
     passive: {
       id: "c_edge",
-      name: "HOUSE EDGE",
-      desc: "Цикл без ручного переброса даёт LUCK; три LUCK улучшают следующий бросок.",
+      name: "COVERAGE EDGE",
+      desc: "Execution cycle без ручной рандомизации даёт 1 FUZZ; 3 FUZZ фиксируют регистр ONE на максимуме.",
     },
     abilities: [
-      { id: "c_loaded", name: "LOADED FACE", desc: "Устанавливает белую кость по грани последней плитки.", cost: 1, cooldown: 1 },
-      { id: "c_split", name: "SPLIT POT", desc: "До конца цикла протоколы допускают отклонение на единицу.", cost: 2, cooldown: 2 },
-      { id: "c_double", name: "DOUBLE DOWN", desc: "Следующая комбинация срабатывает дважды; провал ранит героя.", cost: 2, cooldown: 2 },
-      { id: "c_snake", name: "SNAKE EYES", desc: "Устанавливает 1+1 и оглушает всех врагов.", cost: 3, cooldown: 3 },
-      { id: "c_ult", name: "ALL IN", desc: "Бросает три кости, оставляет лучшие две и наносит бонусный урон.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "c_loaded", name: "SEED FIX", desc: "Записывает в регистр ZERO entropy-значение последней сдвинутой ячейки.", cost: 1, cooldown: 1 },
+      { id: "c_split", name: "TOLERANCE +1", desc: "До конца цикла trigger-условия допускают отклонение на единицу.", cost: 2, cooldown: 2 },
+      { id: "c_double", name: "DOUBLE EXEC", desc: "Следующий эксплойт выполняется дважды; отсутствие запуска повреждает INTEGRITY.", cost: 2, cooldown: 2 },
+      { id: "c_snake", name: "BINARY LOCK", desc: "Устанавливает ZERO=001 и ONE=001, затем отправляет TIMEOUT всем процессам.", cost: 3, cooldown: 3 },
+      { id: "c_ult", name: "CHAOS MONKEY", desc: "Генерирует три значения, оставляет два лучших и отправляет бонусный payload.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
   {
     id: "mora",
     index: "05",
     glyph: "M",
-    name: "MORA//ARCHIVIST",
-    role: "Лечение · история поля · восстановление",
-    desc: "Сохраняет состояния матрицы, откатывает ошибки и превращает заражения в защиту.",
+    name: "GIT//KEEPER",
+    role: "Snapshots · rollback · hotfix",
+    desc: "Коммитит состояния стека, откатывает ошибочные bit-shift и превращает повреждения памяти в FIREWALL.",
     hp: 90,
     energy: 8,
     passive: {
       id: "m_restore",
-      name: "RESTORE POINT",
-      desc: "Один раз за бой сохраняет поле и здоровье, когда HP впервые падает ниже 50%.",
+      name: "AUTO COMMIT",
+      desc: "Один раз за breach сохраняет стек и INTEGRITY, когда целостность впервые падает ниже 50%.",
     },
     abilities: [
-      { id: "m_patch", name: "PATCH LOOP", desc: "Лечит; замкнутый путь VOID усиливает эффект.", cost: 2, cooldown: 1 },
-      { id: "m_checksum", name: "CHECKSUM", desc: "Снимает два состояния с плиток и даёт броню.", cost: 2, cooldown: 2 },
-      { id: "m_rollback", name: "ROLLBACK", desc: "Возвращает поле к состоянию четыре сдвига назад.", cost: 3, cooldown: 3 },
-      { id: "m_defrag", name: "DEFRAGMENT", desc: "Удаляет все заражения и получает броню за каждое.", cost: 3, cooldown: 3 },
-      { id: "m_ult", name: "SYSTEM RESTORE", desc: "Возвращает сохранённое поле и здоровье либо экстренно лечит.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "m_patch", name: "HOTFIX LOOP", desc: "Восстанавливает INTEGRITY; замкнутый loop NULL pointer усиливает эффект.", cost: 2, cooldown: 1 },
+      { id: "m_checksum", name: "CHECKSUM", desc: "Снимает два ограничения с ячеек и создаёт FIREWALL.", cost: 2, cooldown: 2 },
+      { id: "m_rollback", name: "GIT RESET", desc: "Возвращает стек к снимку четырьмя bit-shift ранее.", cost: 3, cooldown: 3 },
+      { id: "m_defrag", name: "GARBAGE COLLECT", desc: "Удаляет всю порчу памяти и создаёт FIREWALL за каждую очистку.", cost: 3, cooldown: 3 },
+      { id: "m_ult", name: "SYSTEM RESTORE", desc: "Загружает AUTO COMMIT стека и INTEGRITY либо применяет аварийный hotfix.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
   {
     id: "nullwalker",
     index: "06",
     glyph: "Ø",
-    name: "NULL//WALKER",
-    role: "VOID · пространство · нестандартные ходы",
-    desc: "Управляет пустотой, допускает диагональные сдвиги и превращает замкнутые маршруты в взрывы.",
+    name: "ROOT//NULL",
+    role: "NULL pointer · memory routing · segfault",
+    desc: "Управляет NULL pointer, разрешает диагональные bit-shift и превращает замкнутые маршруты в segfault.",
     hp: 84,
     energy: 9,
     passive: {
       id: "n_blank",
-      name: "LIVING BLANK",
-      desc: "Четыре разные пересечённые плитки восстанавливают энергию и усиливают путь VOID.",
+      name: "NULL DEREFERENCE",
+      desc: "Четыре уникальные пройденные ячейки возвращают BIT CHARGE и усиливают следующий exploit loop.",
     },
     abilities: [
-      { id: "n_voidstep", name: "VOIDSTEP", desc: "Выполняет до трёх полезных сдвигов без вражеских тиков.", cost: 2, cooldown: 2 },
-      { id: "n_consume", name: "CONSUME ERROR", desc: "Очищает соседние с VOID плитки и возвращает энергию.", cost: 2, cooldown: 1 },
-      { id: "n_horizon", name: "EVENT HORIZON", desc: "На шесть сдвигов увеличивает силу всех комбинаций.", cost: 2, cooldown: 2 },
-      { id: "n_second", name: "SECOND ABSENCE", desc: "Четыре сдвига можно двигать плитки по диагонали.", cost: 3, cooldown: 3 },
-      { id: "n_ult", name: "ZERO TRACE", desc: "Замкнутый след VOID взрывает всю вражескую пачку.", cost: 6, cooldown: 5, ultimate: true },
+      { id: "n_voidstep", name: "NULL POINTER", desc: "Выполняет до трёх полезных bit-shift без системных тиков.", cost: 2, cooldown: 2 },
+      { id: "n_consume", name: "FREE MEMORY", desc: "Очищает соседние с NULL ячейки и возвращает BIT CHARGE.", cost: 2, cooldown: 1 },
+      { id: "n_horizon", name: "EVENT LOOP", desc: "На шесть bit-shift повышает мощность всех эксплойтов.", cost: 2, cooldown: 2 },
+      { id: "n_second", name: "SEGFAULT STEP", desc: "Четыре раза разрешает сдвигать ячейки по диагонали.", cost: 3, cooldown: 3 },
+      { id: "n_ult", name: "ZERO TRACE", desc: "Замкнутый след NULL pointer вызывает segfault у всех активных процессов.", cost: 6, cooldown: 5, ultimate: true },
     ],
   },
 ];
 
 const ROOM_DEFS = {
-  combat: { name: "ОБЫЧНАЯ СТЫЧКА", symbol: "×", risk: "Стандартный риск", desc: "Тактический бой против процедурной пачки." },
-  elite: { name: "ELITE//HUNT", symbol: "!", risk: "Высокий риск · редкая награда", desc: "Усиленные противники с дополнительными мутациями." },
-  merchant: { name: "BLACK MARKET", symbol: "₡", risk: "Безопасная зона", desc: "Потратьте кредиты на ремонт, параметры и реликвии." },
-  upgrade: { name: "NULL FORGE", symbol: "+", risk: "Безопасная зона", desc: "Улучшите одну способность или ядро персонажа." },
-  boss: { name: "BOSS GATE", symbol: "Ω", risk: "Критический риск", desc: "Кардинально отличающийся хранитель акта." },
-  treasure: { name: "FORGOTTEN CACHE", symbol: "◇", risk: "Неизвестный риск", desc: "Выберите безопасную добычу или проклятую редкость." },
-  anomaly: { name: "GLITCH ANOMALY", symbol: "≈", risk: "Изменение правил", desc: "Примите нестабильный модификатор следующей битвы." },
-  repair: { name: "REPAIR BAY", symbol: "✚", risk: "Безопасная зона", desc: "Восстановите корпус или сбросьте накопленный HEAT." },
-  dice: { name: "DICE SHRINE", symbol: "⚄", risk: "Управляемая случайность", desc: "Перепрошейте кости или обменяйте здоровье на удачу." },
-  memory: { name: "MEMORY ECHO", symbol: "⌁", risk: "Архивная зона", desc: "Усильте случайный фрагмент боевой памяти." },
-  shortcut: { name: "VOID SHORTCUT", symbol: "↯", risk: "Пропуск · +HEAT", desc: "Пропустите часть этажа ценой нестабильности." },
+  combat: { name: "FIREWALL BREACH", symbol: ">_", risk: "Known CVE · standard trace", desc: "Взломайте процедурный кластер защитных процессов." },
+  elite: { name: "ZERO-DAY HUNT", symbol: "0D", risk: "Critical trace · rare module", desc: "Неизвестная уязвимость против усиленных системных процессов." },
+  merchant: { name: "PACKAGE REPOSITORY", symbol: "@", risk: "Trusted endpoint", desc: "Обменяйте BUG BOUNTY на hotfix, апгрейды и exploit-модули." },
+  upgrade: { name: "EXPLOIT COMPILER", symbol: "++", risk: "Offline endpoint", desc: "Повышает версию одной команды оператора." },
+  boss: { name: "ROOT GATE", symbol: "#", risk: "Kernel-level threat", desc: "Главный системный процесс stack frame со своими правилами." },
+  treasure: { name: "DATA DUMP", symbol: "{}", risk: "Unverified payload", desc: "Выберите подписанный пакет или заражённый zero-day модуль." },
+  anomaly: { name: "UNDEFINED BEHAVIOR", symbol: "UB", risk: "Runtime mutation", desc: "Внедрите нестабильный флаг в следующий breach." },
+  repair: { name: "DEBUGGER", symbol: "::", risk: "Offline endpoint", desc: "Восстановите INTEGRITY или уменьшите TRACE." },
+  dice: { name: "ENTROPY POOL", symbol: "01", risk: "Controlled randomness", desc: "Перепрограммируйте регистры ZERO/ONE ценой ресурсов." },
+  memory: { name: "CORE DUMP", symbol: "0x", risk: "Archived runtime", desc: "Восстановите или продайте снимок прошлого исполнения." },
+  shortcut: { name: "NULL POINTER", symbol: "*0", risk: "Skip frame · +TRACE", desc: "Перепрыгните stack frame ценой заметного цифрового следа." },
 };
 
 const RELICS = [
-  { id: "broken_d6", name: "BROKEN D6", desc: "Первая выпавшая единица каждого боя превращается в шестёрку." },
-  { id: "void_compass", name: "VOID COMPASS", desc: "Подсвечивает сдвиг, увеличивающий число правильных плиток." },
-  { id: "chrome_memory", name: "CHROME MEMORY", desc: "Первое заражение поля в каждом бою отменяется." },
-  { id: "black_coin", name: "BLACK COIN", desc: "При HEAT 30+ награды кредитами увеличены на 50%." },
-  { id: "recursive_lens", name: "RECURSIVE LENS", desc: "Каждая третья комбинация повторяется с 35% силы." },
-  { id: "dead_clock", name: "DEAD CLOCK", desc: "Первые два сдвига боя не двигают вражеские таймеры." },
-  { id: "prime_skull", name: "PRIME SKULL", desc: "Комбинации с простыми числами наносят на 20% больше урона." },
-  { id: "null_crown", name: "NULL CROWN", desc: "Белая кость сохраняется между циклами." },
-  { id: "overclock", name: "OVERCLOCK", desc: "Цикл содержит семь сдвигов, но в его конце добавляет 2 HEAT." },
-  { id: "blood_cache", name: "BLOOD CACHE", desc: "Уничтожение противника восстанавливает 3 HP." },
-  { id: "static_ward", name: "STATIC WARD", desc: "Каждый бой начинается с 10 ARMOR." },
-  { id: "last_packet", name: "LAST PACKET", desc: "Один раз за забег предотвращает смерть и восстанавливает 25% HP." },
+  { id: "broken_d6", name: "BIT OVERRIDE", desc: "Первое значение 001 в каждом breach автоматически заменяется на 110." },
+  { id: "void_compass", name: "CODE POINTER", desc: "Подсвечивает bit-shift, который увеличит число ячеек по правильным адресам." },
+  { id: "chrome_memory", name: "ZERO-DAY PATCH", desc: "Первое повреждение или блокировка памяти в каждом breach отменяется." },
+  { id: "black_coin", name: "BOUNTY MULTIPLIER", desc: "При TRACE 30+ награды BUG BOUNTY увеличиваются на 50%." },
+  { id: "recursive_lens", name: "RECURSION CACHE", desc: "Каждый третий эксплойт повторяется с 35% мощности." },
+  { id: "dead_clock", name: "ASYNC CLOCK", desc: "Первые два bit-shift breach не уменьшают таймеры системных процессов." },
+  { id: "prime_skull", name: "PRIME HASH", desc: "Эксплойты с простыми адресами наносят на 20% больше урона." },
+  { id: "null_crown", name: "REGISTER ZERO", desc: "Значение регистра ZERO сохраняется между execution cycle." },
+  { id: "overclock", name: "OVERCLOCK", desc: "Execution cycle содержит семь bit-shift, но в конце добавляет 2 TRACE." },
+  { id: "blood_cache", name: "KILL CACHE", desc: "Завершение системного процесса восстанавливает 3 INTEGRITY." },
+  { id: "static_ward", name: "FIREWALL RULE", desc: "Каждый breach начинается с 10 FIREWALL." },
+  { id: "last_packet", name: "LAST ACK", desc: "Один раз за exploit chain предотвращает disconnect и возвращает 25% INTEGRITY." },
 ];
 
 const ENEMY_DEFS = [
-  { id: "needle9", name: "NEEDLE-9", archetype: "ДАЛЬНИК", hp: 30, damage: 8, countdown: 3, intent: "ТОЧЕЧНЫЙ ВЫСТРЕЛ" },
-  { id: "railEye", name: "RAIL EYE", archetype: "ДАЛЬНИК", hp: 34, damage: 9, countdown: 4, intent: "ЛИНЕЙНЫЙ ЛУЧ" },
-  { id: "splinterCloud", name: "SPLINTER CLOUD", archetype: "ДАЛЬНИК", hp: 27, damage: 6, countdown: 2, intent: "РОЕВОЙ ОГОНЬ" },
-  { id: "nullHound", name: "NULL HOUND", archetype: "БЛИЖНИК", hp: 38, damage: 10, countdown: 3, intent: "ОХОТА НА VOID" },
-  { id: "riotCutter", name: "RIOT CUTTER", archetype: "БЛИЖНИК", hp: 48, damage: 9, countdown: 4, intent: "ВЫБИТЬ ПЛИТКУ" },
-  { id: "chainJack", name: "CHAIN JACK", archetype: "БЛИЖНИК", hp: 42, damage: 7, countdown: 3, intent: "ЦЕПНОЙ ЗАХВАТ" },
-  { id: "glitchWitch", name: "GLITCH WITCH", archetype: "МАГ", hp: 35, damage: 6, countdown: 4, intent: "ИСКАЗИТЬ ЧИСЛА" },
-  { id: "entropyMonk", name: "ENTROPY MONK", archetype: "МАГ", hp: 40, damage: 7, countdown: 3, intent: "ЭНТРОПИЙНЫЙ ЗНАК" },
-  { id: "chronoLich", name: "CHRONO LICH", archetype: "МАГ", hp: 37, damage: 5, countdown: 4, intent: "УСКОРИТЬ ПРОТОКОЛ" },
-  { id: "patchDrone", name: "PATCH DRONE", archetype: "САППОРТ", hp: 28, damage: 3, countdown: 3, intent: "РЕМОНТ СОЮЗНИКА" },
-  { id: "aegisNode", name: "AEGIS NODE", archetype: "САППОРТ", hp: 34, damage: 3, countdown: 4, intent: "ОБЩИЙ ЩИТ" },
-  { id: "protocolChoir", name: "PROTOCOL CHOIR", archetype: "САППОРТ", hp: 36, damage: 5, countdown: 3, intent: "ПЕРЕБРОС ПРОТОКОЛА" },
+  { id: "needle9", name: "SQL INJECTOR", archetype: "REMOTE", hp: 30, damage: 8, countdown: 3, intent: "TARGETED QUERY" },
+  { id: "railEye", name: "PORT SCANNER", archetype: "REMOTE", hp: 34, damage: 9, countdown: 4, intent: "ROW PROBE" },
+  { id: "splinterCloud", name: "BOTNET SWARM", archetype: "REMOTE", hp: 27, damage: 6, countdown: 2, intent: "PACKET FLOOD" },
+  { id: "nullHound", name: "NULL DEREF", archetype: "LOCAL", hp: 38, damage: 10, countdown: 3, intent: "CHASE POINTER" },
+  { id: "riotCutter", name: "RACE CONDITION", archetype: "LOCAL", hp: 48, damage: 9, countdown: 4, intent: "WRITE COLLISION" },
+  { id: "chainJack", name: "DEADLOCK", archetype: "LOCAL", hp: 42, damage: 7, countdown: 3, intent: "MUTEX LOCK" },
+  { id: "glitchWitch", name: "XSS WORM", archetype: "MALWARE", hp: 35, damage: 6, countdown: 4, intent: "CORRUPT VALUES" },
+  { id: "entropyMonk", name: "MEMORY LEAK", archetype: "MALWARE", hp: 40, damage: 7, countdown: 3, intent: "HEAP OVERFLOW" },
+  { id: "chronoLich", name: "CRON HIJACK", archetype: "MALWARE", hp: 37, damage: 5, countdown: 4, intent: "SCHEDULE ATTACK" },
+  { id: "patchDrone", name: "PATCH BOT", archetype: "SERVICE", hp: 28, damage: 3, countdown: 3, intent: "RESTORE PROCESS" },
+  { id: "aegisNode", name: "WAF NODE", archetype: "SERVICE", hp: 34, damage: 3, countdown: 4, intent: "SHARED FIREWALL" },
+  { id: "protocolChoir", name: "LOAD BALANCER", archetype: "SERVICE", hp: 36, damage: 5, countdown: 3, intent: "RESCHEDULE CLUSTER" },
 ];
 
 const BOSSES = [
-  { id: "emptyKing", name: "THE EMPTY KING", archetype: "BOSS//VOID", hp: 180, damage: 12, countdown: 3, intent: "EMPTY THRONE" },
-  { id: "oracleSix", name: "ORACLE OF SIX", archetype: "BOSS//DICE", hp: 220, damage: 11, countdown: 3, intent: "PREDICTED ROLL" },
-  { id: "infinityEngine", name: "THE INFINITY ENGINE", archetype: "BOSS//RECURSION", hp: 260, damage: 13, countdown: 4, intent: "RECORD / REPEAT" },
+  { id: "emptyKing", name: "STACK OVERFLOW", archetype: "ROOT//MEMORY", hp: 180, damage: 12, countdown: 3, intent: "OVERWRITE RETURN" },
+  { id: "oracleSix", name: "ZERO-DAY ORACLE", archetype: "ROOT//ENTROPY", hp: 220, damage: 11, countdown: 3, intent: "PREDICT INPUT" },
+  { id: "infinityEngine", name: "INFINITE RECURSION", archetype: "ROOT//LOOP", hp: 260, damage: 13, countdown: 4, intent: "CALL / REPEAT" },
 ];
 
 const MUTATIONS = [
-  { id: "chrome", name: "CHROME", desc: "+броня" },
-  { id: "echo", name: "ECHO", desc: "повторяет первое действие" },
-  { id: "nullborn", name: "NULLBORN", desc: "усиление рядом с VOID" },
-  { id: "loaded", name: "LOADED", desc: "искажает кости" },
-  { id: "feral", name: "FERAL", desc: "короткий таймер" },
-  { id: "recursive", name: "RECURSIVE", desc: "одно возрождение" },
+  { id: "chrome", name: "HARDENED", desc: "+FIREWALL" },
+  { id: "echo", name: "FORKED", desc: "повторяет первое действие" },
+  { id: "nullborn", name: "NULLSAFE", desc: "усиливается рядом с NULL pointer" },
+  { id: "loaded", name: "POISONED", desc: "меняет регистры ZERO/ONE" },
+  { id: "feral", name: "LOW LATENCY", desc: "короткий таймер" },
+  { id: "recursive", name: "RECURSIVE", desc: "перезапускается один раз" },
 ];
 
 
@@ -288,18 +289,18 @@ const TUTORIAL_STEPS = [
     id: "map_welcome",
     screen: "map",
     target: ".floor-track",
-    title: "Этаж — это цепочка решений",
-    body: "Первый этаж содержит <strong>шесть узлов</strong> и служит обучающим маршрутом. Завершённые комнаты отмечаются слева направо. Начиная со второго этажа маршруты снова генерируются процедурно и предлагают несколько вариантов пути.",
+    title: "Stack frame — это цепочка endpoints",
+    body: "Первый stack frame содержит <strong>шесть endpoints</strong> и работает как безопасная песочница. Завершённые адреса отмечаются слева направо. Со второго frame сеть генерируется процедурно и открывает несколько веток exploit chain.",
     next: "map_inventory",
-    button: "Продолжить",
+    button: "Продолжить boot",
   },
   {
     id: "map_inventory",
     screen: "map",
     target: "#inventoryButton",
-    title: "Инвентарь и состояние забега",
-    body: "Инвентарь хранит реликвии, улучшения способностей и все ресурсы текущего забега. Он доступен в любой момент через кнопку <strong>▣</strong> в верхней панели.",
-    hint: "Откройте инвентарь кнопкой ▣.",
+    title: "Стек активного процесса",
+    body: "Process stack хранит exploit-модули, версии команд и ресурсы текущей цепочки взлома. Он доступен в любой момент через кнопку <strong>▣</strong> в верхней панели.",
+    hint: "Откройте process stack кнопкой ▣.",
     completeOn: { name: "inventory_opened" },
     next: "inventory_details",
   },
@@ -307,19 +308,19 @@ const TUTORIAL_STEPS = [
     id: "inventory_details",
     screen: "map",
     target: "#inventoryModal .inventory-identity",
-    title: "Что сохраняется между комнатами",
-    body: "<strong>HP, NULL ENERGY, кредиты, HEAT, реликвии и уровни навыков</strong> переходят в следующую комнату. ARMOR держится, пока не поглотит урон. Реликвии меняют правила забега, а улучшенные способности получают +20% к числовым эффектам за уровень.",
+    title: "Что живёт между endpoints",
+    body: "<strong>INTEGRITY, BIT CHARGE, BUG BOUNTY, TRACE, exploit-модули и версии команд</strong> переходят в следующий endpoint. FIREWALL сохраняется, пока не поглотит урон. Каждый upgrade команды добавляет примерно 20% к её числовым эффектам.",
     next: "map_room",
-    button: "Закрыть инвентарь",
+    button: "Закрыть process stack",
     onNext: "closeInventory",
   },
   {
     id: "map_room",
     screen: "map",
     target: '.room-card[data-room-type="combat"]',
-    title: "Обычная стычка",
-    body: "В боевых узлах противники действуют по таймерам. На первом этаже встречаются простые пачки; выше появятся дальники, ближники, маги, саппорты и их совместные меты.",
-    hint: "Войдите в ОБЫЧНУЮ СТЫЧКУ.",
+    title: "Firewall breach",
+    body: "Во время breach системные процессы исполняют команды по таймерам. В первом frame встречаются простые защиты; выше соединяются REMOTE, LOCAL, MALWARE и SERVICE-процессы.",
+    hint: "Откройте endpoint FIREWALL BREACH.",
     completeOn: { name: "room_entered", type: "combat", stage: 0 },
     next: "combat_character",
   },
@@ -327,8 +328,8 @@ const TUTORIAL_STEPS = [
     id: "combat_character",
     screen: "combat",
     target: ".player-panel",
-    title: "Ваш персонаж",
-    body: "Слева показаны HP, броня, энергия и <strong>уникальная пассивная способность</strong> выбранного героя. Каждый из шести персонажей по-разному использует поле: через линии, защиту, заражения, кости, историю ходов или саму VOID.",
+    title: "Ваш operator process",
+    body: "Слева показаны INTEGRITY, FIREWALL, BIT CHARGE и <strong>пассивный runtime</strong> выбранного оператора. Каждый из шести процессов по-своему работает со стеком: ускоряет указатели, строит защиту, внедряет zero-day, фаззит входы, откатывает снимки или управляет NULL.",
     next: "combat_enemy",
     button: "Далее",
   },
@@ -336,8 +337,8 @@ const TUTORIAL_STEPS = [
     id: "combat_enemy",
     screen: "combat",
     target: ".enemies-panel",
-    title: "Намерения противников",
-    body: "Каждая карточка показывает здоровье, броню, состояния и намерение. Число справа — сколько обычных сдвигов осталось до действия врага. Клик по карточке выбирает цель для точечных атак.",
+    title: "Очередь системных вызовов",
+    body: "Карточка показывает INTEGRITY процесса, FIREWALL, статусы и следующий системный вызов. Число справа — сколько обычных bit-shift осталось до его выполнения. Клик выбирает процесс целью одиночного payload.",
     next: "combat_cycle",
     button: "Далее",
   },
@@ -345,18 +346,18 @@ const TUTORIAL_STEPS = [
     id: "combat_cycle",
     screen: "combat",
     target: ".combat-status-line",
-    title: "Кости и цикл из шести сдвигов",
-    body: "Две кости задают протоколы комбинаций. После шести обычных сдвигов начинается новый цикл: кости перебрасываются, кулдауны уменьшаются, а периодические эффекты срабатывают. Ручной REROLL стоит 1 NULL и повышает HEAT.",
+    title: "Регистры ZERO/ONE и execution cycle",
+    body: "Два entropy-регистра показывают бинарные значения от 001 до 110 и задают trigger эксплойта. После шести bit-shift начинается новый execution cycle: регистры обновляются, cooldown команд уменьшается, периодические процессы выполняются. Ручной RANDOMIZE стоит 1 BIT CHARGE и добавляет TRACE.",
     next: "combat_move",
-    button: "Перейти к полю",
+    button: "Перейти к stack grid",
   },
   {
     id: "combat_move",
     screen: "combat",
     target: ".puzzle-grid",
-    title: "Основное действие — сдвиг плитки",
-    body: "Двигать можно только подсвеченную плитку рядом с VOID. Каждый сдвиг даёт NULL ENERGY и обычно уменьшает таймеры врагов. Правильно поставленная плитка также повышает ORDER.",
-    hint: "Сдвиньте любую доступную плитку кликом, WASD или стрелками.",
+    title: "Основное действие — bit-shift",
+    body: "Перемещать можно только подсвеченную ячейку рядом с NULL pointer. Каждый bit-shift даёт BIT CHARGE и обычно уменьшает таймеры системных процессов. Ячейка по правильному адресу повышает COMPILE.",
+    hint: "Выполните любой доступный bit-shift кликом, WASD или стрелками.",
     completeOn: { name: "tile_moved" },
     next: "combat_after_move",
   },
@@ -364,18 +365,18 @@ const TUTORIAL_STEPS = [
     id: "combat_after_move",
     screen: "combat",
     target: ".move-counter",
-    title: "Один ход изменил весь бой",
-    body: "Счётчик цикла увеличился, а таймер противника уменьшился. Поэтому бессмысленные движения опасны. Полностью собранные пятнашки запускают <strong>ZERO STATE</strong>: массовый урон, лечение, очищение и новое решаемое поле.",
+    title: "Один bit-shift двигает весь runtime",
+    body: "Счётчик cycle увеличился, а таймер защиты уменьшился. Лишние перестановки опасны. Полностью скомпилированный стек запускает <strong>STACK OVERFLOW</strong>: массовый урон, hotfix, очистку и новую решаемую раскладку.",
     next: "combat_ability",
-    button: "Изучить способности",
+    button: "Изучить команды",
   },
   {
     id: "combat_ability",
     screen: "combat",
     target: ".ability-stack",
-    title: "Способности героя",
-    body: "Способности тратят NULL ENERGY, но сами по себе не продвигают вражеские таймеры. После использования они уходят на кулдаун в циклах. Ультимейт — пятая способность — дорогой инструмент для перелома боя.",
-    hint: "Активируйте любую доступную способность кнопкой или клавишей 1–5.",
+    title: "Команды оператора",
+    body: "Команды расходуют BIT CHARGE, но не двигают системные таймеры. После вызова они получают cooldown в execution cycle. Пятая команда — дорогой root-exploit для аварийного захвата системы.",
+    hint: "Выполните любую доступную команду кнопкой или клавишей 1–5.",
     completeOn: { name: "ability_used" },
     next: "combat_combo_intro",
   },
@@ -383,19 +384,19 @@ const TUTORIAL_STEPS = [
     id: "combat_combo_intro",
     screen: "combat",
     target: ".combo-panel",
-    title: "192 боевые комбинации",
-    body: "Комбинация состоит из трёх модулей: <strong>шаблон поля × эффект × протокол костей</strong>. 8 шаблонов, 8 эффектов и 3 протокола образуют 192 варианта атак, защиты, лечения и контроля. Для примера система уже подобрала готовую атакующую комбинацию.",
+    title: "192 компилируемых эксплойта",
+    body: "Эксплойт состоит из трёх модулей: <strong>memory pattern × payload × trigger</strong>. 8 схем памяти, 8 payload и 3 условия регистров образуют 192 варианта инъекций, защиты, hotfix и контроля. Для примера компилятор уже собрал рабочий атакующий код.",
     next: "combat_combo_activate",
-    button: "Активировать пример",
+    button: "Скомпилировать пример",
     onEnter: "prepareCombo",
   },
   {
     id: "combat_combo_activate",
     screen: "combat",
     target: "#activateComboButton",
-    title: "Готовая комбинация",
-    body: "Строка результата сообщает название, силу и использованные плитки. Активация стоит 2 NULL. Одна и та же комбинация может сработать только один раз за цикл, но после переброса цикла снова станет доступной.",
-    hint: "Нажмите ACTIVATE −2 или клавишу Space.",
+    title: "Эксплойт готов к EXEC",
+    body: "Строка результата показывает имя, мощность и использованные адреса. Выполнение стоит 2 BIT CHARGE. Один и тот же эксплойт запускается один раз за cycle и снова доступен после обновления регистров.",
+    hint: "Нажмите EXEC −2 или клавишу Space.",
     completeOn: { name: "combo_activated" },
     next: "combat_log",
   },
@@ -403,18 +404,18 @@ const TUTORIAL_STEPS = [
     id: "combat_log",
     screen: "combat",
     target: ".log-panel",
-    title: "Журнал фиксирует причинно-следственные связи",
-    body: "Здесь отображаются урон, броня, очистка, срабатывания пассивов и действия врагов. Когда сборка станет сложнее, журнал поможет понять, почему комбинация усилилась или была заблокирована.",
+    title: "Console объясняет каждый системный вызов",
+    body: "Console фиксирует урон, FIREWALL, очистку памяти, пассивный runtime и действия защиты. В сложной сборке лог покажет, почему эксплойт усилился, повторился или был заблокирован.",
     next: "combat_finish",
-    button: "Завершить бой",
+    button: "Завершить breach",
   },
   {
     id: "combat_finish",
     screen: "combat",
     target: ".combat-grid",
-    title: "Закончите первую стычку",
-    body: "Теперь объединяйте сдвиги, способности и комбинации самостоятельно. Следите за таймером врага и поддерживайте броню. Учебная цель ослаблена, чтобы вы могли безопасно закрепить механику.",
-    hint: "Уничтожьте противника.",
+    title: "Завершите первый breach",
+    body: "Теперь соединяйте bit-shift, команды и эксплойты самостоятельно. Следите за системным таймером и поддерживайте FIREWALL. Учебный процесс ослаблен для безопасной проверки механики.",
+    hint: "Завершите защитный процесс.",
     completeOn: { name: "combat_completed", roomType: "combat", stage: 0 },
     next: "reward_first",
     onEnter: "softenEnemy",
@@ -425,9 +426,9 @@ const TUTORIAL_STEPS = [
     id: "reward_first",
     screen: "reward",
     target: ".reward-grid",
-    title: "Награда формирует сборку",
-    body: "После боя кредиты начисляются автоматически, а из трёх дополнительных наград можно выбрать одну. Ядро, лечение, броня, реликвия или улучшение способности сохраняются в инвентаре до конца забега.",
-    hint: "Выберите одну награду.",
+    title: "Loot формирует exploit build",
+    body: "BUG BOUNTY за breach начисляется автоматически, а из трёх пакетов можно установить один. Апгрейд ядра, hotfix, FIREWALL, модуль или новая версия команды сохраняются в process stack до конца exploit chain.",
+    hint: "Установите один loot-пакет.",
     completeOn: { name: "reward_chosen", stage: 0 },
     next: "map_upgrade",
   },
@@ -435,9 +436,9 @@ const TUTORIAL_STEPS = [
     id: "map_upgrade",
     screen: "map",
     target: '.room-card[data-room-type="upgrade"]',
-    title: "Небоевые узлы",
-    body: "Не каждая локация является стычкой. Торговцы, кузницы, сокровища, аномалии, ремонтные станции, святилища костей, эхо памяти и короткие пути меняют сборку и уровень риска.",
-    hint: "Войдите в NULL FORGE.",
+    title: "Сервисные endpoints",
+    body: "Не каждый endpoint запускает breach. Репозитории, компиляторы, data dump, undefined behavior, debugger, entropy pool, core dump и NULL pointer меняют exploit build и уровень TRACE.",
+    hint: "Откройте EXPLOIT COMPILER.",
     completeOn: { name: "room_entered", type: "upgrade", stage: 1 },
     next: "upgrade_choice",
   },
@@ -445,9 +446,9 @@ const TUTORIAL_STEPS = [
     id: "upgrade_choice",
     screen: "event",
     target: ".choice-grid",
-    title: "Улучшение способности",
-    body: "Кузница повышает уровень одного навыка. Каждый уровень усиливает числовые параметры способности примерно на 20%. Уровни видны в инвентаре и сохраняются до завершения забега.",
-    hint: "Выберите любую способность для улучшения.",
+    title: "Новая версия команды",
+    body: "Компилятор повышает версию одной команды. Каждый upgrade усиливает числовые параметры примерно на 20%. Версии видны в process stack и сохраняются до завершения exploit chain.",
+    hint: "Выберите команду для recompilation.",
     completeOn: { name: "event_action", actionPrefix: "upgrade:" },
     next: "map_second_combat",
   },
@@ -455,9 +456,9 @@ const TUTORIAL_STEPS = [
     id: "map_second_combat",
     screen: "map",
     target: '.room-card[data-room-type="combat"]',
-    title: "Практическая стычка",
-    body: "Во второй стычке подсказки не будут останавливать вас после каждого действия. Попробуйте самостоятельно выбрать цель, оценить таймер, собрать комбинацию и использовать улучшенную способность.",
-    hint: "Войдите во вторую ОБЫЧНУЮ СТЫЧКУ.",
+    title: "Практический breach",
+    body: "Во втором breach подсказки не останавливают runtime после каждого действия. Самостоятельно выберите процесс, оцените таймер, скомпилируйте эксплойт и вызовите улучшенную команду.",
+    hint: "Откройте второй FIREWALL BREACH.",
     completeOn: { name: "room_entered", type: "combat", stage: 2 },
     next: "combat_practice",
   },
@@ -465,9 +466,9 @@ const TUTORIAL_STEPS = [
     id: "combat_practice",
     screen: "combat",
     target: ".combat-grid",
-    title: "Свободная практика",
-    body: "Помните: сдвиг двигает время, способности — нет, а комбинации зависят от геометрии поля и костей. При необходимости REROLL изменит кости за энергию и HEAT.",
-    hint: "Победите вторую пачку любым способом. Доступны поле, способности, комбинации, REROLL и выбор цели.",
+    title: "Свободное исполнение",
+    body: "Помните: bit-shift двигает runtime, команды — нет, а эксплойты зависят от схемы памяти и регистров ZERO/ONE. RANDOMIZE обновляет регистры за BIT CHARGE и TRACE.",
+    hint: "Завершите кластер любым способом. Доступны stack grid, команды, exploit compiler, RANDOMIZE и выбор процесса.",
     completeOn: { name: "combat_completed", roomType: "combat", stage: 2 },
     next: "reward_second",
     onEnter: "practiceAid",
@@ -477,9 +478,9 @@ const TUTORIAL_STEPS = [
     id: "reward_second",
     screen: "reward",
     target: ".reward-grid",
-    title: "Сравнивайте награду со сборкой",
-    body: "Не существует универсально лучшей награды. Атакующий герой может предпочесть энергию, защитный — максимальное HP, а сборка вокруг комбинаций — реликвию или усиление конкретной способности.",
-    hint: "Выберите награду и продолжите маршрут.",
+    title: "Сверяйте пакет с exploit build",
+    body: "Универсально лучшего пакета нет. Атакующему процессу полезнее BIT CHARGE, защитному — максимум INTEGRITY, а сборке вокруг compiler — новый модуль или upgrade конкретной команды.",
+    hint: "Установите пакет и продолжите exploit chain.",
     completeOn: { name: "reward_chosen", stage: 2 },
     next: "map_merchant",
   },
@@ -487,9 +488,9 @@ const TUTORIAL_STEPS = [
     id: "map_merchant",
     screen: "map",
     target: '.room-card[data-room-type="merchant"]',
-    title: "BLACK MARKET",
-    body: "Кредиты не дают силу сами по себе — их нужно превратить в лечение, ёмкость энергии или реликвии. Ассортимент торговца меняется от забега к забегу.",
-    hint: "Войдите к торговцу.",
+    title: "PACKAGE REPOSITORY",
+    body: "BUG BOUNTY не усиливает код само по себе — репутацию нужно обменять на hotfix, BIT CHARGE или exploit-модули. Пакеты репозитория меняются в каждой цепочке.",
+    hint: "Подключитесь к PACKAGE REPOSITORY.",
     completeOn: { name: "room_entered", type: "merchant", stage: 3 },
     next: "merchant_intro",
   },
@@ -497,9 +498,9 @@ const TUTORIAL_STEPS = [
     id: "merchant_intro",
     screen: "event",
     target: ".shop-grid",
-    title: "Покупки попадают в инвентарь",
-    body: "Стоимость указана в кредитах. Купленные реликвии и ядра действуют сразу; лечение восстанавливает текущий HP. В обучении сначала совершите одну доступную покупку.",
-    hint: "Купите FIELD PATCH или другой доступный предмет.",
+    title: "Установленные пакеты попадают в stack",
+    body: "Стоимость указана в BUG BOUNTY. Модули и core-upgrade активируются сразу; hotfix восстанавливает текущую INTEGRITY. Для продолжения установите один доступный пакет.",
+    hint: "Установите HOTFIX или другой доступный пакет.",
     completeOn: { name: "event_action", actionPrefix: "buy:" },
     next: "merchant_leave",
   },
@@ -507,9 +508,9 @@ const TUTORIAL_STEPS = [
     id: "merchant_leave",
     screen: "event",
     target: '[data-event-action="leave"]',
-    title: "Узел можно покинуть",
-    body: "У торговца разрешено несколько покупок, пока хватает кредитов. Когда подготовка завершена, выход фиксирует комнату и возвращает вас на карту.",
-    hint: "Покиньте рынок.",
+    title: "Соединение можно закрыть",
+    body: "Из репозитория можно установить несколько пакетов, пока хватает BUG BOUNTY. Disconnect фиксирует endpoint и возвращает operator process к карте адресов.",
+    hint: "Закройте соединение с репозиторием.",
     completeOn: { name: "event_action", action: "leave" },
     next: "map_treasure",
   },
@@ -517,9 +518,9 @@ const TUTORIAL_STEPS = [
     id: "map_treasure",
     screen: "map",
     target: '.room-card[data-room-type="treasure"]',
-    title: "Рискованные события",
-    body: "События предлагают обмен: безопасность против силы. HEAT повышает сложность будущих пачек, но некоторые реликвии и награды становятся выгоднее при высоком HEAT.",
-    hint: "Откройте FORGOTTEN CACHE.",
+    title: "Неподписанные data dump",
+    body: "Data dump предлагает обмен стабильности на мощность. TRACE усиливает будущие защитные кластеры, но некоторые модули и BUG BOUNTY становятся выгоднее при высоком цифровом следе.",
+    hint: "Откройте DATA DUMP.",
     completeOn: { name: "room_entered", type: "treasure", stage: 4 },
     next: "treasure_choice",
   },
@@ -527,9 +528,9 @@ const TUTORIAL_STEPS = [
     id: "treasure_choice",
     screen: "event",
     target: ".choice-grid",
-    title: "Выбор без идеального ответа",
-    body: "Белый контейнер безопасен, чёрный выдаёт реликвию ценой HEAT, а VOID расширяет запас энергии ценой HP. Такие решения определяют характер текущего забега.",
-    hint: "Выберите любой контейнер.",
+    title: "У каждого payload своя цена",
+    body: "SIGNED пакет безопасен, ZERO-DAY пакет выдаёт модуль ценой TRACE, а NULL пакет расширяет BIT CHARGE ценой INTEGRITY. Эти решения определяют архитектуру текущего exploit build.",
+    hint: "Выберите один payload.",
     completeOn: { name: "event_action", actionPrefix: "treasure:" },
     next: "map_elite",
   },
@@ -537,9 +538,9 @@ const TUTORIAL_STEPS = [
     id: "map_elite",
     screen: "map",
     target: '.room-card[data-room-type="elite"]',
-    title: "Финал этажа — элитная стычка",
-    body: "Элитные пачки содержат больше противников, дополнительную броню и мутации. Награды за них лучше, но ошибки в управлении таймерами наказываются сильнее.",
-    hint: "Войдите в ELITE//HUNT.",
+    title: "Финал frame — ZERO-DAY HUNT",
+    body: "Усиленные кластеры содержат больше процессов, дополнительный FIREWALL и runtime-модификаторы. Loot лучше, но ошибки в управлении таймерами наказываются сильнее.",
+    hint: "Откройте ZERO-DAY HUNT.",
     completeOn: { name: "room_entered", type: "elite", stage: 5 },
     next: "elite_intro",
   },
@@ -547,18 +548,18 @@ const TUTORIAL_STEPS = [
     id: "elite_intro",
     screen: "combat",
     target: ".enemies-panel",
-    title: "Пачки и мутации",
-    body: "У элиты могут появиться CHROME, ECHO, NULLBORN, LOADED, FERAL или RECURSIVE. Сначала определите приоритетную цель: саппортов и магов часто выгодно уничтожать раньше фронтовиков.",
+    title: "Кластеры и runtime-модификаторы",
+    body: "Процессы могут получить HARDENED, FORKED, NULLSAFE, POISONED, LOW LATENCY или RECURSIVE. Сначала назначьте приоритет: SERVICE и MALWARE обычно выгодно завершать раньше LOCAL-защиты.",
     next: "elite_finish",
-    button: "Начать элитный бой",
+    button: "Запустить zero-day",
   },
   {
     id: "elite_finish",
     screen: "combat",
     target: ".combat-grid",
-    title: "Финальная проверка",
-    body: "Используйте всё изученное: выбор цели, броню, способности, кости и комбо-конструктор. После этой победы первый этаж и обучение будут завершены.",
-    hint: "Победите элитную пачку.",
+    title: "Финальный penetration test",
+    body: "Используйте всё изученное: выбор процесса, FIREWALL, команды, регистры ZERO/ONE и exploit compiler. После успеха первый stack frame и sandbox будут завершены.",
+    hint: "Завершите усиленный кластер.",
     completeOn: { name: "combat_completed", roomType: "elite", stage: 5 },
     next: "reward_elite",
     onEnter: "eliteAid",
@@ -569,9 +570,9 @@ const TUTORIAL_STEPS = [
     id: "reward_elite",
     screen: "reward",
     target: ".reward-grid",
-    title: "Последняя награда обучения",
-    body: "Элитные награды чаще содержат реликвии. Выбранный предмет останется в инвентаре и поможет на следующем, уже процедурном этаже.",
-    hint: "Выберите финальную награду.",
+    title: "Последний sandbox-пакет",
+    body: "Zero-day loot чаще содержит exploit-модули. Установленный пакет останется в process stack и поможет в следующем процедурном frame.",
+    hint: "Установите финальный пакет.",
     completeOn: { name: "reward_chosen", stage: 5 },
     next: "floor_complete",
   },
@@ -579,9 +580,9 @@ const TUTORIAL_STEPS = [
     id: "floor_complete",
     screen: "floorComplete",
     target: "#nextFloorButton",
-    title: "Обучение завершено",
-    body: "Вы прошли полный цикл: карта → бой → награда → развитие сборки. Со второго этажа появятся развилки и более сложные пачки. Каждый третий этаж заканчивается уникальным боссом.",
-    hint: "Нажмите «Следующий этаж», чтобы перейти к обычному roguelike-забегу.",
+    title: "Sandbox пройден",
+    body: "Вы выполнили полный runtime: адреса → breach → loot → upgrade. Со второго stack frame появятся ветвления и сложные кластеры. Каждый третий frame заканчивается root-процессом.",
+    hint: "Нажмите «Следующий stack frame», чтобы начать процедурную exploit chain.",
     completeOn: { name: "next_floor" },
     next: null,
     completeBadge: true,
@@ -610,7 +611,7 @@ const Game = {
     this.cacheDom();
     this.bindGlobalEvents();
     this.state.seedDraft = this.makeSeed();
-    $("#buildLabel").textContent = `BUILD ${BUILD} // VANILLA`;
+    $("#buildLabel").textContent = `BUILD ${BUILD} // ZERO-DAY`;
     this.render();
   },
 
@@ -772,7 +773,7 @@ const Game = {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
-      this.toast("Не удалось записать сохранение.", "error");
+      this.toast("Не удалось записать process snapshot.", "error");
     }
   },
 
@@ -788,7 +789,7 @@ const Game = {
   loadGame() {
     try {
       const payload = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (!payload?.run?.heroId) throw new Error("Пустое сохранение");
+      if (!payload?.run?.heroId) throw new Error("Empty process snapshot");
       this.state.run = payload.run;
       this.state.combat = payload.combat || null;
       this.state.currentRoom = payload.currentRoom || null;
@@ -799,10 +800,10 @@ const Game = {
       this.ensureLoadedState();
       this.closeModal();
       this.render();
-      this.toast("Забег восстановлен.", "success");
+      this.toast("Process snapshot restored.", "success");
     } catch {
       localStorage.removeItem(STORAGE_KEY);
-      this.toast("Сохранение повреждено и было удалено.", "error");
+      this.toast("Process snapshot повреждён и удалён.", "error");
       this.goToTitle();
     }
   },
@@ -884,11 +885,11 @@ const Game = {
     }
     const run = this.state.run;
     this.runHud.innerHTML = `
-      <span class="hud-item"><span class="hud-label">Этаж</span><span class="hud-value">${run.floor}</span></span>
-      <span class="hud-item"><span class="hud-label">HP</span><span class="hud-value ${run.hp <= run.maxHp * 0.3 ? "danger" : ""}">${Math.ceil(run.hp)}/${run.maxHp}</span></span>
-      <span class="hud-item"><span class="hud-label">NULL</span><span class="hud-value energy">${Math.floor(run.energy)}/${run.maxEnergy}</span></span>
-      <span class="hud-item"><span class="hud-label">₡</span><span class="hud-value credit">${run.credits}</span></span>
-      <span class="hud-item"><span class="hud-label">HEAT</span><span class="hud-value ${run.heat >= 60 ? "danger" : ""}">${run.heat}</span></span>
+      <span class="hud-item"><span class="hud-label">FRAME</span><span class="hud-value">${run.floor}</span></span>
+      <span class="hud-item"><span class="hud-label">INTEGRITY</span><span class="hud-value ${run.hp <= run.maxHp * 0.3 ? "danger" : ""}">${Math.ceil(run.hp)}/${run.maxHp}</span></span>
+      <span class="hud-item"><span class="hud-label">BIT</span><span class="hud-value energy">${Math.floor(run.energy)}/${run.maxEnergy}</span></span>
+      <span class="hud-item"><span class="hud-label">REP</span><span class="hud-value credit">${run.credits}</span></span>
+      <span class="hud-item"><span class="hud-label">TRACE</span><span class="hud-value ${run.heat >= 60 ? "danger" : ""}">${run.heat}</span></span>
     `;
   },
 
@@ -898,26 +899,26 @@ const Game = {
     this.screenEl.innerHTML = `
       <section class="title-screen">
         <div class="title-copy">
-          <p class="eyebrow">DARK CYBERPUNK PUZZLE ROGUELIKE</p>
-          <h1><span>NULL//15</span><span class="thin">INFINITE ROLL</span></h1>
-          <p class="title-lede">Каждый сдвиг плитки двигает таймеры врагов. Собирайте боевые шаблоны, управляйте костями и доберитесь до ядра бесконечной башни.</p>
+          <p class="eyebrow">STACK OVERFLOW // PROGRAMMING // ZERO-DAY ROGUELIKE</p>
+          <h1><span>NULL-15</span><span class="thin">ZERO-DAY STACK</span></h1>
+          <p class="title-lede">Сдвигайте ячейки памяти, компилируйте эксплойты и взламывайте stack frame за stack frame. Каждый bit-shift приближает системный вызов — думайте как программист, действуйте как pentester.</p>
           <div class="title-actions">
-            <button id="newRunButton" class="primary-button" type="button">Начать новый забег</button>
-            <button id="continueButton" class="secondary-button" type="button" ${canContinue ? "" : "disabled"}>Продолжить</button>
-            <button id="titleCodexButton" class="ghost-button" type="button">Открыть кодекс</button>
+            <button id="newRunButton" class="primary-button" type="button">Новая exploit chain</button>
+            <button id="continueButton" class="secondary-button" type="button" ${canContinue ? "" : "disabled"}>Resume process</button>
+            <button id="titleCodexButton" class="ghost-button" type="button">Открыть документацию</button>
           </div>
           <div class="seed-control">
-            <input id="seedInput" class="input" type="text" maxlength="24" value="${escapeHTML(this.state.seedDraft)}" aria-label="Seed забега">
-            <button id="randomSeedButton" class="secondary-button" type="button">Новый seed</button>
+            <input id="seedInput" class="input" type="text" maxlength="24" value="${escapeHTML(this.state.seedDraft)}" aria-label="Seed exploit chain">
+            <button id="randomSeedButton" class="secondary-button" type="button">Randomize seed</button>
           </div>
-          <div class="title-stats" aria-label="Объём прототипа">
-            <div class="title-stat"><strong>6</strong><span>персонажей</span></div>
-            <div class="title-stat"><strong>36</strong><span>способностей</span></div>
-            <div class="title-stat"><strong>192</strong><span>комбинации</span></div>
+          <div class="title-stats" aria-label="Возможности игры">
+            <div class="title-stat"><strong>6</strong><span>operator processes</span></div>
+            <div class="title-stat"><strong>36</strong><span>commands</span></div>
+            <div class="title-stat"><strong>192</strong><span>exploits</span></div>
           </div>
         </div>
         <div class="title-matrix" aria-hidden="true">
-          ${matrix.map((value) => value ? `<div class="title-tile">${value}</div>` : `<div class="title-tile void">Ø</div>`).join("")}
+          ${matrix.map((value) => value ? `<div class="title-tile">${bitAddress(value)}</div>` : `<div class="title-tile void">NULL</div>`).join("")}
         </div>
       </section>
     `;
@@ -949,10 +950,10 @@ const Game = {
       <section class="select-screen">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">BOOT SEQUENCE // SELECT SHELL</p>
-            <h2>Выберите носителя NULL</h2>
+            <p class="eyebrow">BOOT SEQUENCE // SELECT PROCESS</p>
+            <h2>Выберите operator process</h2>
           </div>
-          <p>У каждого героя шесть отличающихся способностей: одна пассивная, четыре боевых протокола и ультимейт. Умения улучшаются в ходе забега.</p>
+          <p>У каждого процесса свой passive runtime, четыре команды и root-exploit. Версии команд повышаются в ходе exploit chain.</p>
         </div>
         <div class="character-grid">
           ${HEROES.map((hero) => this.characterCardHTML(hero, hero.id === selected.id)).join("")}
@@ -963,8 +964,8 @@ const Game = {
             <strong id="selectedHeroLabel" style="display:block;margin-top:4px">${selected.name}</strong>
           </div>
           <div class="button-row">
-            <button id="backToTitleButton" class="ghost-button" type="button">Назад</button>
-            <button id="startRunButton" class="primary-button" type="button">Запустить забег</button>
+            <button id="backToTitleButton" class="ghost-button" type="button">Abort boot</button>
+            <button id="startRunButton" class="primary-button" type="button">Execute chain</button>
           </div>
         </div>
       </section>
@@ -988,7 +989,7 @@ const Game = {
     const abilities = [hero.passive, ...hero.abilities];
     return `
       <button class="character-card ${selected ? "selected" : ""}" data-hero-id="${hero.id}" type="button" aria-pressed="${selected}">
-        <span class="character-index">SHELL_${hero.index}</span>
+        <span class="character-index">PROCESS_${hero.index}</span>
         <span>
           <span class="character-name">${hero.name}</span>
           <span class="character-role">${hero.role}</span>
@@ -999,7 +1000,7 @@ const Game = {
             ${abilities.map((ability, index) => `<li><strong>${index === 0 ? "P" : index}.</strong> ${ability.name}</li>`).join("")}
           </ul>
         </span>
-        <span class="character-stats"><span>HP <strong>${hero.hp}</strong></span><span>NULL <strong>${hero.energy}</strong></span></span>
+        <span class="character-stats"><span>INTEGRITY <strong>${hero.hp}</strong></span><span>BIT <strong>${hero.energy}</strong></span></span>
       </button>
     `;
   },
@@ -1051,7 +1052,7 @@ const Game = {
     this.state.screen = "map";
     this.saveGame();
     this.render();
-    this.toast(`${hero.name} подключён к башне.`, "success");
+    this.toast(`${hero.name}: exploit chain запущена.`, "success");
     this.beep(300, 0.08, "sawtooth", 0.015);
   },
 
@@ -1126,14 +1127,14 @@ const Game = {
       <section class="map-screen">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">FLOOR ${String(run.floor).padStart(2, "0")} // ${this.floorBiome(run.floor)}</p>
-            <h2>Выберите следующую локацию</h2>
+            <p class="eyebrow">STACK FRAME ${String(run.floor).padStart(2, "0")} // ${this.floorBiome(run.floor)}</p>
+            <h2>Выберите следующий endpoint</h2>
           </div>
-          <p>Этаж становится длиннее каждые два уровня. На каждом третьем этаже путь заканчивается уникальным боссом.</p>
+          <p>Стек расширяется каждые два frame. Каждый третий frame завершается уникальным root-процессом.</p>
         </div>
         <div class="map-layout">
           <div class="panel">
-            <div class="floor-track" data-tutorial-target="floor-track" aria-label="Прогресс этажа">
+            <div class="floor-track" data-tutorial-target="floor-track" aria-label="Прогресс stack frame">
               ${this.floorTrackHTML(run)}
             </div>
             <div class="room-choices">
@@ -1149,23 +1150,23 @@ const Game = {
                 </div>
                 <div class="hero-glyph">${hero.glyph}</div>
               </div>
-              <div class="stat-row"><span>HP</span><strong>${Math.ceil(run.hp)} / ${run.maxHp}</strong></div>
+              <div class="stat-row"><span>INTEGRITY</span><strong>${Math.ceil(run.hp)} / ${run.maxHp}</strong></div>
               <div class="stat-bar hp"><span style="--value:${pct(run.hp, run.maxHp)}"></span></div>
-              <div class="stat-row"><span>NULL ENERGY</span><strong>${Math.floor(run.energy)} / ${run.maxEnergy}</strong></div>
+              <div class="stat-row"><span>BIT CHARGE</span><strong>${Math.floor(run.energy)} / ${run.maxEnergy}</strong></div>
               <div class="stat-bar energy"><span style="--value:${pct(run.energy, run.maxEnergy)}"></span></div>
               <div class="relic-tags">
-                ${run.relics.length ? run.relics.map((id) => `<span class="tag">${RELICS.find((relic) => relic.id === id)?.name || id}</span>`).join("") : `<span class="tag">NO RELICS</span>`}
+                ${run.relics.length ? run.relics.map((id) => `<span class="tag">${RELICS.find((relic) => relic.id === id)?.name || id}</span>`).join("") : `<span class="tag">NO MODULES</span>`}
               </div>
             </div>
             <div class="run-list">
-              <div class="run-list-item"><span>Пройдено комнат</span><strong>${run.path.length}</strong></div>
-              <div class="run-list-item"><span>Уничтожено целей</span><strong>${run.kills}</strong></div>
-              <div class="run-list-item"><span>Активировано комбо</span><strong>${run.comboCount}</strong></div>
-              <div class="run-list-item"><span>Боссов побеждено</span><strong>${run.bossesDefeated}</strong></div>
-              <div class="run-list-item"><span>Счёт</span><strong>${Math.floor(run.score)}</strong></div>
+              <div class="run-list-item"><span>Endpoints closed</span><strong>${run.path.length}</strong></div>
+              <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
+              <div class="run-list-item"><span>Exploits executed</span><strong>${run.comboCount}</strong></div>
+              <div class="run-list-item"><span>Root processes</span><strong>${run.bossesDefeated}</strong></div>
+              <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
               <div class="run-list-item"><span>Seed</span><strong>${escapeHTML(run.seed)}</strong></div>
             </div>
-            <button id="mapCodexButton" class="secondary-button" type="button">Комбо-кодекс: 192</button>
+            <button id="mapCodexButton" class="secondary-button" type="button">Exploit docs: 192</button>
           </aside>
         </div>
       </section>
@@ -1178,10 +1179,10 @@ const Game = {
   },
 
   floorBiome(floor) {
-    if (floor <= 3) return "NEON OSSUARY";
-    if (floor <= 6) return "BLACK CASINO";
-    if (floor <= 9) return "NULL CATHEDRAL";
-    if (floor <= 12) return "INFINITE SERVER";
+    if (floor <= 3) return "CALL STACK";
+    if (floor <= 6) return "BUG BOUNTY NET";
+    if (floor <= 9) return "ZERO-DAY LAB";
+    if (floor <= 12) return "ROOT SERVER";
     return "INFINITY LOOP";
   },
 
@@ -1190,7 +1191,7 @@ const Game = {
     for (let index = 0; index < run.roomCount; index += 1) {
       const stateClass = index < run.stage ? "completed" : index === run.stage ? "current" : "";
       const pathType = run.path[index];
-      const symbol = pathType ? ROOM_DEFS[pathType]?.symbol || "·" : index === run.roomCount - 1 && run.floor % 3 === 0 ? "Ω" : String(index + 1);
+      const symbol = pathType ? ROOM_DEFS[pathType]?.symbol || "·" : index === run.roomCount - 1 && run.floor % 3 === 0 ? "#" : String(index + 1);
       pieces.push(`<span class="track-node ${stateClass}">${symbol}</span>`);
       if (index < run.roomCount - 1) pieces.push(`<span class="track-line ${index < run.stage ? "completed" : ""}"></span>`);
     }
@@ -1200,15 +1201,15 @@ const Game = {
   roomCardHTML(type, floor) {
     const room = ROOM_DEFS[type] || ROOM_DEFS.combat;
     let detail = room.risk;
-    if (type === "combat") detail = `${Math.min(4, 1 + Math.floor(floor / 3))}–${Math.min(5, 2 + Math.floor(floor / 3))} цели`;
-    if (type === "elite") detail = `${Math.min(5, 2 + Math.floor(floor / 3))} усиленные цели`;
+    if (type === "combat") detail = `${Math.min(4, 1 + Math.floor(floor / 3))}–${Math.min(5, 2 + Math.floor(floor / 3))} processes`;
+    if (type === "elite") detail = `${Math.min(5, 2 + Math.floor(floor / 3))} hardened processes`;
     if (type === "boss") detail = BOSSES[(Math.floor((floor - 1) / 3)) % BOSSES.length].name;
     return `
       <button class="room-card ${type}" data-room-type="${type}" data-symbol="${room.symbol}" type="button">
         <span class="room-symbol">${room.symbol}</span>
         <span><strong>${room.name}</strong><span class="room-risk" style="display:block;margin-top:4px">${detail}</span></span>
         <p>${room.desc}</p>
-        <span class="terminal-code">ENTER NODE</span>
+        <span class="terminal-code">OPEN ENDPOINT</span>
       </button>
     `;
   },
@@ -1239,9 +1240,9 @@ Object.assign(Game, {
     if (type === "merchant") {
       const relic = this.randomAvailableRelic();
       data.items = [
-        { id: "heal", name: "FIELD PATCH", desc: "Восстановить 30% максимального HP.", cost: 25, purchased: false },
-        { id: "core", name: "NULL CAPACITOR", desc: "+1 к максимуму NULL ENERGY и полная зарядка.", cost: 48, purchased: false },
-        { id: "relic", name: relic?.name || "DATA CACHE", desc: relic?.desc || "Получить 45 кредитов.", cost: 72, relicId: relic?.id || null, purchased: false },
+        { id: "heal", name: "HOTFIX", desc: "Восстановить 30% максимальной INTEGRITY.", cost: 25, purchased: false },
+        { id: "core", name: "BIT CAPACITOR", desc: "+1 к максимуму BIT CHARGE и полная зарядка.", cost: 48, purchased: false },
+        { id: "relic", name: relic?.name || "BOUNTY CACHE", desc: relic?.desc || "Получить 45 BUG BOUNTY.", cost: 72, relicId: relic?.id || null, purchased: false },
       ];
     }
     if (type === "upgrade") {
@@ -1284,28 +1285,28 @@ Object.assign(Game, {
 
   eventTitle(type) {
     const titles = {
-      merchant: "Рынок не задаёт вопросов",
-      upgrade: "Кузница принимает фрагмент памяти",
-      treasure: "Три контейнера всё ещё под напряжением",
-      anomaly: "Матрица ведёт себя неправильно",
-      repair: "Станция ремонта сохранила питание",
-      dice: "Шесть граней смотрят в ответ",
-      memory: "Архив воспроизводит ваш прошлый бой",
-      shortcut: "Разрыв ведёт глубже, чем должен",
+      merchant: "Репозиторий принимает вашу репутацию",
+      upgrade: "Компилятор ждёт исходный код команды",
+      treasure: "Три payload ожидают проверки подписи",
+      anomaly: "Runtime сообщает undefined behavior",
+      repair: "Debugger подключён к активному процессу",
+      dice: "Регистры ZERO и ONE ждут entropy",
+      memory: "Core dump содержит прошлое исполнение",
+      shortcut: "NULL pointer указывает за границы stack frame",
     };
-    return titles[type] || "Неизвестный узел";
+    return titles[type] || "Unknown endpoint";
   },
 
   eventDescription(type) {
     const descriptions = {
-      merchant: "Торговый демон принимает кредиты. Можно совершить несколько покупок, после чего покинуть узел.",
-      upgrade: "Выберите один протокол. Его числовые эффекты увеличатся на 20% за каждый уровень.",
-      treasure: "Белый контейнер безопасен. Чёрный содержит реликвию и нестабильность. VOID-контейнер меняет ядро героя.",
-      anomaly: "Любое вмешательство даст преимущество, но башня запомнит изменение и ответит повышением HEAT.",
-      repair: "Ремонтный модуль может восстановить корпус, охладить след или выполнить полную реконструкцию за кредиты.",
-      dice: "Святилище позволяет купить контроль вероятности телом, теплом или ограниченной прошивкой граней.",
-      memory: "Эхо предлагает усилить случайную способность, восстановить энергию или продать запись коллекционеру.",
-      shortcut: "Переход пропустит одну комнату. Чем короче путь, тем заметнее вы становитесь для башни.",
+      merchant: "Package manager принимает BUG BOUNTY. Можно установить несколько пакетов, затем закрыть соединение.",
+      upgrade: "Выберите команду. Каждый increment версии усиливает её числовые эффекты примерно на 20%.",
+      treasure: "SIGNED payload безопасен. ZERO-DAY payload содержит модуль и TRACE. NULL payload меняет ядро процесса.",
+      anomaly: "Runtime-инъекция даст преимущество, но защитная сеть запишет изменение и повысит TRACE.",
+      repair: "Debugger может применить hotfix, очистить цифровой след или полностью пересобрать процесс за BUG BOUNTY.",
+      dice: "Entropy pool позволяет управлять регистрами ZERO/ONE ценой INTEGRITY, TRACE или постоянной прошивки.",
+      memory: "Core dump позволяет повысить версию команды, восстановить процесс или продать crash report.",
+      shortcut: "Переход пропустит один endpoint. Чем короче exploit chain, тем заметнее она для защитной сети.",
     };
     return descriptions[type] || ROOM_DEFS[type]?.desc || "";
   },
@@ -1317,13 +1318,13 @@ Object.assign(Game, {
         <div class="shop-grid">
           ${data.items.map((item) => `
             <button class="shop-card" data-event-action="buy:${item.id}" type="button" ${item.purchased || run.credits < item.cost ? "disabled" : ""}>
-              <span><span class="reward-rarity">BLACK MARKET</span><h3>${item.name}</h3></span>
+              <span><span class="reward-rarity">PACKAGE REPOSITORY</span><h3>${item.name}</h3></span>
               <p>${item.desc}</p>
-              <span class="choice-cost">${item.purchased ? "КУПЛЕНО" : `${item.cost} ₡`}</span>
+              <span class="choice-cost">${item.purchased ? "INSTALLED" : `${item.cost} REP`}</span>
             </button>
           `).join("")}
         </div>
-        <div class="button-row" style="margin-top:16px"><button class="secondary-button" data-event-action="leave" type="button" ${this.tutorialStepIs("merchant_intro") ? "disabled" : ""}>Покинуть рынок</button></div>
+        <div class="button-row" style="margin-top:16px"><button class="secondary-button" data-event-action="leave" type="button" ${this.tutorialStepIs("merchant_intro") ? "disabled" : ""}>Disconnect</button></div>
       `;
     }
 
@@ -1335,7 +1336,7 @@ Object.assign(Game, {
           <button class="choice-card" data-event-action="upgrade:${id}" type="button">
             <span><span class="reward-rarity">LEVEL ${level} → ${level + 1}</span><h3>${ability.name}</h3></span>
             <p>${ability.desc}</p>
-            <span class="choice-cost">Бесплатно</span>
+            <span class="choice-cost">COMPILE FREE</span>
           </button>
         `;
       }).join("")}</div>`;
@@ -1344,9 +1345,9 @@ Object.assign(Game, {
     if (type === "treasure") {
       return `
         <div class="choice-grid">
-          <button class="choice-card" data-event-action="treasure:safe" type="button"><span><span class="reward-rarity">WHITE CACHE</span><h3>Стабильные кредиты</h3></span><p>Получить 38–55 кредитов без побочного эффекта.</p><span class="choice-cost">Безопасно</span></button>
-          <button class="choice-card" data-event-action="treasure:cursed" type="button"><span><span class="reward-rarity">BLACK CACHE</span><h3>Проклятая реликвия</h3></span><p>Получить случайную реликвию и добавить 14 HEAT.</p><span class="choice-cost">+14 HEAT</span></button>
-          <button class="choice-card" data-event-action="treasure:void" type="button"><span><span class="reward-rarity">VOID CACHE</span><h3>Расширить ядро</h3></span><p>Максимум энергии +1, но герой теряет 12 текущего HP.</p><span class="choice-cost">−12 HP</span></button>
+          <button class="choice-card" data-event-action="treasure:safe" type="button"><span><span class="reward-rarity">SIGNED PAYLOAD</span><h3>Verified bounty</h3></span><p>Получить 38–55 BUG BOUNTY без побочного эффекта.</p><span class="choice-cost">SIGNATURE OK</span></button>
+          <button class="choice-card" data-event-action="treasure:cursed" type="button"><span><span class="reward-rarity">ZERO-DAY PAYLOAD</span><h3>Unknown exploit module</h3></span><p>Получить случайный модуль и добавить 14 TRACE.</p><span class="choice-cost">+14 TRACE</span></button>
+          <button class="choice-card" data-event-action="treasure:void" type="button"><span><span class="reward-rarity">NULL PAYLOAD</span><h3>Extend bit core</h3></span><p>Максимум BIT CHARGE +1, но процесс теряет 12 INTEGRITY.</p><span class="choice-cost">−12 INTEGRITY</span></button>
         </div>
       `;
     }
@@ -1354,9 +1355,9 @@ Object.assign(Game, {
     if (type === "anomaly") {
       return `
         <div class="choice-grid">
-          <button class="choice-card" data-event-action="anomaly:overcharge" type="button"><span><span class="reward-rarity">OVERCHARGE</span><h3>Полная энергия</h3></span><p>Следующий бой начинается с полной энергией и 14 ARMOR.</p><span class="choice-cost">+8 HEAT</span></button>
-          <button class="choice-card" data-event-action="anomaly:corrupt" type="button"><span><span class="reward-rarity">GLITCH PAYOUT</span><h3>Продать стабильность</h3></span><p>Получить 60 кредитов; три плитки следующего поля будут заражены.</p><span class="choice-cost">Искажённое поле</span></button>
-          <button class="choice-card" data-event-action="anomaly:mirror" type="button"><span><span class="reward-rarity">MIRROR LUCK</span><h3>Скопировать шанс</h3></span><p>Получить 2 LUCK и снизить максимальный HP на 4.</p><span class="choice-cost">−4 MAX HP</span></button>
+          <button class="choice-card" data-event-action="anomaly:overcharge" type="button"><span><span class="reward-rarity">OVERCLOCK</span><h3>Max bit charge</h3></span><p>Следующий breach начинается с полной BIT CHARGE и 14 FIREWALL.</p><span class="choice-cost">+8 TRACE</span></button>
+          <button class="choice-card" data-event-action="anomaly:corrupt" type="button"><span><span class="reward-rarity">BUG BOUNTY</span><h3>Ship with known bugs</h3></span><p>Получить 60 BUG BOUNTY; три ячейки следующего stack grid будут повреждены.</p><span class="choice-cost">CORRUPTED MEMORY</span></button>
+          <button class="choice-card" data-event-action="anomaly:mirror" type="button"><span><span class="reward-rarity">FUZZ INPUT</span><h3>Copy random seed</h3></span><p>Получить 2 FUZZ и снизить максимум INTEGRITY на 4.</p><span class="choice-cost">−4 MAX INTEGRITY</span></button>
         </div>
       `;
     }
@@ -1365,9 +1366,9 @@ Object.assign(Game, {
       const fullCost = 34;
       return `
         <div class="choice-grid">
-          <button class="choice-card" data-event-action="repair:heal" type="button"><span><span class="reward-rarity">PATCH</span><h3>Локальный ремонт</h3></span><p>Восстановить 30% максимального HP.</p><span class="choice-cost">Бесплатно</span></button>
-          <button class="choice-card" data-event-action="repair:cool" type="button"><span><span class="reward-rarity">COOLANT</span><h3>Сбросить след</h3></span><p>Уменьшить HEAT на 18 и получить 6 ARMOR.</p><span class="choice-cost">Бесплатно</span></button>
-          <button class="choice-card" data-event-action="repair:full" type="button" ${run.credits < fullCost ? "disabled" : ""}><span><span class="reward-rarity">RECONSTRUCT</span><h3>Полная реконструкция</h3></span><p>Полностью восстановить HP и NULL ENERGY.</p><span class="choice-cost">${fullCost} ₡</span></button>
+          <button class="choice-card" data-event-action="repair:heal" type="button"><span><span class="reward-rarity">HOTFIX</span><h3>Patch integrity</h3></span><p>Восстановить 30% максимальной INTEGRITY.</p><span class="choice-cost">FREE</span></button>
+          <button class="choice-card" data-event-action="repair:cool" type="button"><span><span class="reward-rarity">CLEAR LOGS</span><h3>Erase digital trace</h3></span><p>Уменьшить TRACE на 18 и получить 6 FIREWALL.</p><span class="choice-cost">FREE</span></button>
+          <button class="choice-card" data-event-action="repair:full" type="button" ${run.credits < fullCost ? "disabled" : ""}><span><span class="reward-rarity">REBUILD</span><h3>Recompile process</h3></span><p>Полностью восстановить INTEGRITY и BIT CHARGE.</p><span class="choice-cost">${fullCost} REP</span></button>
         </div>
       `;
     }
@@ -1375,9 +1376,9 @@ Object.assign(Game, {
     if (type === "dice") {
       return `
         <div class="choice-grid">
-          <button class="choice-card" data-event-action="dice:luck" type="button"><span><span class="reward-rarity">BLOOD BET</span><h3>Купить удачу</h3></span><p>Получить 2 LUCK. Герой теряет 9 текущего HP.</p><span class="choice-cost">−9 HP</span></button>
-          <button class="choice-card" data-event-action="dice:energy" type="button"><span><span class="reward-rarity">CAPACITOR ROLL</span><h3>Седьмая грань</h3></span><p>Максимум NULL ENERGY +1 и 8 HEAT.</p><span class="choice-cost">+8 HEAT</span></button>
-          <button class="choice-card" data-event-action="dice:bias" type="button"><span><span class="reward-rarity">FACE PATCH</span><h3>Сдвиг граней</h3></span><p>Все грани плиток циклически смещаются на единицу до конца забега.</p><span class="choice-cost">Постоянно</span></button>
+          <button class="choice-card" data-event-action="dice:luck" type="button"><span><span class="reward-rarity">DANGEROUS INPUT</span><h3>Increase fuzz coverage</h3></span><p>Получить 2 FUZZ. Процесс теряет 9 текущей INTEGRITY.</p><span class="choice-cost">−9 INTEGRITY</span></button>
+          <button class="choice-card" data-event-action="dice:energy" type="button"><span><span class="reward-rarity">BIT CAPACITOR</span><h3>Extend entropy buffer</h3></span><p>Максимум BIT CHARGE +1 и 8 TRACE.</p><span class="choice-cost">+8 TRACE</span></button>
+          <button class="choice-card" data-event-action="dice:bias" type="button"><span><span class="reward-rarity">REGISTER PATCH</span><h3>Shift entropy values</h3></span><p>Entropy-значения всех ячеек циклически смещаются на единицу до конца exploit chain.</p><span class="choice-cost">PERSISTENT</span></button>
         </div>
       `;
     }
@@ -1386,9 +1387,9 @@ Object.assign(Game, {
       const ability = this.hero().abilities.find((entry) => entry.id === data.abilityId);
       return `
         <div class="choice-grid">
-          <button class="choice-card" data-event-action="memory:upgrade" type="button"><span><span class="reward-rarity">COMBAT ECHO</span><h3>${ability?.name || "UNKNOWN"}</h3></span><p>Улучшить выбранную архивом способность на один уровень.</p><span class="choice-cost">Записать</span></button>
-          <button class="choice-card" data-event-action="memory:energy" type="button"><span><span class="reward-rarity">CLEAN SNAPSHOT</span><h3>Восстановить состояние</h3></span><p>Полностью восстановить энергию и 15% HP.</p><span class="choice-cost">Применить</span></button>
-          <button class="choice-card" data-event-action="memory:sell" type="button"><span><span class="reward-rarity">DATA BROKER</span><h3>Продать запись</h3></span><p>Получить 48 кредитов и 100 очков.</p><span class="choice-cost">Стереть</span></button>
+          <button class="choice-card" data-event-action="memory:upgrade" type="button"><span><span class="reward-rarity">STACK TRACE</span><h3>${ability?.name || "UNKNOWN"}</h3></span><p>Повысить версию выбранной crash report команды.</p><span class="choice-cost">COMMIT</span></button>
+          <button class="choice-card" data-event-action="memory:energy" type="button"><span><span class="reward-rarity">CLEAN SNAPSHOT</span><h3>Restore process state</h3></span><p>Полностью восстановить BIT CHARGE и 15% INTEGRITY.</p><span class="choice-cost">RESTORE</span></button>
+          <button class="choice-card" data-event-action="memory:sell" type="button"><span><span class="reward-rarity">BUG TRACKER</span><h3>Publish crash report</h3></span><p>Получить 48 BUG BOUNTY и 100 REPUTATION.</p><span class="choice-cost">UPLOAD</span></button>
         </div>
       `;
     }
@@ -1396,13 +1397,13 @@ Object.assign(Game, {
     if (type === "shortcut") {
       return `
         <div class="choice-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-          <button class="choice-card" data-event-action="shortcut:take" type="button"><span><span class="reward-rarity">VOID ROUTE</span><h3>Войти в разрыв</h3></span><p>Пропустить следующую локацию, получить 25 кредитов и 15 HEAT.</p><span class="choice-cost">Пропуск +1</span></button>
-          <button class="choice-card" data-event-action="shortcut:leave" type="button"><span><span class="reward-rarity">SAFE ROUTE</span><h3>Закрыть разрыв</h3></span><p>Получить 8 ARMOR и продолжить обычным путём.</p><span class="choice-cost">Без пропуска</span></button>
+          <button class="choice-card" data-event-action="shortcut:take" type="button"><span><span class="reward-rarity">NULL DEREFERENCE</span><h3>Jump outside frame</h3></span><p>Пропустить следующий endpoint, получить 25 BUG BOUNTY и 15 TRACE.</p><span class="choice-cost">SKIP +1</span></button>
+          <button class="choice-card" data-event-action="shortcut:leave" type="button"><span><span class="reward-rarity">BOUNDS CHECK</span><h3>Reject invalid pointer</h3></span><p>Получить 8 FIREWALL и продолжить обычным control flow.</p><span class="choice-cost">NO SKIP</span></button>
         </div>
       `;
     }
 
-    return `<button class="primary-button" data-event-action="leave" type="button">Продолжить</button>`;
+    return `<button class="primary-button" data-event-action="leave" type="button">Continue execution</button>`;
   },
 
   handleEventAction(action) {
@@ -1425,7 +1426,7 @@ Object.assign(Game, {
         if (item.relicId) this.addRelic(item.relicId);
         else run.credits += 45;
       }
-      this.toast(`${item.name}: покупка завершена.`, "success");
+      this.toast(`${item.name}: package installed.`, "success");
       this.beep(760, 0.05, "sine", 0.02);
       this.saveGame();
       this.renderEvent();
@@ -1440,7 +1441,7 @@ Object.assign(Game, {
     if (group === "upgrade") {
       run.abilityLevels[option] = (run.abilityLevels[option] || 0) + 1;
       const ability = this.hero().abilities.find((entry) => entry.id === option);
-      this.toast(`${ability?.name || "Протокол"} улучшен.`, "success");
+      this.toast(`${ability?.name || "COMMAND"}: version incremented.`, "success");
       this.finishRoom();
       return;
     }
@@ -1456,7 +1457,7 @@ Object.assign(Game, {
       if (option === "void") {
         run.maxEnergy += 1;
         run.energy = Math.min(run.maxEnergy, run.energy + 1);
-        this.damagePlayer(12, "VOID CACHE", null, { bypassArmor: true, allowDeath: false });
+        this.damagePlayer(12, "NULL PAYLOAD", null, { bypassArmor: true, allowDeath: false });
       }
       this.finishRoom();
       return;
@@ -1498,7 +1499,7 @@ Object.assign(Game, {
     if (group === "dice") {
       if (option === "luck") {
         run.luck += 2;
-        this.damagePlayer(9, "BLOOD BET", null, { bypassArmor: true, allowDeath: false });
+        this.damagePlayer(9, "DANGEROUS INPUT", null, { bypassArmor: true, allowDeath: false });
       }
       if (option === "energy") {
         run.maxEnergy += 1;
@@ -1543,7 +1544,7 @@ Object.assign(Game, {
     if (!id || this.state.run.relics.includes(id)) return false;
     this.state.run.relics.push(id);
     const relic = RELICS.find((entry) => entry.id === id);
-    this.toast(`Реликвия: ${relic?.name || id}`, "success");
+    this.toast(`Exploit module installed: ${relic?.name || id}`, "success");
     return true;
   },
 
@@ -1570,18 +1571,18 @@ Object.assign(Game, {
       <section class="event-screen">
         <div class="panel event-box floor-complete">
           <div class="event-icon">${actComplete ? "∞" : "↑"}</div>
-          <p class="eyebrow">${actComplete ? "THE LOOP IS OPEN" : `FLOOR ${String(run.floor).padStart(2, "0")} CLEARED`}</p>
-          <h2>${actComplete ? "Три ядра уничтожены" : "Лифт уходит глубже"}</h2>
-          <p class="event-copy" style="margin-inline:auto">${actComplete ? "Основной цикл прототипа завершён. Теперь боссы будут повторяться с повышенной силой, двойными мутациями и более длинными этажами." : "Часть повреждений устранена, энергия стабилизирована, а HEAT немного снижен. Следующий этаж длиннее и опаснее."}</p>
+          <p class="eyebrow">${actComplete ? "ROOT ACCESS GRANTED" : `STACK FRAME ${String(run.floor).padStart(2, "0")} COMPILED`}</p>
+          <h2>${actComplete ? "Три root-процесса завершены" : "Указатель уходит глубже в стек"}</h2>
+          <p class="event-copy" style="margin-inline:auto">${actComplete ? "Основная exploit chain завершена. Теперь root-процессы будут возвращаться с повышенной мощностью, двойными runtime-модификаторами и более длинными frame." : "Часть INTEGRITY восстановлена, BIT CHARGE стабилизирован, TRACE немного снижен. Следующий stack frame длиннее и опаснее."}</p>
           <div class="run-list" style="max-width:520px;margin:0 auto 20px;text-align:left">
-            <div class="run-list-item"><span>Счёт</span><strong>${Math.floor(run.score)}</strong></div>
-            <div class="run-list-item"><span>Уничтожено целей</span><strong>${run.kills}</strong></div>
-            <div class="run-list-item"><span>Комбинации</span><strong>${run.comboCount}</strong></div>
-            <div class="run-list-item"><span>HEAT</span><strong>${run.heat}</strong></div>
+            <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
+            <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
+            <div class="run-list-item"><span>Exploits executed</span><strong>${run.comboCount}</strong></div>
+            <div class="run-list-item"><span>TRACE</span><strong>${run.heat}</strong></div>
           </div>
           <div class="button-row" style="justify-content:center">
-            ${actComplete ? `<button id="victoryButton" class="secondary-button" type="button">Зафиксировать победу</button>` : ""}
-            <button id="nextFloorButton" class="primary-button" type="button">${actComplete ? "Продолжить в бесконечность" : "Следующий этаж"}</button>
+            ${actComplete ? `<button id="victoryButton" class="secondary-button" type="button">Commit root access</button>` : ""}
+            <button id="nextFloorButton" class="primary-button" type="button">${actComplete ? "Enter infinite loop" : "Следующий stack frame"}</button>
           </div>
         </div>
       </section>
@@ -1621,18 +1622,18 @@ Object.assign(Game, {
       <section class="end-screen">
         <div class="panel end-box floor-complete">
           <div class="event-icon">∞</div>
-          <p class="eyebrow">RUN COMPLETE // ${escapeHTML(run.seed)}</p>
-          <h2>NULL не равен нулю</h2>
-          <p class="event-copy" style="margin-inline:auto">Вы победили THE EMPTY KING, ORACLE OF SIX и THE INFINITY ENGINE. Сохранение остаётся доступным: забег можно продолжить в бесконечном режиме.</p>
+          <p class="eyebrow">EXPLOIT CHAIN COMPLETE // ${escapeHTML(run.seed)}</p>
+          <h2>NULL != ZERO</h2>
+          <p class="event-copy" style="margin-inline:auto">Вы завершили STACK OVERFLOW, ZERO-DAY ORACLE и INFINITE RECURSION. Снимок процесса сохранён: exploit chain можно продолжить в режиме infinite loop.</p>
           <div class="run-list" style="max-width:520px;margin:0 auto 20px;text-align:left">
-            <div class="run-list-item"><span>Итоговый счёт</span><strong>${Math.floor(run.score)}</strong></div>
-            <div class="run-list-item"><span>Ходы плиток</span><strong>${run.totalMoves}</strong></div>
-            <div class="run-list-item"><span>Побеждено врагов</span><strong>${run.kills}</strong></div>
-            <div class="run-list-item"><span>Реликвии</span><strong>${run.relics.length}</strong></div>
+            <div class="run-list-item"><span>Final reputation</span><strong>${Math.floor(run.score)}</strong></div>
+            <div class="run-list-item"><span>Bit-shifts</span><strong>${run.totalMoves}</strong></div>
+            <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
+            <div class="run-list-item"><span>Exploit modules</span><strong>${run.relics.length}</strong></div>
           </div>
           <div class="button-row" style="justify-content:center">
-            <button id="continueInfiniteButton" class="primary-button" type="button">Продолжить забег</button>
-            <button id="victoryTitleButton" class="secondary-button" type="button">В главное меню</button>
+            <button id="continueInfiniteButton" class="primary-button" type="button">Enter infinite loop</button>
+            <button id="victoryTitleButton" class="secondary-button" type="button">Return to terminal</button>
           </div>
         </div>
       </section>
@@ -1656,18 +1657,18 @@ Object.assign(Game, {
       <section class="end-screen">
         <div class="panel end-box floor-complete">
           <div class="event-icon" style="border-color:var(--red);color:var(--red);background:rgba(255,82,106,.08)">Ø</div>
-          <p class="eyebrow danger-text">CONNECTION LOST</p>
-          <h2>Забег завершён</h2>
-          <p class="event-copy" style="margin-inline:auto">Башня вернула носителя в NULL. Seed можно повторить с другим персонажем или начать новую последовательность.</p>
+          <p class="eyebrow danger-text">SEGMENTATION FAULT</p>
+          <h2>Process terminated</h2>
+          <p class="event-copy" style="margin-inline:auto">INTEGRITY стала равна ZERO, и operator process был выгружен. Повторите seed другим процессом или сгенерируйте новую exploit chain.</p>
           <div class="run-list" style="max-width:520px;margin:0 auto 20px;text-align:left">
-            <div class="run-list-item"><span>Этаж</span><strong>${run.floor}</strong></div>
-            <div class="run-list-item"><span>Счёт</span><strong>${Math.floor(run.score)}</strong></div>
-            <div class="run-list-item"><span>Врагов уничтожено</span><strong>${run.kills}</strong></div>
+            <div class="run-list-item"><span>Stack frame</span><strong>${run.floor}</strong></div>
+            <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
+            <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
             <div class="run-list-item"><span>Seed</span><strong>${escapeHTML(run.seed)}</strong></div>
           </div>
           <div class="button-row" style="justify-content:center">
-            <button id="retrySeedButton" class="primary-button" type="button">Повторить seed</button>
-            <button id="gameOverTitleButton" class="secondary-button" type="button">Главное меню</button>
+            <button id="retrySeedButton" class="primary-button" type="button">Re-run seed</button>
+            <button id="gameOverTitleButton" class="secondary-button" type="button">Return to terminal</button>
           </div>
         </div>
       </section>
@@ -1691,7 +1692,7 @@ Object.assign(Game, {
     const board = this.createSolvableBoard(tutorialOpening ? 18 : 46 + run.floor * 4 + (roomType === "elite" ? 12 : 0));
     const enemies = this.createEncounter(roomType);
     if (tutorialOpening && enemies[0]) {
-      enemies[0].name = `${enemies[0].name} // TRAINING`;
+      enemies[0].name = `${enemies[0].name} // SANDBOX`;
       enemies[0].maxHp = Math.max(84, enemies[0].maxHp);
       enemies[0].hp = enemies[0].maxHp;
       enemies[0].baseDamage = Math.min(5, enemies[0].baseDamage);
@@ -1769,8 +1770,8 @@ Object.assign(Game, {
 
     this.rollDice(true);
     this.applyCycleStartPassive(true);
-    this.log(`Контакт: ${enemies.map((enemy) => enemy.name).join(" / ")}.`, "system");
-    this.log("Сдвиг плитки уменьшает таймеры намерений. Цикл: шесть ходов.");
+    this.log(`Handshake: ${enemies.map((enemy) => enemy.name).join(" / ")}.`, "system");
+    this.log("Bit-shift уменьшает таймеры системных вызовов. Execution cycle: шесть операций.");
     this.state.screen = "combat";
     this.saveGame();
     this.render();
@@ -1788,14 +1789,14 @@ Object.assign(Game, {
     const baseCount = 1 + Math.floor((run.floor + 1) / 3);
     const count = clamp(baseCount + (elite ? 1 : 0), 1, 5);
     const selected = [];
-    const meleeOrRanged = ENEMY_DEFS.filter((enemy) => ["БЛИЖНИК", "ДАЛЬНИК"].includes(enemy.archetype));
+    const meleeOrRanged = ENEMY_DEFS.filter((enemy) => ["LOCAL", "REMOTE"].includes(enemy.archetype));
     selected.push(this.pick(meleeOrRanged));
 
     while (selected.length < count) {
       let pool = ENEMY_DEFS;
-      if (run.floor <= 2) pool = ENEMY_DEFS.filter((enemy) => enemy.archetype !== "САППОРТ");
-      if (run.floor >= 4 && selected.length === count - 1 && !selected.some((enemy) => enemy.archetype === "САППОРТ")) {
-        pool = ENEMY_DEFS.filter((enemy) => enemy.archetype === "САППОРТ");
+      if (run.floor <= 2) pool = ENEMY_DEFS.filter((enemy) => enemy.archetype !== "SERVICE");
+      if (run.floor >= 4 && selected.length === count - 1 && !selected.some((enemy) => enemy.archetype === "SERVICE")) {
+        pool = ENEMY_DEFS.filter((enemy) => enemy.archetype === "SERVICE");
       }
       const candidate = this.pick(pool);
       if (!candidate) break;
@@ -1986,7 +1987,7 @@ Object.assign(Game, {
     if (this.state.run.luck >= 3) {
       this.state.run.luck -= 3;
       black = 6;
-      this.log("HOUSE EDGE фиксирует чёрную кость на шестёрке.", "success");
+      this.log("COVERAGE EDGE фиксирует регистр ONE на 110.", "success");
     }
     if (this.hasRelic("broken_d6") && !combat.brokenD6Used) {
       if (white === 1) {
@@ -2010,7 +2011,7 @@ Object.assign(Game, {
     run.energy -= 1;
     run.heat += 1;
     this.rollDice(false, true);
-    this.log(`Ручной переброс: ${DICE[combat.dice[0]]} + ${DICE[combat.dice[1]]}.`, "system");
+    this.log(`RANDOMIZE: ZERO=${DICE[combat.dice[0]]} / ONE=${DICE[combat.dice[1]]}.`, "system");
     this.beep(640, 0.04, "square", 0.014);
     this.saveGame();
     this.renderCombat();
@@ -2033,19 +2034,19 @@ Object.assign(Game, {
         <div class="combat-grid">
           <div class="combat-column player-column">
             <section class="panel player-panel" data-tutorial-target="player">
-              <div class="panel-header"><p class="panel-title">Носитель</p><span class="terminal-code">CYCLE ${combat.cycle}</span></div>
+              <div class="panel-header"><p class="panel-title">Operator process</p><span class="terminal-code">EXEC CYCLE ${combat.cycle}</span></div>
               <div class="player-body">
                 <div class="player-name-row"><div class="hero-glyph">${hero.glyph}</div><div><span class="character-role">${hero.role}</span><h3>${hero.name}</h3></div></div>
-                <div class="stat-row"><span>HP</span><strong>${Math.ceil(run.hp)} / ${run.maxHp}</strong></div>
+                <div class="stat-row"><span>INTEGRITY</span><strong>${Math.ceil(run.hp)} / ${run.maxHp}</strong></div>
                 <div class="stat-bar hp"><span style="--value:${pct(run.hp, run.maxHp)}"></span></div>
-                <div class="stat-row"><span>ARMOR</span><strong>${Math.ceil(run.armor)}</strong></div>
-                <div class="stat-row"><span>NULL ENERGY</span><strong>${Math.floor(run.energy)} / ${run.maxEnergy}</strong></div>
+                <div class="stat-row"><span>FIREWALL</span><strong>${Math.ceil(run.armor)}</strong></div>
+                <div class="stat-row"><span>BIT CHARGE</span><strong>${Math.floor(run.energy)} / ${run.maxEnergy}</strong></div>
                 <div class="stat-bar energy"><span style="--value:${pct(run.energy, run.maxEnergy)}"></span></div>
                 <div class="player-passive"><strong>${hero.passive.name}</strong>${hero.passive.desc}</div>
               </div>
             </section>
             <section class="panel-flat" style="padding:12px">
-              <div class="panel-header" style="padding:0 0 10px;border:0"><p class="panel-title">Способности</p><span class="muted" style="font-size:11px">КЛАВИШИ 1–5</span></div>
+              <div class="panel-header" style="padding:0 0 10px;border:0"><p class="panel-title">Commands</p><span class="muted" style="font-size:11px">KEYS 1–5</span></div>
               <div class="ability-stack" data-tutorial-target="abilities">${hero.abilities.map((ability, index) => this.abilityButtonHTML(ability, index)).join("")}</div>
             </section>
           </div>
@@ -2054,44 +2055,44 @@ Object.assign(Game, {
             <section class="panel board-panel">
               <div class="combat-status-line" data-tutorial-target="cycle">
                 <div class="dice-cluster">
-                  <span class="die" title="Белая кость">${DICE[combat.dice[0]]}</span>
-                  <span class="die black" title="Чёрная кость">${DICE[combat.dice[1]]}</span>
-                  <button id="rerollButton" class="ghost-button" type="button" ${run.energy < 1 ? "disabled" : ""}>REROLL −1</button>
+                  <span class="die" title="Entropy-регистр ZERO">${DICE[combat.dice[0]]}</span>
+                  <span class="die black" title="Entropy-регистр ONE">${DICE[combat.dice[1]]}</span>
+                  <button id="rerollButton" class="ghost-button" type="button" ${run.energy < 1 ? "disabled" : ""}>RANDOMIZE −1</button>
                 </div>
-                <div class="move-counter"><span>Сдвиги</span><span class="move-pips">${Array.from({ length: combat.maxMoves }, (_, index) => `<i class="move-pip ${index < combat.movesInCycle ? "used" : ""}"></i>`).join("")}</span><strong>${combat.movesInCycle}/${combat.maxMoves}</strong></div>
+                <div class="move-counter"><span>BIT-SHIFT</span><span class="move-pips">${Array.from({ length: combat.maxMoves }, (_, index) => `<i class="move-pip ${index < combat.movesInCycle ? "used" : ""}"></i>`).join("")}</span><strong>${combat.movesInCycle}/${combat.maxMoves}</strong></div>
               </div>
               <div class="puzzle-wrap">
-                <div class="puzzle-grid" data-tutorial-target="board" role="grid" aria-label="Боевая матрица пятнашек">
+                <div class="puzzle-grid" data-tutorial-target="board" role="grid" aria-label="Stack grid из пятнадцати ячеек и NULL pointer">
                   ${combat.board.map((value, index) => this.boardTileHTML(value, index, hintIndex)).join("")}
                 </div>
                 ${combat.flashMessage && Date.now() < combat.flashUntil ? `<div class="board-message"><span>${escapeHTML(combat.flashMessage)}</span></div>` : ""}
               </div>
               <div style="display:flex;justify-content:space-between;gap:12px;margin-top:10px;color:var(--muted);font-size:11px">
-                <span>ORDER ${this.correctCount()} / 15</span><span>VOID PATH ${combat.pathTiles.length}</span><span>TOTAL MOVES ${combat.totalMoves}</span>
+                <span>COMPILE ${this.correctCount()} / 15</span><span>NULL TRACE ${combat.pathTiles.length}</span><span>BIT-SHIFTS ${combat.totalMoves}</span>
               </div>
             </section>
 
             <section class="panel-flat combo-panel" data-tutorial-target="combo">
-              <div class="panel-header" style="padding:0 0 10px;border:0"><p class="panel-title">Комбо-конструктор // 8 × 8 × 3 = 192</p><span class="muted" style="font-size:11px">SPACE</span></div>
+              <div class="panel-header" style="padding:0 0 10px;border:0"><p class="panel-title">Exploit compiler // 8 × 8 × 3 = 192</p><span class="muted" style="font-size:11px">SPACE</span></div>
               <div class="combo-builder">
-                ${this.comboSelectHTML("pattern", PATTERNS, combat.comboSelection.pattern, "Шаблон поля")}
-                ${this.comboSelectHTML("effect", EFFECTS, combat.comboSelection.effect, "Боевой эффект")}
-                ${this.comboSelectHTML("protocol", PROTOCOLS, combat.comboSelection.protocol, "Протокол костей")}
+                ${this.comboSelectHTML("pattern", PATTERNS, combat.comboSelection.pattern, "Memory pattern")}
+                ${this.comboSelectHTML("effect", EFFECTS, combat.comboSelection.effect, "Payload")}
+                ${this.comboSelectHTML("protocol", PROTOCOLS, combat.comboSelection.protocol, "ZERO/ONE trigger")}
               </div>
               <div class="combo-result ${evaluation.ready ? "ready" : ""}">
-                <span><span class="combo-name">${this.comboName(combat.comboSelection)}</span><span class="combo-hint">${evaluation.ready ? `ГОТОВО · сила ${evaluation.strength} · группа [${evaluation.group.join(", ")}]` : evaluation.reason}</span></span>
-                <button id="activateComboButton" class="primary-button combo-activate" type="button" ${evaluation.ready && run.energy >= 2 && !combat.usedCombos.includes(this.comboKey()) ? "" : "disabled"}>ACTIVATE −2</button>
+                <span><span class="combo-name">${this.comboName(combat.comboSelection)}</span><span class="combo-hint">${evaluation.ready ? `COMPILED · power ${evaluation.strength} · addresses [${evaluation.group.map(bitAddress).join(", ")}]` : evaluation.reason}</span></span>
+                <button id="activateComboButton" class="primary-button combo-activate" type="button" ${evaluation.ready && run.energy >= 2 && !combat.usedCombos.includes(this.comboKey()) ? "" : "disabled"}>EXEC −2</button>
               </div>
             </section>
           </div>
 
           <div class="combat-column enemies-column">
             <section class="panel enemies-panel" data-tutorial-target="enemies">
-              <div class="panel-header"><p class="panel-title">Противники</p><span class="terminal-code">${combat.enemies.filter((enemy) => enemy.hp > 0).length} ACTIVE</span></div>
+              <div class="panel-header"><p class="panel-title">System processes</p><span class="terminal-code">${combat.enemies.filter((enemy) => enemy.hp > 0).length} ACTIVE</span></div>
               <div class="enemy-list">${combat.enemies.map((enemy) => this.enemyCardHTML(enemy)).join("")}</div>
             </section>
             <section class="panel log-panel" data-tutorial-target="log">
-              <div class="panel-header"><p class="panel-title">Журнал боя</p><span class="muted" style="font-size:11px">WASD / ARROWS</span></div>
+              <div class="panel-header"><p class="panel-title">Runtime console</p><span class="muted" style="font-size:11px">WASD / ARROWS</span></div>
               <div class="combat-log">${[...combat.logs].reverse().map((entry) => `<div class="log-line ${entry.type || ""}">${entry.message}</div>`).join("")}</div>
             </section>
           </div>
@@ -2129,7 +2130,7 @@ Object.assign(Game, {
   },
 
   boardTileHTML(value, index, hintIndex) {
-    if (!value) return `<button class="tile blank" data-tile-index="${index}" data-tile-value="0" type="button" disabled aria-label="Пустая клетка"></button>`;
+    if (!value) return `<button class="tile blank" data-tile-index="${index}" data-tile-value="0" type="button" disabled aria-label="NULL pointer"></button>`;
     const combat = this.state.combat;
     const status = this.tileState(value);
     const movable = this.canMoveTile(index);
@@ -2145,11 +2146,11 @@ Object.assign(Game, {
       status.corrupted > 0 ? "corrupted" : "",
       status.marked > 0 ? "marked" : "",
     ].filter(Boolean).join(" ");
-    const stateIcon = status.locked > 0 ? `LOCK ${status.locked}` : status.corrupted > 0 ? `ERR ${status.corrupted}` : status.protected > 0 ? `ANCHOR` : index === hintIndex ? "PATH" : "";
+    const stateIcon = status.locked > 0 ? `MUTEX ${status.locked}` : status.corrupted > 0 ? `BUG ${status.corrupted}` : status.protected > 0 ? `CONST` : index === hintIndex ? "POINTER" : "";
     return `
-      <button class="${classes}" data-tile-index="${index}" data-tile-value="${value}" type="button" ${movable ? "" : "disabled"} aria-label="Плитка ${value}, грань ${this.faceForValue(value)}">
+      <button class="${classes}" data-tile-index="${index}" data-tile-value="${value}" type="button" ${movable ? "" : "disabled"} aria-label="Ячейка ${value}, entropy ${DICE[this.faceForValue(value)]}">
         <span class="tile-state">${stateIcon}</span>
-        <span class="tile-number">${value}</span>
+        <span class="tile-number">${bitAddress(value)}</span>
         <span class="tile-face">${DICE[this.faceForValue(value)]}</span>
       </button>
     `;
@@ -2164,7 +2165,7 @@ Object.assign(Game, {
     return `
       <button class="ability-button ${ability.ultimate ? "ultimate" : ""}" data-ability-id="${ability.id}" type="button" ${disabled ? "disabled" : ""}>
         <span><span class="ability-name">${index + 1}. ${ability.name}${level ? ` +${level}` : ""}</span><span class="ability-desc">${ability.desc}</span></span>
-        <span class="ability-meta"><span>−${ability.cost}</span>${cooldown ? `<span class="ability-cooldown">CD ${cooldown}</span>` : ""}</span>
+        <span class="ability-meta"><span>−${ability.cost} BIT</span>${cooldown ? `<span class="ability-cooldown">CD ${cooldown}</span>` : ""}</span>
       </button>
     `;
   },
@@ -2173,17 +2174,17 @@ Object.assign(Game, {
     const dead = enemy.hp <= 0;
     const targeted = this.state.combat.targetId === enemy.uid;
     const statuses = [];
-    if (enemy.armor > 0) statuses.push(`<span class="status-chip positive">ARMOR ${Math.ceil(enemy.armor)}</span>`);
-    if (enemy.poison > 0) statuses.push(`<span class="status-chip negative">DOT ${enemy.poison}×${enemy.poisonTurns}</span>`);
-    if (enemy.stunned > 0) statuses.push(`<span class="status-chip negative">JAM ${enemy.stunned}</span>`);
+    if (enemy.armor > 0) statuses.push(`<span class="status-chip positive">FIREWALL ${Math.ceil(enemy.armor)}</span>`);
+    if (enemy.poison > 0) statuses.push(`<span class="status-chip negative">LEAK ${enemy.poison}×${enemy.poisonTurns}</span>`);
+    if (enemy.stunned > 0) statuses.push(`<span class="status-chip negative">TIMEOUT ${enemy.stunned}</span>`);
     if (enemy.weakened > 0) statuses.push(`<span class="status-chip negative">WEAK ${enemy.weakened}</span>`);
-    for (const mutation of enemy.mutations) statuses.push(`<span class="status-chip positive">${mutation.toUpperCase()}</span>`);
+    for (const mutation of enemy.mutations) statuses.push(`<span class="status-chip positive">${MUTATIONS.find((entry) => entry.id === mutation)?.name || mutation.toUpperCase()}</span>`);
     if (enemy.boss) statuses.push(`<span class="status-chip positive">PHASE ${enemy.phase}</span>`);
     return `
       <article class="enemy-card ${targeted ? "targeted" : ""} ${dead ? "dead" : ""}" data-enemy-id="${enemy.uid}" tabindex="0">
         <div class="enemy-head">
-          <div><p class="enemy-name">${dead ? "[NULL] " : ""}${enemy.name}</p><span class="enemy-type">${enemy.archetype}</span></div>
-          <div class="enemy-intent">${dead ? "TERMINATED" : `${this.enemyIntentLabel(enemy)} · ${enemy.countdown}`}</div>
+          <div><p class="enemy-name">${dead ? "[EXIT 0] " : ""}${enemy.name}</p><span class="enemy-type">${enemy.archetype}</span></div>
+          <div class="enemy-intent">${dead ? "TERMINATED" : `${this.enemyIntentLabel(enemy)} · T−${enemy.countdown}`}</div>
         </div>
         <div class="enemy-bars"><div class="stat-bar hp"><span style="--value:${pct(enemy.hp, enemy.maxHp)}"></span></div><span class="enemy-hp-text">${Math.ceil(Math.max(0, enemy.hp))}/${enemy.maxHp}</span></div>
         <div class="enemy-statuses">${statuses.join("")}</div>
@@ -2192,14 +2193,14 @@ Object.assign(Game, {
   },
 
   enemyIntentLabel(enemy) {
-    if (enemy.stunned > 0) return "JAMMED";
+    if (enemy.stunned > 0) return "TIMEOUT";
     if (enemy.id === "railEye" && enemy.telegraphRow !== null) return `ROW ${enemy.telegraphRow + 1}`;
     if (enemy.id === "oracleSix" && enemy.doomDie) return `${DICE[enemy.doomDie]} PREDICT`;
     if (enemy.boss) {
       const phaseLabels = {
-        emptyKing: ["EMPTY THRONE", "TWO ABSENCES", "PERFECT NOTHING"],
-        oracleSix: ["PREDICTION", "LOADED FUTURE", "ALL BETS VOID"],
-        infinityEngine: ["RECORD", "RECURSION", "INFINITE RETURN"],
+        emptyKing: ["OVERWRITE RETURN", "SMASH CANARY", "EXECUTE STACK"],
+        oracleSix: ["PREDICT INPUT", "POISON SEED", "ZERO KNOWLEDGE"],
+        infinityEngine: ["CALL", "RECURSE", "MAX CALL DEPTH"],
       };
       return phaseLabels[enemy.id]?.[enemy.phase - 1] || enemy.intent;
     }
@@ -2215,7 +2216,8 @@ Object.assign(Game, {
   },
 
   comboName(selection = this.state.combat.comboSelection) {
-    return `${COMBO_PREFIX[selection.pattern]} ${COMBO_SUFFIX[selection.effect]} // ${selection.protocol}`;
+    const trigger = PROTOCOLS.find((entry) => entry.id === selection.protocol)?.name || selection.protocol;
+    return `${COMBO_PREFIX[selection.pattern]} ${COMBO_SUFFIX[selection.effect]} // ${trigger}`;
   },
 
   comboKey(selection = this.state.combat.comboSelection) {
@@ -2263,7 +2265,7 @@ Object.assign(Game, {
     if (afterCorrect && !beforeCorrect) {
       this.state.run.order += 1;
       this.gainEnergy(1, false);
-      this.log(`Плитка ${value} возвращена в порядок.`, "success");
+      this.log(`Ячейка ${value} записана по правильному адресу.`, "success");
     } else {
       this.gainEnergy(1, false);
     }
@@ -2271,7 +2273,7 @@ Object.assign(Game, {
     const tileStatus = this.tileState(value);
     if (tileStatus.marked > 0) {
       tileStatus.marked = 0;
-      this.damagePlayer(6 + this.state.run.floor, `Метка на плитке ${value}`, null);
+      this.damagePlayer(6 + this.state.run.floor, `Watchpoint на ячейке ${value}`, null);
     }
 
     this.applyMovePassives(value, direction);
@@ -2287,7 +2289,7 @@ Object.assign(Game, {
     const isFree = combat.freeMoves > 0;
     if (isFree) {
       combat.freeMoves -= 1;
-      this.log("BLINK: вражеские таймеры не изменились.", "success");
+      this.log("NOOP TICK: системные таймеры не изменились.", "success");
       this.tickMoveDurations(false);
     } else {
       this.processCombatTick();
@@ -2317,7 +2319,7 @@ Object.assign(Game, {
     const hero = this.hero();
     if (hero.id === "vanta" && combat.directionSet.length >= 4 && !combat.momentumReady) {
       combat.momentumReady = true;
-      this.log("VECTOR MOMENTUM заряжен: следующая атака усилена.", "success");
+      this.log("BRANCH PREDICTOR: следующий атакующий payload усилен.", "success");
     }
     if (hero.id === "nullwalker") {
       combat.nullUnique ||= [];
@@ -2326,7 +2328,7 @@ Object.assign(Game, {
         combat.nullUnique = [];
         this.gainEnergy(2, false);
         combat.eventHorizonMoves = Math.max(combat.eventHorizonMoves, 1);
-        this.log("LIVING BLANK поглощает четыре уникальные плитки: +2 NULL.", "success");
+        this.log("NULL DEREFERENCE: четыре уникальные ячейки дают +2 BIT CHARGE.", "success");
       }
     }
     if (hero.id === "casino" && direction.length > 1) {
@@ -2340,9 +2342,9 @@ Object.assign(Game, {
       if (!combat.blackVectorTiles.includes(value)) combat.blackVectorTiles.push(value);
       if (combat.blackVectorTiles.length >= 4) {
         const amount = this.scaleAbility(10, "v_ult");
-        this.damageAllEnemies(amount, { source: "BLACK VECTOR", pierce: 0.35 });
+        this.damageAllEnemies(amount, { source: "BUFFER OVERRUN", pierce: 0.35 });
         combat.blackVectorTiles = [];
-        combat.flashMessage = "BLACK VECTOR";
+        combat.flashMessage = "BUFFER OVERRUN";
         combat.flashUntil = Date.now() + 900;
       }
     }
@@ -2368,10 +2370,10 @@ Object.assign(Game, {
     const combat = this.state.combat;
     const run = this.state.run;
     const damage = 34 + run.floor * 4;
-    combat.flashMessage = "ZERO STATE";
+    combat.flashMessage = "STACK OVERFLOW";
     combat.flashUntil = Date.now() + 1000;
-    this.log(`<strong>ZERO STATE</strong>: идеальный порядок наносит ${damage} урона всей пачке.`, "system");
-    this.damageAllEnemies(damage, { source: "ZERO STATE", pierce: 1 });
+    this.log(`<strong>STACK OVERFLOW</strong>: полностью скомпилированная память наносит ${damage} урона всем процессам.`, "system");
+    this.damageAllEnemies(damage, { source: "STACK OVERFLOW", pierce: 1 });
     this.cleanseTileStates(3, false);
     this.healPlayer(8 + run.floor, false);
     run.score += 180 + run.floor * 20;
@@ -2393,7 +2395,7 @@ Object.assign(Game, {
 
     if (combat.frozenIntents > 0) {
       combat.frozenIntents -= 1;
-      this.log("CLOSED SYSTEM удерживает намерения противников.", "success");
+      this.log("AIR GAP удерживает системные вызовы в изоляции.", "success");
     } else {
       const acting = [];
       for (const enemy of combat.enemies) {
@@ -2437,15 +2439,15 @@ Object.assign(Game, {
     const combat = this.state.combat;
     const run = this.state.run;
     if (combat.doubleDown && !combat.doubleDownResolved) {
-      this.damagePlayer(10 + run.floor, "DOUBLE DOWN: провал", null, { bypassArmor: true });
+      this.damagePlayer(10 + run.floor, "DOUBLE EXEC: no payload", null, { bypassArmor: true });
       if (run.hp <= 0 || combat.pendingEnd) return;
-      this.log("DOUBLE DOWN не реализован до конца цикла.", "damage");
+      this.log("DOUBLE EXEC не получил эксплойт до конца execution cycle.", "damage");
     }
 
     for (const enemy of combat.enemies) {
       if (enemy.hp <= 0) continue;
       if (enemy.poison > 0 && enemy.poisonTurns > 0) {
-        this.damageEnemy(enemy, enemy.poison, { source: "SYNTAX BOMB", pierce: 0.2 });
+        this.damageEnemy(enemy, enemy.poison, { source: "MEMORY LEAK", pierce: 0.2 });
         enemy.poisonTurns -= 1;
         if (enemy.poisonTurns <= 0) enemy.poison = 0;
       }
@@ -2459,7 +2461,7 @@ Object.assign(Game, {
 
     if (this.hero().id === "casino" && !combat.rerolledThisCycle) {
       run.luck += 1;
-      this.log(`HOUSE EDGE: LUCK ${run.luck}.`, "success");
+      this.log(`COVERAGE EDGE: FUZZ ${run.luck}.`, "success");
     }
     if (this.hasRelic("overclock")) run.heat += 2;
 
@@ -2482,7 +2484,7 @@ Object.assign(Game, {
     this.gainEnergy(1, false);
     this.applyCycleStartPassive(false);
     this.applyBossCycleEffects();
-    this.log(`Цикл ${combat.cycle}: кости ${DICE[combat.dice[0]]} + ${DICE[combat.dice[1]]}.`, "system");
+    this.log(`Execution cycle ${combat.cycle}: ZERO=${DICE[combat.dice[0]]} / ONE=${DICE[combat.dice[1]]}.`, "system");
   },
 
   applyCycleStartPassive(initial = false) {
@@ -2491,7 +2493,7 @@ Object.assign(Game, {
     if (hero.id === "bulwark") {
       const armor = Math.max(2, Math.floor(this.correctCount() / 2));
       this.gainArmor(armor, false);
-      if (!initial) this.log(`STABLE STATE: +${armor} ARMOR.`, "success");
+      if (!initial) this.log(`IMMUTABLE STATE: +${armor} FIREWALL.`, "success");
     }
     if (hero.id === "mora" && !combat.restorePointUsed && !combat.restorePoint && this.state.run.hp <= this.state.run.maxHp * 0.5) {
       this.createRestorePoint();
@@ -2503,12 +2505,12 @@ Object.assign(Game, {
     if (!boss) return;
     if (boss.id === "oracleSix") {
       boss.doomDie = this.randomInt(1, 6);
-      this.log(`ORACLE объявляет пророчество грани ${DICE[boss.doomDie]}.`, "damage");
+      this.log(`ZERO-DAY ORACLE прогнозирует input ${DICE[boss.doomDie]}.`, "damage");
     }
     if (boss.id === "emptyKing") {
       const corners = [0, 3, 12, 15];
       this.state.combat.bossState.kingCorner = this.pick(corners);
-      this.log(`EMPTY KING метит угол ${corners.indexOf(this.state.combat.bossState.kingCorner) + 1}.`, "damage");
+      this.log(`STACK OVERFLOW готовит перезапись угла ${corners.indexOf(this.state.combat.bossState.kingCorner) + 1}.`, "damage");
     }
   },
 
@@ -2516,14 +2518,14 @@ Object.assign(Game, {
     if (enemy.hp <= 0) return;
     if (enemy.stunned > 0) {
       enemy.stunned -= 1;
-      this.log(`${enemy.name}: действие отменено JAM-протоколом.`, "success");
+      this.log(`${enemy.name}: системный вызов отменён TIMEOUT payload.`, "success");
       return;
     }
     enemy.actionCount += 1;
 
     if (enemy.mutations.includes("loaded")) {
       this.rollDice(false, false);
-      this.log(`${enemy.name} [LOADED] меняет кости.`, "damage");
+      this.log(`${enemy.name} [POISONED] меняет регистры ZERO/ONE.`, "damage");
     }
 
     if (enemy.boss) this.bossAct(enemy);
@@ -2532,7 +2534,7 @@ Object.assign(Game, {
     if (this.state.run.hp <= 0 || this.state.combat.pendingEnd) return;
     if (enemy.mutations.includes("echo") && !enemy.echoUsed && !options.echo) {
       enemy.echoUsed = true;
-      this.log(`${enemy.name} [ECHO] повторяет действие с половинной силой.`, "damage");
+      this.log(`${enemy.name} [FORKED] повторяет вызов с половинной мощностью.`, "damage");
       this.standardEnemyAct(enemy, 0.5);
     }
   },
@@ -2563,7 +2565,7 @@ Object.assign(Game, {
         if (enemy.telegraphRow === null) {
           enemy.telegraphRow = this.randomInt(0, 3);
           enemy.countdown = 2;
-          this.log(`${enemy.name} наводится на строку ${enemy.telegraphRow + 1}.`, "damage");
+          this.log(`${enemy.name} сканирует строку памяти ${enemy.telegraphRow + 1}.`, "damage");
         } else {
           const blankRow = Math.floor(combat.board.indexOf(0) / 4);
           const shot = blankRow === enemy.telegraphRow ? Math.round(damage * 1.65) : Math.round(damage * 0.55);
@@ -2627,7 +2629,7 @@ Object.assign(Game, {
           combat.cooldowns[id] += 1;
         }
         this.damagePlayer(Math.round(damage * 0.45), enemy.name, enemy);
-        this.log(`${enemy.name} ускоряет союзные таймеры.`, "damage");
+        this.log(`${enemy.name} ускоряет таймеры системного кластера.`, "damage");
         break;
       }
       case "patchDrone": {
@@ -2635,26 +2637,26 @@ Object.assign(Game, {
         const heal = Math.max(8, Math.round(target.maxHp * 0.18));
         target.hp = Math.min(target.maxHp, target.hp + heal);
         target.weakened = 0;
-        this.log(`${enemy.name} восстанавливает ${target.name}: +${heal} HP.`, "damage");
+        this.log(`${enemy.name} применяет patch к ${target.name}: +${heal} INTEGRITY.`, "damage");
         break;
       }
       case "aegisNode": {
         combat.enemies.filter((target) => target.hp > 0).forEach((target) => {
           target.armor += 8 + this.state.run.floor * 2;
         });
-        this.log(`${enemy.name} разворачивает общий AEGIS.`, "damage");
+        this.log(`${enemy.name} разворачивает общий FIREWALL.`, "damage");
         break;
       }
       case "protocolChoir": {
         this.rollDice(false, false);
-        const archetypes = ["ДАЛЬНИК", "БЛИЖНИК", "МАГ", "САППОРТ"];
+        const archetypes = ["REMOTE", "LOCAL", "MALWARE", "SERVICE"];
         const buff = this.pick(archetypes);
         combat.enemies.filter((target) => target.hp > 0 && target.archetype === buff).forEach((target) => {
           target.countdown = Math.max(1, target.countdown - 1);
           target.armor += 5;
         });
         this.damagePlayer(Math.round(damage * 0.4), enemy.name, enemy);
-        this.log(`${enemy.name} усиливает архетип ${buff}.`, "damage");
+        this.log(`${enemy.name} ускоряет процессы класса ${buff}.`, "damage");
         break;
       }
       default:
@@ -2680,7 +2682,7 @@ Object.assign(Game, {
         if (value) this.applyTileDebuff(value, enemy.phase >= 3 ? "locked" : "corrupted", 5, enemy.name);
       }
       if (enemy.phase >= 3) this.disruptCorrectTile();
-      this.log(`${enemy.name} переносит трон в новый угол.`, "damage");
+      this.log(`${enemy.name} переносит адрес возврата в новый угол.`, "damage");
       return;
     }
 
@@ -2709,13 +2711,13 @@ Object.assign(Game, {
       for (const direction of directions) {
         if (this.forceBlankMove(direction)) shifts += 1;
       }
-      this.damagePlayer(damage + shifts * 2, `${enemy.name}: ECHO ×${shifts}`, enemy, { pierceArmor: enemy.phase >= 3 ? 0.35 : 0 });
+      this.damagePlayer(damage + shifts * 2, `${enemy.name}: RECURSE ×${shifts}`, enemy, { pierceArmor: enemy.phase >= 3 ? 0.35 : 0 });
       if (enemy.phase >= 2) {
         const values = this.shuffle(combat.board.filter(Boolean)).slice(0, enemy.phase - 1);
         values.forEach((value) => this.applyTileDebuff(value, "corrupted", 5, enemy.name));
       }
       if (enemy.phase >= 3) enemy.baseCountdown = 2;
-      this.log(`${enemy.name} повторяет ваши последние направления.`, "damage");
+      this.log(`${enemy.name} рекурсивно повторяет последние bit-shift.`, "damage");
     }
   },
 
@@ -2730,7 +2732,7 @@ Object.assign(Game, {
     enemy.armor += Math.round(enemy.maxHp * 0.06);
     this.state.combat.flashMessage = `PHASE ${nextPhase}`;
     this.state.combat.flashUntil = Date.now() + 1000;
-    this.log(`<strong>${enemy.name}</strong> переходит в фазу ${nextPhase}.`, "system");
+    this.log(`<strong>${enemy.name}</strong>: runtime phase ${nextPhase}.`, "system");
     this.beep(130 + nextPhase * 35, 0.14, "sawtooth", 0.025);
   },
 
@@ -2763,7 +2765,7 @@ Object.assign(Game, {
     if (target === undefined) return;
     const value = combat.board[target];
     [combat.board[blank], combat.board[target]] = [combat.board[target], combat.board[blank]];
-    this.log(`RIOT-протокол выбивает плитку ${value}.`, "damage");
+    this.log(`RACE CONDITION перезаписывает адрес ячейки ${value}.`, "damage");
   },
 
   pickMovableValue() {
@@ -2776,16 +2778,16 @@ Object.assign(Game, {
     const combat = this.state.combat;
     const status = this.tileState(value);
     if (status.protected > 0) {
-      this.log(`ANCHOR на плитке ${value} блокирует ${key.toUpperCase()}.`, "success");
+      this.log(`CONST на ячейке ${value} блокирует ${key.toUpperCase()}.`, "success");
       return false;
     }
     if (combat.corruptionShield > 0 && ["corrupted", "locked"].includes(key)) {
       combat.corruptionShield -= 1;
-      this.log(`CHROME MEMORY отменяет вмешательство ${source}.`, "success");
+      this.log(`ZERO-DAY PATCH отменяет вмешательство ${source}.`, "success");
       return false;
     }
     status[key] = Math.max(status[key] || 0, duration);
-    this.log(`${source || "Противник"}: плитка ${value} получает ${key.toUpperCase()} (${duration}).`, "damage");
+    this.log(`${source || "SYSTEM"}: ячейка ${value} получает ${key.toUpperCase()} (${duration}).`, "damage");
     return true;
   },
 
@@ -2799,7 +2801,7 @@ Object.assign(Game, {
     enemy.armor = Math.max(0, enemy.armor - absorbed);
     const dealt = Math.max(0, armorEligible - absorbed + piercingPart);
     enemy.hp -= dealt;
-    if (!options.silent) this.log(`${options.source || "Атака"} → ${enemy.name}: <strong>${dealt}</strong> урона${absorbed ? `, ${absorbed} поглощено` : ""}.`, "success");
+    if (!options.silent) this.log(`${options.source || "PAYLOAD"} → ${enemy.name}: <strong>${dealt}</strong> damage${absorbed ? `, ${absorbed} blocked by FIREWALL` : ""}.`, "success");
     this.updateBossPhase(enemy);
 
     if (enemy.hp <= 0) {
@@ -2807,13 +2809,13 @@ Object.assign(Game, {
         enemy.revived = true;
         enemy.hp = Math.max(1, Math.round(enemy.maxHp * 0.35));
         enemy.armor = Math.round(enemy.maxHp * 0.08);
-        this.log(`${enemy.name} [RECURSIVE] возвращается из NULL.`, "damage");
+        this.log(`${enemy.name} [RECURSIVE] перезапускается из NULL.`, "damage");
       } else {
         enemy.hp = 0;
         this.state.run.kills += 1;
         this.state.run.score += 45 + this.state.run.floor * 12 + (enemy.elite ? 40 : 0) + (enemy.boss ? 220 : 0);
         if (this.hasRelic("blood_cache")) this.healPlayer(3, false);
-        this.log(`${enemy.name} уничтожен.`, "system");
+        this.log(`${enemy.name}: process terminated.`, "system");
         if (this.state.combat.targetId === enemy.uid) {
           this.state.combat.targetId = this.state.combat.enemies.find((entry) => entry.hp > 0)?.uid || null;
         }
@@ -2831,7 +2833,7 @@ Object.assign(Game, {
     }
   },
 
-  damagePlayer(amount, source = "Урон", attacker = null, options = {}) {
+  damagePlayer(amount, source = "SYSTEM DAMAGE", attacker = null, options = {}) {
     const run = this.state.run;
     if (!run || amount <= 0) return 0;
     let raw = Math.max(0, Math.round(amount));
@@ -2844,7 +2846,7 @@ Object.assign(Game, {
     const previousHp = run.hp;
     run.hp -= dealt;
     if (options.allowDeath === false) run.hp = Math.max(1, run.hp);
-    if (this.state.combat) this.log(`${source} → носитель: <strong>${dealt}</strong> урона${absorbed ? `, ${absorbed} блокировано` : ""}.`, "damage");
+    if (this.state.combat) this.log(`${source} → operator: <strong>${dealt}</strong> damage${absorbed ? `, ${absorbed} blocked by FIREWALL` : ""}.`, "damage");
 
     if (this.hero().id === "mora" && this.state.combat && !this.state.combat.restorePointUsed && !this.state.combat.restorePoint && previousHp > run.maxHp * 0.5 && run.hp <= run.maxHp * 0.5) {
       this.createRestorePoint();
@@ -2853,7 +2855,7 @@ Object.assign(Game, {
     if (this.state.combat?.counterDamage > 0 && attacker?.hp > 0) {
       const counter = this.state.combat.counterDamage;
       this.state.combat.counterDamage = 0;
-      this.damageEnemy(attacker, counter, { source: "RIPOSTE", pierce: 0.4 });
+      this.damageEnemy(attacker, counter, { source: "CALLBACK", pierce: 0.4 });
     }
 
     if (run.hp <= 0 && options.allowDeath !== false) {
@@ -2864,14 +2866,14 @@ Object.assign(Game, {
         this.state.combat?.enemies?.filter((enemy) => enemy.hp > 0).forEach((enemy) => {
           enemy.countdown = Math.max(enemy.countdown, 3);
         });
-        this.log("TRAINING RESTORE возвращает носителя в бой: 38% HP и 12 ARMOR.", "system");
-        this.toast("TRAINING RESTORE: обучение продолжается.", "success");
+        this.log("SANDBOX RESTORE перезапускает operator process: 38% INTEGRITY и 12 FIREWALL.", "system");
+        this.toast("SANDBOX RESTORE: penetration test продолжается.", "success");
       } else if (this.hasRelic("last_packet") && !run.revived) {
         run.revived = true;
         run.hp = Math.max(1, Math.round(run.maxHp * 0.25));
         run.armor = 10;
-        this.log("LAST PACKET предотвращает разрыв соединения.", "system");
-        this.toast("LAST PACKET: аварийное восстановление.", "success");
+        this.log("LAST ACK предотвращает disconnect.", "system");
+        this.toast("LAST ACK: process recovered.", "success");
       } else {
         run.hp = 0;
         if (this.state.combat) this.state.combat.pendingEnd = true;
@@ -2889,14 +2891,14 @@ Object.assign(Game, {
     const previous = run.hp;
     run.hp = Math.min(run.maxHp, run.hp + Math.round(amount));
     const healed = run.hp - previous;
-    if (writeLog && healed > 0 && this.state.combat) this.log(`PATCH: восстановлено <strong>${healed}</strong> HP.`, "success");
+    if (writeLog && healed > 0 && this.state.combat) this.log(`HOTFIX: восстановлено <strong>${healed}</strong> INTEGRITY.`, "success");
     return healed;
   },
 
   gainArmor(amount, writeLog = true) {
     const value = Math.max(0, Math.round(amount));
     this.state.run.armor += value;
-    if (writeLog && value > 0 && this.state.combat) this.log(`AEGIS: +${value} ARMOR.`, "success");
+    if (writeLog && value > 0 && this.state.combat) this.log(`FIREWALL +${value}.`, "success");
     return value;
   },
 
@@ -2905,7 +2907,7 @@ Object.assign(Game, {
     const previous = run.energy;
     run.energy = Math.min(run.maxEnergy, run.energy + amount);
     const gained = run.energy - previous;
-    if (writeLog && gained > 0 && this.state.combat) this.log(`NULL ENERGY +${Math.floor(gained)}.`, "success");
+    if (writeLog && gained > 0 && this.state.combat) this.log(`BIT CHARGE +${Math.floor(gained)}.`, "success");
     return gained;
   },
 
@@ -2926,9 +2928,9 @@ Object.assign(Game, {
     if (removed > 0 && this.hero().id === "hex" && !combat.exploitUsed) {
       combat.exploitUsed = true;
       this.gainEnergy(2, false);
-      if (writeLog) this.log("EXPLOIT: первое очищение возвращает 2 NULL.", "success");
+      if (writeLog) this.log("CVE-0: первая очистка возвращает 2 BIT CHARGE.", "success");
     }
-    if (writeLog && removed > 0) this.log(`Очищено состояний поля: ${removed}.`, "success");
+    if (writeLog && removed > 0) this.log(`Очищено ограничений памяти: ${removed}.`, "success");
     return removed;
   },
 
@@ -2942,7 +2944,7 @@ Object.assign(Game, {
       armor: this.state.run.armor,
       tileStatus: deepClone(combat.tileStatus),
     };
-    this.log("RESTORE POINT сохранён при критическом уровне HP.", "system");
+    this.log("AUTO COMMIT создан при критической INTEGRITY.", "system");
   },
 
   forceUsefulMoves(count = 1) {
@@ -3112,17 +3114,17 @@ Object.assign(Game, {
 
   evaluateSelectedCombo() {
     const combat = this.state.combat;
-    if (!combat) return { ready: false, reason: "Бой не активен", strength: 0, group: [] };
+    if (!combat) return { ready: false, reason: "Breach не активен", strength: 0, group: [] };
     const selection = combat.comboSelection;
     const groups = this.patternGroups(selection.pattern);
     if (!groups.length) {
       const pattern = PATTERNS.find((entry) => entry.id === selection.pattern);
-      return { ready: false, reason: `Нет шаблона ${pattern?.label || selection.pattern}.`, strength: 0, group: [] };
+      return { ready: false, reason: `Memory pattern «${pattern?.label || selection.pattern}» не найден.`, strength: 0, group: [] };
     }
     const matching = groups.filter((group) => this.protocolMatches(group, selection.protocol));
     if (!matching.length) {
       const protocol = PROTOCOLS.find((entry) => entry.id === selection.protocol);
-      return { ready: false, reason: `Шаблон есть, но не выполнен протокол «${protocol?.label || selection.protocol}».`, strength: 0, group: [] };
+      return { ready: false, reason: `Pattern найден, но ZERO/ONE trigger «${protocol?.label || selection.protocol}» ложен.`, strength: 0, group: [] };
     }
     const group = matching.sort((a, b) => b.length - a.length)[0];
     let strength = clamp(1 + Math.floor((group.length - 2) / 2), 1, 4);
@@ -3131,7 +3133,7 @@ Object.assign(Game, {
     if (combat.eventHorizonMoves > 0) strength += 1;
     if (combat.forkBonus > 0) strength += combat.forkBonus;
     strength = clamp(strength, 1, 7);
-    return { ready: true, reason: "Готово", strength, group };
+    return { ready: true, reason: "COMPILED", strength, group };
   },
 
   activateCombo() {
@@ -3158,35 +3160,35 @@ Object.assign(Game, {
     if (attacking && combat.momentumReady) {
       multiplier *= 1.5;
       combat.momentumReady = false;
-      this.log("VECTOR MOMENTUM усиливает комбинацию на 50%.", "success");
+      this.log("BRANCH PREDICTOR усиливает payload на 50%.", "success");
     }
     if (attacking && this.hasRelic("prime_skull") && evaluation.group.some((value) => PRIME_VALUES.has(value))) multiplier *= 1.2;
 
     const basePotency = 5 + strength * 4 + Math.floor(this.state.run.floor * 0.6);
     const comboName = this.comboName();
-    this.log(`<strong>${comboName}</strong> активирован.`, "system");
+    this.log(`<strong>${comboName}</strong>: exploit executed.`, "system");
     this.applyComboEffect(effect, basePotency * multiplier, evaluation, 1, comboName);
     this.tutorialEvent("combo_activated", { key, effect, stage: run.stage });
     if (combat.pendingEnd) return;
 
     if (combat.duplicateNextCombo > 0) {
       combat.duplicateNextCombo -= 1;
-      this.log("AFTERIMAGE повторяет результат с 65% силы.", "success");
-      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.65, "AFTERIMAGE");
+      this.log("ASYNC ECHO повторяет payload с 65% мощности.", "success");
+      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.65, "ASYNC ECHO");
     }
     if (combat.pendingEnd) return;
 
     if (combat.doubleDown) {
       combat.doubleDownResolved = true;
       combat.doubleDown = false;
-      this.log("DOUBLE DOWN удваивает комбинацию.", "success");
-      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.9, "DOUBLE DOWN");
+      this.log("DOUBLE EXEC повторно выполняет эксплойт.", "success");
+      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.9, "DOUBLE EXEC");
     }
     if (combat.pendingEnd) return;
 
     if (this.hasRelic("recursive_lens") && combat.comboActivations % 3 === 0) {
-      this.log("RECURSIVE LENS создаёт слабое эхо.", "success");
-      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.35, "RECURSIVE LENS");
+      this.log("RECURSION CACHE создаёт дочерний вызов.", "success");
+      this.applyComboEffect(effect, basePotency * multiplier, evaluation, 0.35, "RECURSION CACHE");
     }
 
     combat.flashMessage = comboName;
@@ -3220,7 +3222,7 @@ Object.assign(Game, {
       case "RIPOSTE":
         this.gainArmor(Math.round(amount * 0.62));
         this.state.combat.counterDamage = Math.max(this.state.combat.counterDamage, Math.round(amount * 1.15));
-        this.log(`RIPOSTE готов: ответный урон ${this.state.combat.counterDamage}.`, "success");
+        this.log(`CALLBACK готов: ответный payload ${this.state.combat.counterDamage}.`, "success");
         break;
       case "JAM":
         this.state.combat.enemies.filter((enemy) => enemy.hp > 0).forEach((enemy) => {
@@ -3228,7 +3230,7 @@ Object.assign(Game, {
           enemy.weakened = Math.max(enemy.weakened, 1);
         });
         if (target && evaluation.strength >= 3) target.stunned += 1;
-        this.log("Вражеские таймеры задержаны.", "success");
+        this.log("Системные таймеры получили TIMEOUT.", "success");
         break;
       case "PATCH":
         this.healPlayer(amount, true);
@@ -3237,7 +3239,7 @@ Object.assign(Game, {
       case "REWRITE": {
         const moved = this.forceUsefulMoves(Math.max(1, Math.ceil(evaluation.strength / 2)));
         this.rollDice(false, false);
-        this.log(`REWRITE выполняет ${moved} безопасных сдвига и обновляет кости.`, "success");
+        this.log(`REFACTOR выполняет ${moved} безопасных bit-shift и обновляет ZERO/ONE.`, "success");
         break;
       }
       default:
@@ -3279,7 +3281,7 @@ Object.assign(Game, {
       this.renderCombat();
       return;
     }
-    this.log(`<strong>${ability.name}</strong> активирован.`, "system");
+    this.log(`<strong>${ability.name}</strong>: command executed.`, "system");
     this.tutorialEvent("ability_used", { abilityId, stage: run.stage });
     this.beep(410 + ability.cost * 55, 0.06, ability.ultimate ? "sawtooth" : "triangle", ability.ultimate ? 0.025 : 0.016);
     if (!combat.pendingEnd) {
@@ -3296,12 +3298,12 @@ Object.assign(Game, {
     switch (id) {
       case "v_cutline": {
         const lineStrength = Math.max(1, this.patternGroups("LINE").length + this.patternGroups("SEQUENCE").length);
-        this.damageEnemy(target, this.scaleAbility(12 + Math.min(6, lineStrength) * 3, id), { source: "CUTLINE", pierce: 0.32 });
+        this.damageEnemy(target, this.scaleAbility(12 + Math.min(6, lineStrength) * 3, id), { source: "HOT PATH", pierce: 0.32 });
         break;
       }
       case "v_rail": {
         const amount = this.scaleAbility(9 + this.completedLines() * 5 + Math.floor(this.correctCount() / 3), id);
-        this.damageAllEnemies(amount, { source: "RAIL CASCADE", pierce: 0.48 });
+        this.damageAllEnemies(amount, { source: "SIMD BURST", pierce: 0.48 });
         break;
       }
       case "v_blink":
@@ -3354,7 +3356,7 @@ Object.assign(Game, {
         break;
       case "h_purge": {
         const removed = this.cleanseTileStates(Infinity, true);
-        if (target) this.damageEnemy(target, this.scaleAbility(6 + removed * 5, id), { source: "ROOT PURGE", pierce: 0.25 });
+        if (target) this.damageEnemy(target, this.scaleAbility(6 + removed * 5, id), { source: "ROOTKIT PURGE", pierce: 0.25 });
         break;
       }
       case "h_ult":
@@ -3384,7 +3386,7 @@ Object.assign(Game, {
         const rolls = [this.randomInt(1, 6), this.randomInt(1, 6), this.randomInt(1, 6)].sort((a, b) => b - a);
         combat.dice = rolls.slice(0, 2);
         const bonus = this.scaleAbility(rolls[2] * 3, id);
-        this.damageAllEnemies(bonus, { source: "ALL IN", pierce: 0.25 });
+        this.damageAllEnemies(bonus, { source: "CHAOS MONKEY", pierce: 0.25 });
         run.luck += 1;
         break;
       }
@@ -3402,7 +3404,7 @@ Object.assign(Game, {
       }
       case "m_rollback": {
         if (!combat.boardHistory.length) {
-          this.toast("ROLLBACK: история поля пока пуста.", "error");
+          this.toast("GIT RESET: stack history пока пуста.", "error");
           return false;
         }
         const index = Math.max(0, combat.boardHistory.length - 4);
@@ -3498,24 +3500,24 @@ Object.assign(Game, {
     const run = this.state.run;
     if (type === "credits") {
       const amount = this.randomInt(24, 42) + run.floor * 2;
-      return { type, title: `${amount} CREDITS`, desc: "Добавить кредиты для BLACK MARKET.", value: amount, rarity: "RESOURCE" };
+      return { type, title: `${amount} BUG BOUNTY`, desc: "Пополнить репутацию для PACKAGE REPOSITORY.", value: amount, rarity: "REPUTATION" };
     }
     if (type === "heal") {
       const amount = Math.ceil(run.maxHp * 0.24);
-      return { type, title: `PATCH +${amount}`, desc: "Восстановить часть корпуса прямо сейчас.", value: amount, rarity: "RECOVERY" };
+      return { type, title: `HOTFIX +${amount}`, desc: "Восстановить часть INTEGRITY активного процесса.", value: amount, rarity: "RECOVERY" };
     }
-    if (type === "maxhp") return { type, title: "CHROME FRAME", desc: "+7 к максимальному HP и немедленное лечение на 7.", value: 7, rarity: "CORE UPGRADE" };
-    if (type === "energy") return { type, title: "NULL CAPACITOR", desc: "+1 к максимуму энергии и заполнение нового слота.", value: 1, rarity: "CORE UPGRADE" };
-    if (type === "cool") return { type, title: "COLD TRACE", desc: "Снизить HEAT на 12 и получить 40 очков.", value: 12, rarity: "UTILITY" };
-    if (type === "armor") return { type, title: "STATIC WARD", desc: "Получить 16 ARMOR, сохраняемых до получения урона.", value: 16, rarity: "DEFENCE" };
+    if (type === "maxhp") return { type, title: "HEAP EXTENSION", desc: "+7 к максимуму INTEGRITY и немедленное восстановление на 7.", value: 7, rarity: "CORE UPGRADE" };
+    if (type === "energy") return { type, title: "BIT CAPACITOR", desc: "+1 к максимуму BIT CHARGE и заполнение нового слота.", value: 1, rarity: "CORE UPGRADE" };
+    if (type === "cool") return { type, title: "CLEAR LOGS", desc: "Снизить TRACE на 12 и получить 40 REPUTATION.", value: 12, rarity: "UTILITY" };
+    if (type === "armor") return { type, title: "FIREWALL RULE", desc: "Получить 16 FIREWALL, сохраняемых до получения урона.", value: 16, rarity: "DEFENCE" };
     if (type === "upgrade") {
       const ability = this.pick(this.hero().abilities);
-      return { type, title: ability.name, desc: `Улучшить способность: ${ability.desc}`, abilityId: ability.id, rarity: "PROTOCOL" };
+      return { type, title: ability.name, desc: `Increment command version: ${ability.desc}`, abilityId: ability.id, rarity: "COMMAND" };
     }
     if (type === "relic") {
       const relic = this.randomAvailableRelic();
       if (!relic) return this.makeReward("credits");
-      return { type, title: relic.name, desc: relic.desc, relicId: relic.id, rarity: "RELIC" };
+      return { type, title: relic.name, desc: relic.desc, relicId: relic.id, rarity: "EXPLOIT MODULE" };
     }
     return this.makeReward("credits");
   },
@@ -3527,20 +3529,20 @@ Object.assign(Game, {
       this.state.rewards = this.generateRewards(roomType);
       return this.renderReward();
     }
-    const roomName = ROOM_DEFS[roomType]?.name || "COMBAT";
+    const roomName = ROOM_DEFS[roomType]?.name || "BREACH";
     this.screenEl.innerHTML = `
       <section class="reward-screen">
         <div class="panel event-box">
           <div class="event-icon">✓</div>
-          <p class="eyebrow">${roomName} // CLEARED</p>
-          <h2>Выберите один фрагмент</h2>
-          <p class="event-copy">Кредиты за бой уже добавлены. Из трёх дополнительных наград можно забрать только одну.</p>
+          <p class="eyebrow">${roomName} // EXIT 0</p>
+          <h2>Установите один loot-пакет</h2>
+          <p class="event-copy">BUG BOUNTY за breach уже начислена. Из трёх дополнительных пакетов можно установить только один.</p>
           <div class="reward-grid">
             ${rewards.map((reward, index) => `
               <button class="reward-card" data-reward-index="${index}" type="button">
                 <span><span class="reward-rarity">${reward.rarity}</span><h3>${reward.title}</h3></span>
                 <p>${reward.desc}</p>
-                <span class="terminal-code">ACQUIRE</span>
+                <span class="terminal-code">INSTALL PACKAGE</span>
               </button>
             `).join("")}
           </div>
@@ -3588,7 +3590,7 @@ Object.assign(Game, {
       default:
         break;
     }
-    this.toast(`${reward.title} получено.`, "success");
+    this.toast(`${reward.title}: package installed.`, "success");
     this.finishRoom();
   },
 
@@ -3606,51 +3608,51 @@ Object.assign(Game, {
     this.modalRoot.innerHTML = `
       <div class="modal-backdrop" role="presentation">
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="codexTitle">
-          <div class="modal-header"><h2 id="codexTitle">NULL//CODEX</h2><button class="icon-button" data-close-modal type="button">×</button></div>
+          <div class="modal-header"><h2 id="codexTitle">NULL-15 // DOCUMENTATION</h2><button class="icon-button" data-close-modal type="button">×</button></div>
           <div class="modal-body">
             <div class="codex-grid">
               <div class="codex-section">
-                <h3>Основной цикл</h3>
-                <p>Переместите соседнюю с VOID плитку. Каждый обычный сдвиг уменьшает таймеры намерений. После ${this.state.combat?.maxMoves || 6} сдвигов начинается новый цикл и перебрасываются кости.</p>
-                <p>Полностью собранное поле запускает ZERO STATE: массовый урон, лечение и новая решаемая перестановка.</p>
+                <h3>Execution cycle</h3>
+                <p>Переместите ячейку рядом с NULL pointer. Каждый обычный bit-shift уменьшает таймеры системных вызовов. После ${this.state.combat?.maxMoves || 6} операций начинается новый cycle и обновляются entropy-регистры ZERO/ONE.</p>
+                <p>Полностью скомпилированный stack grid запускает STACK OVERFLOW: массовый урон, HOTFIX, очистку памяти и новую решаемую раскладку.</p>
               </div>
               <div class="codex-section">
-                <h3>Управление</h3>
+                <h3>Input map</h3>
                 <ul>
-                  <li>WASD / стрелки — двигать VOID.</li>
-                  <li>Клик по подсвеченной плитке — сдвиг.</li>
-                  <li>1–5 — способности героя.</li>
-                  <li>Space — выбранная комбинация.</li>
-                  <li>R — ручной переброс за 1 NULL.</li>
-                  <li>I — открыть инвентарь забега.</li>
-                  <li>Esc — пауза или закрытие окна.</li>
+                  <li>WASD / стрелки — перемещать NULL pointer.</li>
+                  <li>Клик по подсвеченной ячейке — выполнить bit-shift.</li>
+                  <li>1–5 — выполнить команду operator process.</li>
+                  <li>Space — запустить скомпилированный эксплойт.</li>
+                  <li>R — RANDOMIZE регистров за 1 BIT CHARGE.</li>
+                  <li>I — открыть process stack.</li>
+                  <li>Esc — system menu или закрытие окна.</li>
                 </ul>
               </div>
               <div class="codex-section">
-                <h3>192 комбинации</h3>
-                <p><strong>8 шаблонов × 8 эффектов × 3 протокола = 192.</strong> Выберите по одному модулю в боевом конструкторе.</p>
+                <h3>Exploit compiler: 192 сборки</h3>
+                <p><strong>8 memory patterns × 8 payload × 3 ZERO/ONE triggers = 192.</strong> Выберите по одному модулю, чтобы скомпилировать эксплойт.</p>
                 <ul>${patterns}</ul>
               </div>
               <div class="codex-section">
-                <h3>Эффекты и кости</h3>
+                <h3>Payload и ZERO/ONE triggers</h3>
                 <ul>${effects}</ul>
                 <ul>${protocols}</ul>
               </div>
               <div class="codex-section">
-                <h3>Противники</h3>
-                <p>В игре 12 базовых противников: по три дальника, ближника, мага и саппорта. На высоких этажах они получают CHROME, ECHO, NULLBORN, LOADED, FERAL и RECURSIVE.</p>
+                <h3>System processes</h3>
+                <p>Есть 12 базовых процессов: по три класса REMOTE, LOCAL, MALWARE и SERVICE. На глубоких stack frame они получают HARDENED, FORKED, NULLSAFE, POISONED, LOW LATENCY и RECURSIVE.</p>
                 <ul>${ENEMY_DEFS.map((enemy) => `<li><strong>${enemy.name}</strong> [${enemy.archetype}] — ${enemy.intent}</li>`).join("")}</ul>
               </div>
               <div class="codex-section">
-                <h3>Три босса</h3>
+                <h3>Три root-процесса</h3>
                 <ul>
-                  <li><strong>THE EMPTY KING</strong> — метит углы и вмешивается в VOID.</li>
-                  <li><strong>ORACLE OF SIX</strong> — объявляет грань-пророчество и переписывает броски.</li>
-                  <li><strong>THE INFINITY ENGINE</strong> — повторяет последние направления ваших ходов.</li>
+                  <li><strong>STACK OVERFLOW</strong> — перезаписывает адреса возврата и вмешивается в NULL pointer.</li>
+                  <li><strong>ZERO-DAY ORACLE</strong> — прогнозирует entropy input и отравляет регистры.</li>
+                  <li><strong>INFINITE RECURSION</strong> — повторяет последние направления bit-shift.</li>
                 </ul>
               </div>
             </div>
-            <h3 style="margin-top:22px">36 способностей персонажей</h3>
+            <h3 style="margin-top:22px">36 operator commands</h3>
             <div class="codex-grid">${heroesHTML}</div>
           </div>
         </section>
@@ -3666,18 +3668,18 @@ Object.assign(Game, {
     this.modalRoot.innerHTML = `
       <div class="modal-backdrop" role="presentation">
         <section class="modal" style="width:min(520px,100%)" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
-          <div class="modal-header"><h2 id="pauseTitle">SYSTEM MENU</h2><button class="icon-button" data-close-modal type="button">×</button></div>
+          <div class="modal-header"><h2 id="pauseTitle">PROCESS CONTROL</h2><button class="icon-button" data-close-modal type="button">×</button></div>
           <div class="modal-body">
             <div class="run-list" style="margin-bottom:14px">
               <div class="run-list-item"><span>Seed</span><strong>${escapeHTML(run.seed)}</strong></div>
-              <div class="run-list-item"><span>Этаж / узел</span><strong>${run.floor} / ${run.stage + 1}</strong></div>
-              <div class="run-list-item"><span>Счёт</span><strong>${Math.floor(run.score)}</strong></div>
+              <div class="run-list-item"><span>Stack frame / endpoint</span><strong>${run.floor} / ${run.stage + 1}</strong></div>
+              <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
             </div>
             <div class="pause-actions">
-              <button class="primary-button" data-close-modal type="button">Вернуться в игру</button>
-              <button id="saveAndTitleButton" class="secondary-button" type="button">Сохранить и выйти в меню</button>
-              <button id="pauseCodexButton" class="secondary-button" type="button">Открыть кодекс</button>
-              <button id="abandonRunButton" class="danger-button" type="button">Завершить забег</button>
+              <button class="primary-button" data-close-modal type="button">Resume execution</button>
+              <button id="saveAndTitleButton" class="secondary-button" type="button">Commit & return to terminal</button>
+              <button id="pauseCodexButton" class="secondary-button" type="button">Открыть documentation</button>
+              <button id="abandonRunButton" class="danger-button" type="button">Kill process</button>
             </div>
           </div>
         </section>
@@ -3693,11 +3695,11 @@ Object.assign(Game, {
       this.state.currentRoom = null;
       this.state.rewards = null;
       this.render();
-      this.toast("Забег сохранён.", "success");
+      this.toast("Process state committed.", "success");
     });
     $("#pauseCodexButton", this.modalRoot).addEventListener("click", () => this.openCodex());
     $("#abandonRunButton", this.modalRoot).addEventListener("click", () => {
-      const confirmed = window.confirm("Завершить текущий забег и удалить сохранение?");
+      const confirmed = window.confirm("Kill текущий process и удалить snapshot?");
       if (!confirmed) return;
       this.clearSave();
       this.goToTitle();
@@ -3792,7 +3794,7 @@ Object.assign(Game, {
     const hero = this.hero();
     const relicSlots = Array.from({ length: Math.max(3, run.relics.length) }, (_, index) => {
       const relic = RELICS.find((entry) => entry.id === run.relics[index]);
-      if (!relic) return `<div class="inventory-slot"><strong>EMPTY SLOT</strong><p>Реликвию можно получить после боя, в сокровищнице или у торговца.</p></div>`;
+      if (!relic) return `<div class="inventory-slot"><strong>EMPTY MODULE SLOT</strong><p>Exploit-модуль можно получить после breach, из DATA DUMP или PACKAGE REPOSITORY.</p></div>`;
       return `<div class="inventory-slot filled"><strong>${relic.name}</strong><p>${relic.desc}</p></div>`;
     }).join("");
     const abilityRows = hero.abilities.map((ability, index) => {
@@ -3800,34 +3802,34 @@ Object.assign(Game, {
       return `
         <div class="inventory-ability">
           <div><strong>${index + 1}. ${ability.name}</strong><p>${ability.desc}</p></div>
-          <span class="inventory-level">LVL ${level}${level ? ` · +${level * 20}%` : ""}</span>
+          <span class="inventory-level">VER ${level}${level ? ` · +${level * 20}%` : ""}</span>
         </div>
       `;
     }).join("");
     this.modalRoot.innerHTML = `
       <div class="modal-backdrop" role="presentation">
         <section id="inventoryModal" class="modal inventory-modal" role="dialog" aria-modal="true" aria-labelledby="inventoryTitle">
-          <div class="modal-header"><h2 id="inventoryTitle">RUN//INVENTORY</h2><button class="icon-button" data-close-modal type="button">×</button></div>
+          <div class="modal-header"><h2 id="inventoryTitle">PROCESS//STACK</h2><button class="icon-button" data-close-modal type="button">×</button></div>
           <div class="modal-body">
             <div class="inventory-overview">
               <section class="inventory-identity">
                 <div class="inventory-identity-head"><div class="hero-glyph">${hero.glyph}</div><div><span class="character-role">${hero.role}</span><h3 style="margin:2px 0 0">${hero.name}</h3></div></div>
                 <p class="inventory-note"><strong style="color:var(--cyan)">${hero.passive.name}</strong><br>${hero.passive.desc}</p>
                 <div class="inventory-resources">
-                  <div class="inventory-resource"><span>HP</span><strong>${Math.ceil(run.hp)}/${run.maxHp}</strong></div>
-                  <div class="inventory-resource"><span>ARMOR</span><strong>${Math.ceil(run.armor)}</strong></div>
-                  <div class="inventory-resource"><span>NULL</span><strong>${Math.floor(run.energy)}/${run.maxEnergy}</strong></div>
-                  <div class="inventory-resource"><span>CREDITS</span><strong>${run.credits} ₡</strong></div>
-                  <div class="inventory-resource"><span>HEAT</span><strong>${run.heat}</strong></div>
-                  <div class="inventory-resource"><span>LUCK</span><strong>${run.luck}</strong></div>
-                  <div class="inventory-resource"><span>ORDER</span><strong>${run.order}</strong></div>
-                  <div class="inventory-resource"><span>SCORE</span><strong>${Math.floor(run.score)}</strong></div>
+                  <div class="inventory-resource"><span>INTEGRITY</span><strong>${Math.ceil(run.hp)}/${run.maxHp}</strong></div>
+                  <div class="inventory-resource"><span>FIREWALL</span><strong>${Math.ceil(run.armor)}</strong></div>
+                  <div class="inventory-resource"><span>BIT CHARGE</span><strong>${Math.floor(run.energy)}/${run.maxEnergy}</strong></div>
+                  <div class="inventory-resource"><span>BUG BOUNTY</span><strong>${run.credits} REP</strong></div>
+                  <div class="inventory-resource"><span>TRACE</span><strong>${run.heat}</strong></div>
+                  <div class="inventory-resource"><span>FUZZ</span><strong>${run.luck}</strong></div>
+                  <div class="inventory-resource"><span>COMPILE</span><strong>${run.order}</strong></div>
+                  <div class="inventory-resource"><span>REPUTATION</span><strong>${Math.floor(run.score)}</strong></div>
                 </div>
-                <p class="inventory-note">Клавиша <strong>I</strong> открывает инвентарь. Ресурсы, реликвии и улучшения сохраняются между комнатами текущего забега.</p>
+                <p class="inventory-note">Клавиша <strong>I</strong> открывает process stack. Ресурсы, exploit-модули и версии команд сохраняются между endpoints текущей цепочки.</p>
               </section>
               <div class="inventory-content">
-                <section class="inventory-section"><h3>Relic slots</h3><div class="inventory-slot-grid">${relicSlots}</div></section>
-                <section class="inventory-section"><h3>Ability firmware</h3><div class="inventory-ability-list">${abilityRows}</div></section>
+                <section class="inventory-section"><h3>Exploit modules</h3><div class="inventory-slot-grid">${relicSlots}</div></section>
+                <section class="inventory-section"><h3>Command versions</h3><div class="inventory-ability-list">${abilityRows}</div></section>
               </div>
             </div>
           </div>
@@ -3887,12 +3889,12 @@ Object.assign(Game, {
     if (step.onEnter === "practiceAid" && this.state.run) {
       this.state.run.energy = Math.max(this.state.run.energy, Math.min(this.state.run.maxEnergy, 4));
       this.state.run.armor += 4;
-      this.toast("Учебный протокол: способности заряжены.", "success");
+      this.toast("Sandbox: commands charged.", "success");
     }
     if (step.onEnter === "eliteAid" && this.state.run) {
       this.state.run.armor += 10;
       this.state.run.energy = Math.max(this.state.run.energy, Math.min(this.state.run.maxEnergy, 4));
-      this.toast("Учебный протокол: +10 ARMOR.", "success");
+      this.toast("Sandbox: +10 FIREWALL.", "success");
     }
   },
 
@@ -3967,7 +3969,7 @@ Object.assign(Game, {
       reroll: ["combat_finish"],
     };
     if (allow[action]?.includes(id)) return false;
-    this.toast("Сначала выполните текущий шаг обучения.", "error");
+    this.toast("Сначала завершите текущий sandbox instruction.", "error");
     return true;
   },
 
@@ -4017,7 +4019,7 @@ Object.assign(Game, {
     tutorial.enteredStep = null;
     this.tutorialRoot.innerHTML = "";
     this.saveGame();
-    this.toast("Обучение пропущено. Кодекс доступен по кнопке ?.", "success");
+    this.toast("Sandbox skipped. Documentation доступна по кнопке ?.", "success");
   },
 
   scheduleTutorial() {
@@ -4055,15 +4057,15 @@ Object.assign(Game, {
         <div class="tutorial-mask tutorial-mask-bottom"></div>
       `}
       <div class="tutorial-focus ${visible ? "" : "is-hidden"}"></div>
-      <aside class="tutorial-card ${waiting ? "is-waiting" : ""} ${freePlay ? "free-play" : ""} ${visible || freePlay ? "" : "centered no-focus"}" role="${freePlay ? "status" : "dialog"}" aria-label="Шаг обучения ${index}">
-        <div class="tutorial-card-head"><span class="tutorial-progress">TUTORIAL ${String(index).padStart(2, "0")} / ${TUTORIAL_STEPS.length}</span><button class="tutorial-skip" data-tutorial-skip type="button">Пропустить обучение</button></div>
+      <aside class="tutorial-card ${waiting ? "is-waiting" : ""} ${freePlay ? "free-play" : ""} ${visible || freePlay ? "" : "centered no-focus"}" role="${freePlay ? "status" : "dialog"}" aria-label="Sandbox instruction ${index}">
+        <div class="tutorial-card-head"><span class="tutorial-progress">SANDBOX ${String(index).padStart(2, "0")} / ${TUTORIAL_STEPS.length}</span><button class="tutorial-skip" data-tutorial-skip type="button">Skip sandbox</button></div>
         <div class="tutorial-card-body">
-          ${step.completeBadge ? '<span class="tutorial-complete-badge">FIRST FLOOR COMPLETE</span>' : ""}
+          ${step.completeBadge ? '<span class="tutorial-complete-badge">FIRST STACK FRAME COMPILED</span>' : ""}
           <h3>${step.title}</h3>
           <p>${step.body}</p>
           ${step.hint ? `<div class="tutorial-action-hint">${step.hint}</div>` : ""}
         </div>
-        <div class="tutorial-card-actions">${waiting ? "" : `<button class="primary-button tutorial-next" data-tutorial-next type="button">${step.button || "Далее"}</button>`}</div>
+        <div class="tutorial-card-actions">${waiting ? "" : `<button class="primary-button tutorial-next" data-tutorial-next type="button">${step.button || "Next instruction"}</button>`}</div>
       </aside>
     `;
     $("[data-tutorial-skip]", this.tutorialRoot)?.addEventListener("click", () => this.skipTutorial());
