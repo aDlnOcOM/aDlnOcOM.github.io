@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="«Тихий отдел» — процедурная детективная игра о криптографии, форензике, допросах и скрытых связях."
+    />
+    <meta name="theme-color" content="#171512" />
+    <title>Тихий отдел — процедурный детектив</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Перейти к делу</a>
+
+    <div class="app-shell" id="app">
+      <header class="topbar">
+        <div class="brand" aria-label="Тихий отдел">
+          <span class="brand-mark" aria-hidden="true">ТО</span>
+          <span>
+            <strong>Тихий отдел</strong>
+            <small>Бюро особых расследований</small>
+          </span>
+        </div>
+
+        <div class="case-heading" id="case-heading">
+          <span class="eyebrow">Дело не открыто</span>
+          <h1>Ожидается назначение</h1>
+        </div>
+
+        <div class="top-actions">
+          <button class="icon-button" id="settings-button" type="button" title="Настройки">
+            <span aria-hidden="true">⚙</span><span class="button-label">Настройки</span>
+          </button>
+          <button class="button button-ghost" id="help-button" type="button">Как играть</button>
+          <button class="button button-primary" id="new-case-button" type="button">Новое дело</button>
+        </div>
+      </header>
+
+      <main class="main-grid">
+        <aside class="sidebar" aria-label="Разделы дела">
+          <nav class="case-nav" id="case-nav">
+            <button class="nav-item is-active" type="button" data-view="overview">
+              <span class="nav-glyph" aria-hidden="true">01</span><span>Сводка</span>
+            </button>
+            <button class="nav-item" type="button" data-view="board">
+              <span class="nav-glyph" aria-hidden="true">02</span><span>Доска</span>
+              <span class="nav-count" id="board-count">0</span>
+            </button>
+            <button class="nav-item" type="button" data-view="archive">
+              <span class="nav-glyph" aria-hidden="true">03</span><span>Архив</span>
+              <span class="nav-count" id="archive-count">0</span>
+            </button>
+            <button class="nav-item" type="button" data-view="computer">
+              <span class="nav-glyph" aria-hidden="true">04</span><span>Компьютер</span>
+              <span class="nav-dot" id="computer-indicator" hidden></span>
+            </button>
+            <button class="nav-item" type="button" data-view="interviews">
+              <span class="nav-glyph" aria-hidden="true">05</span><span>Допросы</span>
+            </button>
+            <button class="nav-item" type="button" data-view="lab">
+              <span class="nav-glyph" aria-hidden="true">06</span><span>Лаборатория</span>
+              <span class="nav-count" id="puzzle-count">0</span>
+            </button>
+            <button class="nav-item" type="button" data-view="analysis">
+              <span class="nav-glyph" aria-hidden="true">07</span><span>Напарник</span>
+              <span class="nav-dot" id="task-indicator" hidden></span>
+            </button>
+            <button class="nav-item" type="button" data-view="report">
+              <span class="nav-glyph" aria-hidden="true">08</span><span>Версия</span>
+            </button>
+          </nav>
+
+          <div class="sidebar-brief" id="sidebar-brief">
+            <span class="eyebrow">Статус</span>
+            <p>Откройте дело, чтобы начать расследование.</p>
+          </div>
+
+          <div class="sidebar-footer">
+            <span id="case-timer">00:00</span>
+            <span class="online-mark"><i></i> локальное дело</span>
+          </div>
+        </aside>
+
+        <section class="workspace" id="workspace" tabindex="-1" aria-live="polite">
+          <div class="empty-state">
+            <div class="empty-monogram">ТО</div>
+            <h2>На столе пока пусто</h2>
+            <p>Примите новое дело. Код генерации позволит вернуться к той же истории.</p>
+            <button class="button button-primary" type="button" data-action="open-new-case">Открыть дело</button>
+          </div>
+        </section>
+
+        <aside class="notebook" aria-label="Личный блокнот">
+          <div class="notebook-head">
+            <div>
+              <span class="eyebrow">Личное пространство</span>
+              <h2>Блокнот</h2>
+            </div>
+            <span class="save-state" id="notes-save-state">сохранено</span>
+          </div>
+          <div class="notebook-tabs" role="tablist" aria-label="Страницы блокнота">
+            <button class="notebook-tab is-active" type="button" role="tab" aria-selected="true" data-note-tab="notes">Записи</button>
+            <button class="notebook-tab" type="button" role="tab" aria-selected="false" data-note-tab="quotes">Цитаты</button>
+            <button class="notebook-tab" type="button" role="tab" aria-selected="false" data-note-tab="checklist">Список</button>
+          </div>
+          <div class="notebook-page" id="notes-page">
+            <label class="sr-only" for="global-notes">Записи по расследованиям</label>
+            <textarea id="global-notes" spellcheck="true" placeholder="Имена, времена, противоречия…"></textarea>
+          </div>
+          <div class="notebook-page" id="quotes-page" hidden>
+            <label class="sr-only" for="global-quotes">Важные цитаты</label>
+            <textarea id="global-quotes" spellcheck="true" placeholder="Дословные фразы с допросов…"></textarea>
+          </div>
+          <div class="notebook-page checklist-page" id="checklist-page" hidden>
+            <form id="checklist-form" class="checklist-form">
+              <label class="sr-only" for="checklist-input">Новая задача</label>
+              <input id="checklist-input" type="text" maxlength="80" placeholder="Что проверить?" autocomplete="off" />
+              <button class="mini-button" type="submit" aria-label="Добавить задачу">+</button>
+            </form>
+            <ul class="checklist" id="checklist"></ul>
+          </div>
+          <p class="notebook-foot">Этот блокнот не сбрасывается при смене дела.</p>
+        </aside>
+      </main>
+
+      <footer class="statusbar">
+        <span id="status-message">Система готова</span>
+        <span><kbd>1–8</kbd> разделы · <kbd>N</kbd> блокнот · <kbd>?</kbd> помощь</span>
+      </footer>
+    </div>
+
+    <dialog class="modal case-modal" id="new-case-dialog">
+      <form method="dialog" class="modal-card" id="new-case-form">
+        <div class="modal-kicker">Распределение дел</div>
+        <h2>Новое расследование</h2>
+        <p>Каждый код создаёт одно и то же дело. Оставьте поле пустым для случайной генерации.</p>
+
+        <label class="field-label" for="case-seed">Код дела</label>
+        <div class="seed-field">
+          <input id="case-seed" name="seed" type="text" maxlength="24" autocomplete="off" placeholder="Например, BLUE-1947" />
+          <button class="mini-button" id="random-seed" type="button" aria-label="Случайный код">↻</button>
+        </div>
+
+        <fieldset class="difficulty-picker">
+          <legend>Сложность</legend>
+          <label>
+            <input type="radio" name="difficulty" value="tutorial" />
+            <span><b>Туториал</b><small>2 подозреваемых · пошаговые стикеры · все основы дела</small></span>
+          </label>
+          <label>
+            <input type="radio" name="difficulty" value="observer" />
+            <span><b>Наблюдатель</b><small>3 задачи · меньше шума · мягкие подсказки</small></span>
+          </label>
+          <label>
+            <input type="radio" name="difficulty" value="detective" checked />
+            <span><b>Детектив</b><small>5 задач · правдоподобный шум · сложные легенды</small></span>
+          </label>
+          <label>
+            <input type="radio" name="difficulty" value="inspector" />
+            <span><b>Инспектор</b><small>6 задач · много ложных связей · минимум помощи</small></span>
+          </label>
+        </fieldset>
+
+        <div class="modal-actions">
+          <button class="button button-ghost" value="cancel" type="button" data-action="close-new-case">Отмена</button>
+          <button class="button button-primary" value="default" type="submit">Принять дело</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="detail-dialog">
+      <article class="modal-card detail-card" id="detail-content"></article>
+    </dialog>
+
+    <dialog class="modal" id="help-dialog">
+      <article class="modal-card help-card">
+        <button class="modal-close" type="button" data-action="close-help" aria-label="Закрыть">×</button>
+        <div class="modal-kicker">Памятка следователя</div>
+        <h2>Думайте связями, не галочками</h2>
+        <div class="help-grid">
+          <section><b>01</b><h3>Читайте выборочно</h3><p>Архив содержит шум. Ищите имена, время, алиби и повторяющиеся детали.</p></section>
+          <section><b>02</b><h3>Решайте руками</h3><p>Лаборатория даёт инструменты, но выводы и ответы остаются за вами.</p></section>
+          <section><b>03</b><h3>Давите фактами</h3><p>Новые вопросы на допросах открываются после найденных противоречий.</p></section>
+          <section><b>04</b><h3>Делегируйте рутину</h3><p>Напарник обрабатывает массивы в реальном времени, пока вы работаете дальше.</p></section>
+        </div>
+        <p class="fine-print">Сигналы поведения не являются доказательством сами по себе. Финальная версия должна опираться на совокупность фактов.</p>
+        <div class="modal-actions"><button class="button button-primary" type="button" data-action="close-help">Понятно</button></div>
+      </article>
+    </dialog>
+
+    <dialog class="modal settings-modal" id="settings-dialog">
+      <form class="modal-card settings-card" id="settings-form">
+        <button class="modal-close" type="button" data-action="close-settings" aria-label="Закрыть">×</button>
+        <div class="modal-kicker">Личное рабочее место</div>
+        <h2>Настройки</h2>
+        <p>Оформление, звуки интерфейса и управление сохраняются в этом браузере.</p>
+
+        <section class="settings-section" aria-labelledby="appearance-settings">
+          <h3 id="appearance-settings">Оформление</h3>
+          <label class="settings-field" for="settings-theme"><span>Тема</span>
+            <select id="settings-theme" name="theme">
+              <option value="classic">Классика</option>
+              <option value="old-jazz">OLD JAZZ</option>
+              <option value="cyberpunk">Cyberpunk</option>
+              <option value="high-contrast-white">HIGH CONTRAST WHITE</option>
+              <option value="high-contrast-black">HIGH CONTRAST BLACK</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="sound-settings">
+          <h3 id="sound-settings">Звуки интерфейса</h3>
+          <label class="settings-toggle" for="settings-click-sounds"><span><b>Звуки интерфейса</b><small>Кнопки, страницы и терминал имеют отдельные тембры.</small></span><input id="settings-click-sounds" name="clickSounds" type="checkbox" /></label>
+          <label class="settings-range" for="settings-effects-volume"><span>Громкость эффектов <output id="settings-effects-volume-value" for="settings-effects-volume">70%</output></span><input id="settings-effects-volume" name="effectsVolume" type="range" min="0" max="100" step="1" value="70" /></label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="control-settings">
+          <h3 id="control-settings">Управление</h3>
+          <label class="settings-field" for="settings-hold-duration"><span>Удержание карточки на доске</span>
+            <select id="settings-hold-duration" name="holdDuration">
+              <option value="500">0,5 секунды</option>
+              <option value="1000">1 секунда</option>
+              <option value="1500">1,5 секунды</option>
+              <option value="2000">2 секунды</option>
+            </select>
+          </label>
+        </section>
+
+        <div class="modal-actions"><button class="button button-primary" type="button" data-action="close-settings">Готово</button></div>
+      </form>
+    </dialog>
+
+    <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
