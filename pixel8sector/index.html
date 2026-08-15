@@ -2082,6 +2082,20 @@ button:disabled {
         <circle id="crosshairCore" cx="480" cy="270" r="2.4" fill="#e9f0ed" stroke="none"/>
       </g>
       <g id="weaponLayer">
+        <defs>
+          <radialGradient id="weaponAmbientGradient" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#31e9ff" stop-opacity=".5"/>
+            <stop offset="52%" stop-color="#187f98" stop-opacity=".16"/>
+            <stop offset="100%" stop-color="#07121a" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="weaponHeatGradient" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#fff1a8" stop-opacity=".92"/>
+            <stop offset="36%" stop-color="#ff6945" stop-opacity=".48"/>
+            <stop offset="100%" stop-color="#ff315b" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <ellipse id="weaponAmbientShadow" cx="480" cy="430" rx="105" ry="27" fill="url(#weaponAmbientGradient)" opacity=".28" pointer-events="none"/>
+        <ellipse id="weaponHeatGlow" cx="480" cy="360" rx="45" ry="21" fill="url(#weaponHeatGradient)" opacity="0" pointer-events="none"/>
         <use id="weaponUse" href="#weapon-custom" x="378" y="351" width="204" height="119"/>
         <g id="muzzleFlash" opacity="0" transform="translate(480 325)">
           <path d="M0 0 19-42 8-17 47-28 19-6 52 9 18 10 31 42 5 18-7 52-10 17-43 30-18 6-52-8-18-9-33-40-6-17 7-50 10-17z" fill="#fff6af"/>
@@ -2514,6 +2528,8 @@ button:disabled {
   const worldFxLayer = document.getElementById('worldFxLayer');
   const weaponLayer = document.getElementById('weaponLayer');
   const weaponUse = document.getElementById('weaponUse');
+  const weaponAmbientShadow = document.getElementById('weaponAmbientShadow');
+  const weaponHeatGlow = document.getElementById('weaponHeatGlow');
   const muzzleFlash = document.getElementById('muzzleFlash');
   const crosshair = document.getElementById('crosshair');
   const crosshairPath = document.getElementById('crosshairPath');
@@ -5539,6 +5555,18 @@ button:disabled {
     const weapon = WEAPONS[player.weapon];
     const view = getWeaponView(weapon, weaponPosition);
     if (!weapon || !view) return;
+    const renderFxScale = performanceProfile === 'low' ? 0.18 : performanceProfile === 'medium' ? 0.62 : 1;
+    const weaponHeatIntensity = weapon.custom ? clamp(weaponHeat / 100, 0, 1) : 0;
+    weaponAmbientShadow.setAttribute('cx', (view.x + view.width * 0.5).toFixed(2));
+    weaponAmbientShadow.setAttribute('cy', (view.y + view.height * 0.84).toFixed(2));
+    weaponAmbientShadow.setAttribute('rx', (view.width * 0.53).toFixed(2));
+    weaponAmbientShadow.setAttribute('ry', Math.max(4, view.height * 0.22).toFixed(2));
+    weaponAmbientShadow.setAttribute('opacity', (0.14 + renderFxScale * 0.18 + weaponHeatIntensity * 0.1).toFixed(3));
+    weaponHeatGlow.setAttribute('cx', (view.x + view.width * 0.73).toFixed(2));
+    weaponHeatGlow.setAttribute('cy', (view.y + view.height * 0.38).toFixed(2));
+    weaponHeatGlow.setAttribute('rx', (view.width * (0.1 + weaponHeatIntensity * 0.16)).toFixed(2));
+    weaponHeatGlow.setAttribute('ry', (view.height * (0.05 + weaponHeatIntensity * 0.11)).toFixed(2));
+    weaponHeatGlow.setAttribute('opacity', (weaponHeatIntensity * renderFxScale * 0.72).toFixed(3));
     const reloadRemaining = player.reloadTimers[player.weapon];
     const reloadTotal = Math.max(0.001, player.reloadTotals[player.weapon]);
     const reloadProgress = reloadRemaining > 0 ? clamp(1 - reloadRemaining / reloadTotal, 0, 1) : 0;
