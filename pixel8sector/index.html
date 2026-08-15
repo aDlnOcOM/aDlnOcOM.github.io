@@ -2241,7 +2241,7 @@ button:disabled {
       <div class="overlay-card main-menu-card">
         <p class="eyebrow">ПИКСЕЛЬНЫЙ НЕОНОВЫЙ WEBGL-SECTOR</p>
         <h1>PIXEL SECTOR <span>∞</span></h1>
-        <p class="lead">Оба режима проходят на перестраиваемой арене 10×10: каждые десять волн окружение меняется, а опасность нарастает. В GunCraft доступен отдельный экстремальный вариант «Срыв лимитов» со свободными размерами деталей и усиленными врагами.</p>
+        <p class="lead">Оба режима проходят на перестраиваемой арене 50×50: каждые десять волн окружение меняется, а опасность нарастает. В GunCraft доступен отдельный экстремальный вариант «Срыв лимитов» со свободными размерами деталей и усиленными врагами.</p>
 
         <div class="menu-meta" aria-label="Сохранённый прогресс">
           <div><small>ОЧКИ МОДИФИКАЦИИ</small><strong id="menuModPoints">0</strong></div>
@@ -2526,16 +2526,17 @@ button:disabled {
   let FOV = viewFovDegrees * Math.PI / 180;
   let HALF_FOV = FOV / 2;
   let PROJECTION = HALF_W / Math.tan(HALF_FOV);
-  const MAX_RAY_DISTANCE = 38;
-  const ARENA_SIZE = 10;
+  const MAX_RAY_DISTANCE = 80;
+  const ARENA_SIZE = 50;
   const CHUNK_SIZE = ARENA_SIZE;
   const WEBGL_SECTOR_SIZE = CHUNK_SIZE;
   const PLAYER_RADIUS = 0.25;
   const PLAYER_EYE_HEIGHT = 0.78;
-  const PLAYER_JUMP_SPEED = 5.45;
-  const PLAYER_GRAVITY = 15;
+  const PLAYER_JUMP_SPEED = 4.9;
+  const PLAYER_GRAVITY = 17.5;
   const PLAYER_STEP_HEIGHT = 0.52;
-  const FLOW_RADIUS = 25;
+  const PLAYER_MOVE_SUBSTEP = 0.1;
+  const FLOW_RADIUS = ARENA_SIZE;
   const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
   const FLOW_MAX = 32767;
   const ACTIVE_CHUNK_RADIUS = 1;
@@ -3557,6 +3558,7 @@ button:disabled {
     angle: 0,
     pitch: 0,
     elevation: 0,
+    viewElevation: 0,
     verticalVelocity: 0,
     grounded: true,
     health: 100,
@@ -3649,7 +3651,7 @@ button:disabled {
 
     const scene = new three.Scene();
     scene.background = getLinearWebGLColor(WORLD_COLORS.void);
-    scene.fog = new three.FogExp2(getLinearWebGLColor(WORLD_COLORS.void), performanceProfile === 'low' ? 0.082 : 0.064);
+    scene.fog = new three.FogExp2(getLinearWebGLColor(WORLD_COLORS.void), performanceProfile === 'low' ? 0.052 : 0.034);
 
     const camera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.04, MAX_RAY_DISTANCE + 8);
     const weaponScene = new three.Scene();
@@ -3757,41 +3759,63 @@ button:disabled {
     const rng = mulberry32(hash2(index, 0x51, WORLD_SEED));
     const tiles = Array.from({ length: ARENA_SIZE }, () => Array.from({ length: ARENA_SIZE }, () => ({ height: 0 })));
     const pillars = new Set();
-    const spawn = { x: 1.5, y: 1.5 };
+    const spawnTile = Math.floor(ARENA_SIZE / 2);
+    const spawn = { x: spawnTile + 0.5, y: spawnTile + 0.5 };
+    const safeRadius = 4;
 
-    for (let tileY = 1; tileY < ARENA_SIZE - 1; tileY += 1) {
-      for (let tileX = 1; tileX < ARENA_SIZE - 1; tileX += 1) {
-        if (tileX <= 2 && tileY <= 2) continue;
-        const roll = rng();
-        if (roll < 0.13) tiles[tileY][tileX].height = 0.42;
-        else if (roll < 0.2) tiles[tileY][tileX].height = 0.84;
+    const isNearSpawn = (tileX, tileY, padding = 0) => (
+      Math.abs(tileX - spawnTile) <= safeRadius + padding && Math.abs(tileY - spawnTile) <= safeRadius + padding
+    );
+    const paintPlatform = (originX, originY, width, depth) => {
+      for (let tileY = originY; tileY < originY + depth; tileY += 1) {
+        for (let tileX = originX; tileX < originX + width; tileX += 1) {
+          tiles[tileY][tileX].height = Math.max(tiles[tileY][tileX].height, 0.42);
+        }
       }
+      if (width < 4 || depth < 4 || rng() >= 0.7) return;
+      for (let tileY = originY + 1; tileY < originY + depth - 1; tileY += 1) {
+        for (let tileX = originX + 1; tileX < originX + width - 1; tileX += 1) {
+          tiles[tileY][tileX].height = 0.84;
+        }
+      }
+    };
+
+    const platformCount = 12 + Math.min(12, index);
+    for (let attempt = 0, placed = 0; placed < platformCount && attempt < platformCount * 12; attempt += 1) {
+      const width = 3 + Math.floor(rng() * 5);
+      const depth = 3 + Math.floor(rng() * 5);
+      const tileX = 2 + Math.floor(rng() * (ARENA_SIZE - width - 4));
+      const tileY = 2 + Math.floor(rng() * (ARENA_SIZE - depth - 4));
+      const nearestX = clamp(spawnTile, tileX, tileX + width - 1);
+      const nearestY = clamp(spawnTile, tileY, tileY + depth - 1);
+      if (Math.hypot(nearestX - spawnTile, nearestY - spawnTile) < safeRadius + 3) continue;
+      paintPlatform(tileX, tileY, width, depth);
+      placed += 1;
     }
 
-    const pillarCount = 3 + Math.min(5, Math.floor(index / 2));
-    for (let attempt = 0; pillars.size < pillarCount && attempt < 90; attempt += 1) {
+    const pillarCount = 18 + Math.min(14, index * 2);
+    for (let attempt = 0; pillars.size < pillarCount && attempt < pillarCount * 18; attempt += 1) {
       const tileX = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
       const tileY = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
-      if (Math.hypot(tileX + 0.5 - spawn.x, tileY + 0.5 - spawn.y) < 3.2) continue;
-      pillars.add(`${tileX},${tileY}`);
-      tiles[tileY][tileX].height = 0;
+      if (isNearSpawn(tileX, tileY, 3)) continue;
+      let crowded = false;
+      for (let offsetY = -1; offsetY <= 1 && !crowded; offsetY += 1) {
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          if (pillars.has(`${tileX + offsetX},${tileY + offsetY}`)) {
+            crowded = true;
+            break;
+          }
+        }
+      }
+      if (!crowded) pillars.add(`${tileX},${tileY}`);
     }
 
-    for (let tileY = 0; tileY <= 2; tileY += 1) {
-      for (let tileX = 0; tileX <= 2; tileX += 1) {
-        if (tileX > 0 && tileY > 0) tiles[tileY][tileX].height = 0;
+    for (let tileY = spawnTile - safeRadius; tileY <= spawnTile + safeRadius; tileY += 1) {
+      for (let tileX = spawnTile - safeRadius; tileX <= spawnTile + safeRadius; tileX += 1) {
+        tiles[tileY][tileX].height = 0;
         pillars.delete(`${tileX},${tileY}`);
       }
     }
-
-    // A guaranteed two-step rise makes every reconstruction readable and traversable:
-    // 0 → 0.42 → 0.84, with the reverse route acting as a descent.
-    const rampX = 3 + Math.floor(rng() * 4);
-    const rampY = 3 + Math.floor(rng() * 4);
-    tiles[rampY][rampX].height = 0.42;
-    tiles[rampY][rampX + 1].height = 0.84;
-    pillars.delete(`${rampX},${rampY}`);
-    pillars.delete(`${rampX + 1},${rampY}`);
 
     return { index, revision: waveState.revision + 1, tiles, pillars, spawn };
   }
@@ -3802,6 +3826,7 @@ button:disabled {
     player.x = arena.spawn.x;
     player.y = arena.spawn.y;
     player.elevation = getArenaFloorHeightAt(player.x, player.y);
+    player.viewElevation = player.elevation;
     player.verticalVelocity = 0;
     player.grounded = true;
     if (webgl) {
@@ -3833,6 +3858,7 @@ button:disabled {
     clearWebGLSectors();
     const stage = new three.Group();
     const wallsByMaterial = Array.from({ length: webgl.wallMaterials.length }, () => []);
+    const platformsByMaterial = Array.from({ length: webgl.wallMaterials.length }, () => []);
     for (let tileY = 0; tileY < ARENA_SIZE; tileY += 1) {
       for (let tileX = 0; tileX < ARENA_SIZE; tileX += 1) {
         if (isArenaBlockedTile(tileX, tileY)) {
@@ -3841,13 +3867,7 @@ button:disabled {
         }
         const height = getArenaFloorHeightAt(tileX + 0.5, tileY + 0.5);
         if (height <= 0) continue;
-        const platform = new three.Mesh(
-          webgl.platformGeometry,
-          webgl.wallMaterials[(tileX + tileY + 1) % webgl.wallMaterials.length]
-        );
-        platform.position.set(tileX + 0.5, height * 0.5, tileY + 0.5);
-        platform.scale.set(1, height, 1);
-        stage.add(platform);
+        platformsByMaterial[(tileX + tileY + 1) % webgl.wallMaterials.length].push([tileX, tileY, height]);
       }
     }
     for (let materialIndex = 0; materialIndex < wallsByMaterial.length; materialIndex += 1) {
@@ -3862,6 +3882,20 @@ button:disabled {
       }
       blocks.instanceMatrix.needsUpdate = true;
       stage.add(blocks);
+    }
+    for (let materialIndex = 0; materialIndex < platformsByMaterial.length; materialIndex += 1) {
+      const platformTiles = platformsByMaterial[materialIndex];
+      if (platformTiles.length === 0) continue;
+      const platforms = new three.InstancedMesh(webgl.platformGeometry, webgl.wallMaterials[materialIndex], platformTiles.length);
+      platforms.frustumCulled = false;
+      for (let index = 0; index < platformTiles.length; index += 1) {
+        const [tileX, tileY, height] = platformTiles[index];
+        webgl.sectorMatrix.makeScale(1, height, 1);
+        webgl.sectorMatrix.setPosition(tileX + 0.5, height * 0.5, tileY + 0.5);
+        platforms.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      platforms.instanceMatrix.needsUpdate = true;
+      stage.add(platforms);
     }
     webgl.mapGroup.add(stage);
     webgl.activeSectors.set('arena', stage);
@@ -4199,7 +4233,7 @@ button:disabled {
     webgl.floor.position.set(player.x, -0.015, player.y);
     webgl.ceiling.position.set(player.x, 5.6, player.y);
     webgl.grid.position.set(player.x, 0.012, player.y);
-    const eyeY = player.elevation + PLAYER_EYE_HEIGHT + cameraBob * 0.0035;
+    const eyeY = player.viewElevation + PLAYER_EYE_HEIGHT + cameraBob * 0.0035;
     const pitchCos = Math.cos(player.pitch);
     webgl.playerLight.position.set(player.x, eyeY + 0.32, player.y);
     webgl.camera.position.set(player.x, eyeY, player.y);
@@ -5304,7 +5338,7 @@ button:disabled {
     if (waveState.pendingSpawns > 0 && enemies.length < MAX_ACTIVE_ENEMIES && waveState.spawnTimer <= 0) {
       const danger = Math.max(1, waveState.wave + (waveState.arenaIndex - 1) * 2);
       const rng = mulberry32(hash2(waveState.wave, waveState.pendingSpawns, WORLD_SEED ^ waveState.revision));
-      const position = findOpenPositionInChunk(0, 0, rng, 3.8);
+      const position = findOpenPositionInChunk(0, 0, rng, Math.min(10, ARENA_SIZE * 0.2));
       if (position) {
         spawnEnemy(chooseEnemyType(rng, danger), position.x, position.y, danger, rng);
         waveState.pendingSpawns -= 1;
@@ -5391,40 +5425,63 @@ button:disabled {
   }
 
   function movePlayerBody(dx, dy) {
+    const stepCount = Math.max(1, Math.ceil(Math.hypot(dx, dy) / PLAYER_MOVE_SUBSTEP));
+    const stepX = dx / stepCount;
+    const stepY = dy / stepCount;
     const tryMove = (nextX, nextY) => {
       if (circleHitsWall(nextX, nextY, PLAYER_RADIUS)) return false;
       const targetFloor = getArenaFloorHeightAt(nextX, nextY);
       if (targetFloor > player.elevation + PLAYER_STEP_HEIGHT) return false;
+      if (!player.grounded && targetFloor > player.elevation + 0.02) return false;
       player.x = nextX;
       player.y = nextY;
-      if (player.grounded && targetFloor >= player.elevation) player.elevation = targetFloor;
+      if (player.grounded && targetFloor >= player.elevation) {
+        player.elevation = targetFloor;
+        player.verticalVelocity = 0;
+      }
       return true;
     };
 
-    if (!tryMove(player.x + dx, player.y + dy)) {
-      if (!tryMove(player.x + dx, player.y)) tryMove(player.x, player.y + dy);
+    for (let step = 0; step < stepCount; step += 1) {
+      if (!tryMove(player.x + stepX, player.y + stepY)) {
+        if (!tryMove(player.x + stepX, player.y)) tryMove(player.x, player.y + stepY);
+      }
     }
   }
 
   function updatePlayerElevation(dt) {
-    const floor = getArenaFloorHeightAt(player.x, player.y);
-    if (player.elevation <= floor && player.verticalVelocity <= 0) {
-      player.elevation = floor;
-      player.verticalVelocity = 0;
-      player.grounded = true;
-      return;
-    }
+    let remaining = Math.min(0.05, dt);
+    while (remaining > 0) {
+      const physicsStep = Math.min(1 / 120, remaining);
+      remaining -= physicsStep;
 
-    player.verticalVelocity -= PLAYER_GRAVITY * dt;
-    player.elevation += player.verticalVelocity * dt;
-    const nextFloor = getArenaFloorHeightAt(player.x, player.y);
-    if (player.elevation <= nextFloor) {
-      player.elevation = nextFloor;
-      player.verticalVelocity = 0;
-      player.grounded = true;
-    } else {
+      const floor = getArenaFloorHeightAt(player.x, player.y);
+      if (player.elevation <= floor && player.verticalVelocity <= 0) {
+        player.elevation = floor;
+        player.verticalVelocity = 0;
+        player.grounded = true;
+        break;
+      }
+
+      player.verticalVelocity = Math.max(-12, player.verticalVelocity - PLAYER_GRAVITY * physicsStep);
+      player.elevation += player.verticalVelocity * physicsStep;
+      const nextFloor = getArenaFloorHeightAt(player.x, player.y);
+      if (player.elevation <= nextFloor) {
+        player.elevation = nextFloor;
+        player.verticalVelocity = 0;
+        player.grounded = true;
+        break;
+      }
       player.grounded = false;
     }
+    updatePlayerViewElevation(dt);
+  }
+
+  function updatePlayerViewElevation(dt) {
+    const response = player.grounded ? 15 : 22;
+    const blend = 1 - Math.exp(-response * dt);
+    player.viewElevation = lerp(player.viewElevation, player.elevation, blend);
+    if (Math.abs(player.viewElevation - player.elevation) < 0.0005) player.viewElevation = player.elevation;
   }
 
   function updateWeaponSystems(dt) {
@@ -5707,7 +5764,7 @@ button:disabled {
     const maxDistance = Math.min(shotRayScratch.distance, getArenaRayBlockDistance(angle, pitch, shotRayScratch.distance));
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
-    const eyeElevation = player.elevation + PLAYER_EYE_HEIGHT;
+    const eyeElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
     let nearestEnemy = null;
     let nearestT = maxDistance;
     let hitHead = false;
@@ -5746,7 +5803,7 @@ button:disabled {
     if (!arena) return limit;
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
-    const eyeElevation = player.elevation + PLAYER_EYE_HEIGHT;
+    const eyeElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
     for (let distance = 0.12; distance < limit; distance += 0.08) {
       const floor = getArenaFloorHeightAt(player.x + dirX * distance, player.y + dirY * distance);
       const rayElevation = eyeElevation + Math.tan(pitch) * distance;
