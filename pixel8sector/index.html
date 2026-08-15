@@ -2332,6 +2332,11 @@ button:disabled {
               <p id="craftMuzzleTypeHint" class="craft-option-note">Сначала добавьте дорогую деталь «Надульник» на конец ствола.</p>
             </div>
             <div class="craft-field">
+              <label for="craftTriggerSystem">Спусковой механизм <span id="craftTriggerSystemCost">базовый</span></label>
+              <select id="craftTriggerSystem" class="craft-select"></select>
+              <p id="craftTriggerSystemHint" class="craft-option-note">Нарисуйте компонент «Спуск» под коробкой, чтобы активировать выбранный механизм.</p>
+            </div>
+            <div class="craft-field">
               <label for="craftName">Название</label>
               <input id="craftName" class="craft-input" maxlength="24" value="МОЯ ПУШКА">
             </div>
@@ -2586,6 +2591,9 @@ button:disabled {
   const craftMuzzleType = document.getElementById('craftMuzzleType');
   const craftMuzzleTypeCost = document.getElementById('craftMuzzleTypeCost');
   const craftMuzzleTypeHint = document.getElementById('craftMuzzleTypeHint');
+  const craftTriggerSystem = document.getElementById('craftTriggerSystem');
+  const craftTriggerSystemCost = document.getElementById('craftTriggerSystemCost');
+  const craftTriggerSystemHint = document.getElementById('craftTriggerSystemHint');
   const craftName = document.getElementById('craftName');
   const craftDepth = document.getElementById('craftDepth');
   const craftDepthLabel = document.getElementById('craftDepthLabel');
@@ -2943,6 +2951,41 @@ button:disabled {
         burst: { label: 'ОЧЕРЕДЯМИ ПО 3', mode: 'burst', rpm: 930, damage: 0.82, reliability: -4 }
       }
     },
+    carbine: {
+      label: 'КАРАБИН',
+      unlockCost: 105,
+      baseDamage: 37,
+      baseMass: 1.18,
+      targetBarrel: 27,
+      nominalCartridgeArea: 11,
+      minReceiver: [18, 8],
+      barrelRange: [18, 42],
+      lengthRange: [42, 80],
+      capacityMultiplier: 1.2,
+      color: '#6fe6d4',
+      subtypes: {
+        semi: { label: 'ПОЛУАВТОМАТ', mode: 'semi', rpm: 330, damage: 1.08, reliability: 3 },
+        burst: { label: 'ОЧЕРЕДЯМИ ПО 3', mode: 'burst', rpm: 760, damage: 0.95, reliability: 0 },
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 650, damage: 0.88, reliability: -4 }
+      }
+    },
+    revolver: {
+      label: 'РЕВОЛЬВЕР',
+      unlockCost: 118,
+      baseDamage: 43,
+      baseMass: 0.86,
+      targetBarrel: 15,
+      nominalCartridgeArea: 9,
+      minReceiver: [14, 7],
+      barrelRange: [7, 23],
+      lengthRange: [24, 55],
+      capacityMultiplier: 1,
+      color: '#f0a6ff',
+      subtypes: {
+        double: { label: 'ДВОЙНОЕ ДЕЙСТВИЕ', mode: 'revolver', rpm: 240, damage: 0.94, reliability: 6 },
+        single: { label: 'ОДИНАРНОЕ ДЕЙСТВИЕ', mode: 'single', rpm: 150, damage: 1.12, reliability: 8 }
+      }
+    },
     machinegun: {
       label: 'ПУЛЕМЁТ',
       unlockCost: 140,
@@ -3046,6 +3089,45 @@ button:disabled {
       ergonomicsBonus: -5,
       reliabilityBonus: 1,
       strengthMultiplier: 1.12
+    },
+    polygonal: {
+      label: 'ПОЛИГОНАЛЬНЫЙ · HEX',
+      cost: 24,
+      description: 'Жёсткий многогранный профиль: точнее и устойчивее стандартного, но требует немного больше массы.',
+      massMultiplier: 1.08,
+      heatMultiplier: 0.9,
+      coolMultiplier: 1.12,
+      recoilMultiplier: 0.94,
+      accuracyBonus: 5,
+      ergonomicsBonus: -1,
+      reliabilityBonus: 2,
+      strengthMultiplier: 1.1
+    },
+    carbonSleeve: {
+      label: 'КАРБОНОВЫЙ КОЖУХ · CARBON',
+      cost: 44,
+      description: 'Лёгкая композитная оболочка повышает эргономику и охлаждение, но плохо переносит перегрев.',
+      massMultiplier: 0.68,
+      heatMultiplier: 1.24,
+      coolMultiplier: 1.38,
+      recoilMultiplier: 1.08,
+      accuracyBonus: 2,
+      ergonomicsBonus: 7,
+      reliabilityBonus: -2,
+      strengthMultiplier: 0.87
+    },
+    cryo: {
+      label: 'КРИО-РЁБРА · CRYO',
+      cost: 58,
+      description: 'Секторные теплоотводящие рёбра резко снижают нагрев и оставляют оружие стабильным в длинных очередях.',
+      massMultiplier: 1.16,
+      heatMultiplier: 0.48,
+      coolMultiplier: 1.5,
+      recoilMultiplier: 0.93,
+      accuracyBonus: 4,
+      ergonomicsBonus: -3,
+      reliabilityBonus: 4,
+      strengthMultiplier: 1.16
     }
   };
 
@@ -3094,6 +3176,112 @@ button:disabled {
       coolMultiplier: 1,
       flashMultiplier: 1.35,
       soundMultiplier: 1.2
+    },
+    linearComp: {
+      label: 'ЛИНЕЙНЫЙ КОМПЕНСАТОР',
+      cost: 24,
+      description: 'Отводит импульс вперёд: уменьшает отдачу и засветку в кадре, но добавляет громкости и длины.',
+      fixedMass: 0.34,
+      damageMultiplier: 1,
+      recoilMultiplier: 0.86,
+      accuracyBonus: 2,
+      ergonomicsBonus: -4,
+      reliabilityBonus: 1,
+      heatMultiplier: 1.04,
+      coolMultiplier: 1,
+      flashMultiplier: 0.72,
+      soundMultiplier: 1.28,
+      spreadMultiplier: 1
+    },
+    breacher: {
+      label: 'ЗУБЧАТЫЙ БРЕЙЧЕР',
+      cost: 34,
+      description: 'Агрессивный короткий надульник: повышает урон вблизи, но увеличивает вспышку, шум и подброс.',
+      fixedMass: 0.38,
+      damageMultiplier: 1.04,
+      recoilMultiplier: 1.06,
+      accuracyBonus: -1,
+      ergonomicsBonus: -2,
+      reliabilityBonus: 1,
+      heatMultiplier: 1.08,
+      coolMultiplier: 1,
+      flashMultiplier: 1.3,
+      soundMultiplier: 1.18,
+      spreadMultiplier: 1.04
+    },
+    choke: {
+      label: 'ДУЛЬНОЕ СУЖЕНИЕ · CHOKE',
+      cost: 30,
+      description: 'Собирает дробовую осыпь. На не-дробовом оружии даёт только небольшой бонус к точности.',
+      fixedMass: 0.22,
+      damageMultiplier: 1,
+      recoilMultiplier: 1.01,
+      accuracyBonus: 5,
+      ergonomicsBonus: -1,
+      reliabilityBonus: 1,
+      heatMultiplier: 1,
+      coolMultiplier: 1,
+      flashMultiplier: 0.92,
+      soundMultiplier: 1,
+      spreadMultiplier: 0.72
+    }
+  };
+
+  const TRIGGER_SYSTEMS = {
+    standard: {
+      label: 'СТАНДАРТНЫЙ',
+      cost: 0,
+      description: 'Надёжный базовый спуск без специальных эффектов.',
+      rpmMultiplier: 1,
+      accuracyBonus: 0,
+      recoilMultiplier: 1,
+      reliabilityBonus: 0,
+      modeOverride: null,
+      burstCount: 3
+    },
+    match: {
+      label: 'СПОРТИВНЫЙ · MATCH',
+      cost: 16,
+      description: 'Короткий предсказуемый ход: повышает точность и надёжность, но немного ограничивает темп.',
+      rpmMultiplier: 0.93,
+      accuracyBonus: 7,
+      recoilMultiplier: 0.95,
+      reliabilityBonus: 3,
+      modeOverride: null,
+      burstCount: 3
+    },
+    rapid: {
+      label: 'БЫСТРЫЙ · RAPID',
+      cost: 28,
+      description: 'Ускоряет цикл, но требует точного контроля и сильнее нагружает автоматику.',
+      rpmMultiplier: 1.2,
+      accuracyBonus: -3,
+      recoilMultiplier: 1.05,
+      reliabilityBonus: -4,
+      modeOverride: null,
+      burstCount: 3
+    },
+    burstCam: {
+      label: 'КУЛАЧОК ОЧЕРЕДИ · 3-RD',
+      cost: 36,
+      description: 'Механический отсекатель превращает совместимую автоматику в контролируемую очередь по три выстрела.',
+      rpmMultiplier: 0.96,
+      accuracyBonus: 2,
+      recoilMultiplier: 0.96,
+      reliabilityBonus: 0,
+      modeOverride: 'burst',
+      burstCount: 3
+    },
+    electronic: {
+      label: 'ЭЛЕКТРОННЫЙ СЕЛЕКТОР',
+      cost: 52,
+      description: 'Открывает автоматический огонь у совместимых полуавтоматических схем, но заметно снижает надёжность.',
+      rpmMultiplier: 1.08,
+      accuracyBonus: 1,
+      recoilMultiplier: 0.98,
+      reliabilityBonus: -7,
+      modeOverride: 'auto',
+      burstCount: 3
     }
   };
 
@@ -3101,6 +3289,7 @@ button:disabled {
     receiver: { label: 'КОРОБКА', color: '#536b78', light: '#8faab5', baseCost: 7, areaCost: 0.055 },
     barrel: { label: 'СТВОЛ', color: '#384951', light: '#89a3ad', baseCost: 5, areaCost: 0.048 },
     muzzle: { label: 'НАДУЛЬНИК', color: '#202d33', light: '#8ca4ad', baseCost: 10, areaCost: 0.075 },
+    trigger: { label: 'СПУСК', color: '#6a3658', light: '#ff98dd', baseCost: 6, areaCost: 0.05 },
     stock: { label: 'ПРИКЛАД', color: '#6d4933', light: '#b57d53', baseCost: 4, areaCost: 0.034 },
     sight: { label: 'ПРИЦЕЛ', color: '#425b69', light: '#67d9ff', baseCost: 4, areaCost: 0.055 },
     grip: { label: 'РУКОЯТЬ', color: '#26343a', light: '#627883', baseCost: 4, areaCost: 0.041 },
@@ -3109,7 +3298,7 @@ button:disabled {
     magazine: { label: 'МАГАЗИН', color: '#263239', light: '#596b73', baseCost: 4, areaCost: 0.045 },
     cartridge: { label: 'ПАТРОН', color: '#d79d36', light: '#fff099', baseCost: 3, areaCost: 0.085 }
   };
-  const COMPONENT_ORDER = ['stock', 'receiver', 'barrel', 'muzzle', 'magazine', 'grip', 'foregrip', 'bipod', 'sight', 'cartridge'];
+  const COMPONENT_ORDER = ['stock', 'receiver', 'barrel', 'muzzle', 'magazine', 'grip', 'trigger', 'foregrip', 'bipod', 'sight', 'cartridge'];
 
   const GUNCRAFT_RULES = [
     'Коробка обязана вмещать патронник: её высота не меньше 135% диаметра патрона, а длина — не меньше 165% длины патрона.',
@@ -3133,9 +3322,10 @@ button:disabled {
     'Мощность патрона должна соответствовать объёму коробки и толщине ствола; недостаточная прочность уменьшает надёжность и может блокировать чертёж.',
     'Темп огня ограничивается массой затвора, объёмом коробки, мощностью патрона и теплоёмкостью ствола.',
     'Центр масс рассчитывается по всем деталям и загруженному магазину; передний перевес снижает точность при движении.',
-    'Профиль ствола меняет его массу и тепловое поведение: tapered легче, fluted быстрее охлаждается, bull устойчивее, а встроенный радиатор лучше всего отводит тепло.',
+    'Профили стволов задают индивидуальную механику: tapered легче, fluted быстрее охлаждается, bull устойчивее, polygonal точнее, carbon легче, а cryo лучше всего отводит тепло.',
     'Надульник крепится строго к переднему торцу ствола. Его геометрия добавляет длину, массу и передний перевес.',
-    'Пламегаситель уменьшает вспышку; глушитель снижает звук и вспышку ценой нагрева и массы; компенсатор снижает отдачу, но повышает громкость и вспышку.',
+    'Пламегаситель уменьшает вспышку; глушитель снижает звук и вспышку ценой нагрева и массы; компенсаторы меняют импульс, брейчер усиливает ближний урон, а choke собирает дробовую осыпь.',
+    'Добавьте спуск под коробкой и выберите его механику: match стабилизирует выстрел, rapid ускоряет цикл, кулачок делает очередь по три, электронный селектор открывает автоматический огонь у совместимых схем.',
     'Толщина по оси Z является только художественной настройкой и не участвует в физических расчётах.'
   ];
 
@@ -3386,6 +3576,10 @@ button:disabled {
 
     craftMuzzleType.addEventListener('change', () => {
       changeCraftUpgradeOption('muzzleType', craftMuzzleType.value, MUZZLE_DEVICE_TYPES);
+    });
+
+    craftTriggerSystem.addEventListener('change', () => {
+      changeCraftUpgradeOption('triggerSystem', craftTriggerSystem.value, TRIGGER_SYSTEMS);
     });
 
     craftName.addEventListener('input', () => {
@@ -4164,7 +4358,7 @@ button:disabled {
 
     const weapon = WEAPONS[player.weapon];
     if (triggerPressed && weapon.fireMode === 'burst' && burstShotsRemaining <= 0) {
-      burstShotsRemaining = Math.min(3, player.ammo[player.weapon]);
+      burstShotsRemaining = Math.min(weapon.burstCount || 3, player.ammo[player.weapon]);
       burstTimer = 0;
     } else if (triggerPressed) {
       shootWeapon(false);
@@ -5652,6 +5846,8 @@ button:disabled {
       pistol: 'МОЙ ПИСТОЛЕТ',
       sniper: 'МОЯ СНАЙПЕРСКАЯ ВИНТОВКА',
       smg: 'МОЙ ПИСТОЛЕТ-ПУЛЕМЁТ',
+      carbine: 'МОЙ КАРАБИН',
+      revolver: 'МОЙ РЕВОЛЬВЕР',
       machinegun: 'МОЙ ПУЛЕМЁТ',
       shotgun: 'МОЙ ДРОБОВИК'
     };
@@ -5688,6 +5884,7 @@ button:disabled {
       subtype: Object.keys(definition.subtypes)[0],
       barrelProfile: 'standard',
       muzzleType: 'flashHider',
+      triggerSystem: 'standard',
       depthRatio: 6,
       limitBreak: Boolean(limitBreak),
       components: {},
@@ -5755,6 +5952,7 @@ button:disabled {
     replacement.subtype = design.subtype;
     replacement.barrelProfile = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
     replacement.muzzleType = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    replacement.triggerSystem = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
     replacement.depthRatio = design.depthRatio;
     getActiveCraftSlots()[selectedCraftSlot] = replacement;
     currentCraftComponent = 'receiver';
@@ -5979,8 +6177,10 @@ button:disabled {
   function renderCraftUpgradeSelectors(design) {
     const profileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
     const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    const triggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
     design.barrelProfile = profileId;
     design.muzzleType = muzzleTypeId;
+    design.triggerSystem = triggerSystemId;
 
     craftBarrelProfile.replaceChildren();
     for (const [id, profile] of Object.entries(BARREL_PROFILES)) {
@@ -6000,16 +6200,31 @@ button:disabled {
       craftMuzzleType.appendChild(option);
     }
 
+    craftTriggerSystem.replaceChildren();
+    for (const [id, system] of Object.entries(TRIGGER_SYSTEMS)) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${system.label}${system.cost > 0 ? ` · +${system.cost}` : ' · БАЗОВЫЙ'}`;
+      option.selected = id === triggerSystemId;
+      craftTriggerSystem.appendChild(option);
+    }
+
     const profile = BARREL_PROFILES[profileId];
     const muzzleType = MUZZLE_DEVICE_TYPES[muzzleTypeId];
+    const triggerSystem = TRIGGER_SYSTEMS[triggerSystemId];
     const hasBarrel = Boolean(design.components.barrel);
     const hasMuzzle = Boolean(design.components.muzzle);
+    const hasTrigger = Boolean(design.components.trigger);
     craftBarrelProfileCost.textContent = hasBarrel ? `${profile.cost} очк.` : `после ствола · ${profile.cost}`;
     craftBarrelProfileHint.innerHTML = `<strong>${profile.label}</strong> — ${profile.description}`;
     craftMuzzleTypeCost.textContent = hasMuzzle ? `${muzzleType.cost} очк.` : `после надульника · ${muzzleType.cost}`;
     craftMuzzleTypeHint.innerHTML = hasMuzzle
       ? `<strong>${muzzleType.label}</strong> — ${muzzleType.description}`
       : `Выбран <strong>${muzzleType.label}</strong>. Добавьте компонент «Надульник», чтобы стоимость и эффекты вступили в силу.`;
+    craftTriggerSystemCost.textContent = hasTrigger ? `${triggerSystem.cost} очк.` : `после спуска · ${triggerSystem.cost}`;
+    craftTriggerSystemHint.innerHTML = hasTrigger
+      ? `<strong>${triggerSystem.label}</strong> — ${triggerSystem.description}`
+      : `Выбран <strong>${triggerSystem.label}</strong>. Добавьте компонент «Спуск» под коробкой, чтобы стоимость и эффекты вступили в силу.`;
   }
 
   function changeCraftUpgradeOption(field, value, definitions) {
@@ -6099,6 +6314,7 @@ button:disabled {
       group.setAttribute('pointer-events', 'none');
       group.append(shadow, face, highlight);
       appendCraftComponentDetails(group, componentId, rect, design);
+      if (componentId === 'trigger') appendCraftTriggerDetails(group, rect, design);
       group.append(label);
       craftShapes.appendChild(group);
     }
@@ -6151,6 +6367,21 @@ button:disabled {
           const x = rect.x + rect.w * i / finCount;
           addLine(x, rect.y - Math.min(0.8, rect.h * 0.12), x, rect.y + rect.h + Math.min(0.8, rect.h * 0.12), '#b8d2d7', Math.max(0.3, rect.w * 0.012), 0.78);
         }
+      } else if (profileId === 'polygonal') {
+        for (const ratio of [0.18, 0.42, 0.66, 0.88]) {
+          const x = rect.x + rect.w * ratio;
+          addLine(x - rect.h * 0.22, rect.y + rect.h * 0.08, x + rect.h * 0.22, rect.y + rect.h * 0.92, '#abc7cd', Math.max(0.24, rect.h * 0.08), 0.7);
+        }
+      } else if (profileId === 'carbonSleeve') {
+        for (const ratio of [0.1, 0.28, 0.46, 0.64, 0.82]) {
+          addLine(rect.x + rect.w * ratio, rect.y + 0.4, rect.x + rect.w * (ratio + 0.12), rect.y + rect.h - 0.4, '#6d9da1', Math.max(0.22, rect.h * 0.06), 0.65);
+        }
+      } else if (profileId === 'cryo') {
+        const finCount = clamp(Math.floor(rect.w / Math.max(2, rect.h * 0.42)), 4, 12);
+        for (let i = 1; i < finCount; i += 1) {
+          const x = rect.x + rect.w * i / finCount;
+          addLine(x, rect.y - Math.min(0.8, rect.h * 0.12), x, rect.y + rect.h + Math.min(0.8, rect.h * 0.12), '#8ef9ff', Math.max(0.3, rect.w * 0.012), 0.88);
+        }
       }
     }
 
@@ -6166,10 +6397,46 @@ button:disabled {
           addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.12, portW, portH, '#030608', 0.95);
           addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.65, portW, portH, '#030608', 0.95);
         }
+      } else if (typeId === 'linearComp') {
+        addRect(rect.x + rect.w * 0.18, rect.y + rect.h * 0.25, rect.w * 0.62, rect.h * 0.5, '#030608', 0.9);
+        addLine(rect.x + rect.w * 0.75, rect.y + rect.h * 0.14, rect.x + rect.w * 0.75, rect.y + rect.h * 0.86, '#a8d7df', Math.max(0.25, rect.h * 0.08), 0.62);
+      } else if (typeId === 'breacher') {
+        const tooth = Math.max(0.45, rect.w * 0.11);
+        for (const ratio of [0.14, 0.42, 0.7]) {
+          addLine(rect.x + rect.w * ratio, rect.y + rect.h * 0.14, rect.x + rect.w * ratio + tooth, rect.y + rect.h * 0.04, '#dceff2', Math.max(0.25, rect.h * 0.09), 0.85);
+          addLine(rect.x + rect.w * ratio, rect.y + rect.h * 0.86, rect.x + rect.w * ratio + tooth, rect.y + rect.h * 0.96, '#dceff2', Math.max(0.25, rect.h * 0.09), 0.85);
+        }
+      } else if (typeId === 'choke') {
+        addLine(rect.x + rect.w * 0.72, rect.y + rect.h * 0.12, rect.x + rect.w * 0.92, rect.y + rect.h * 0.5, '#d7b36a', Math.max(0.25, rect.h * 0.08), 0.75);
+        addLine(rect.x + rect.w * 0.72, rect.y + rect.h * 0.88, rect.x + rect.w * 0.92, rect.y + rect.h * 0.5, '#d7b36a', Math.max(0.25, rect.h * 0.08), 0.75);
       } else {
         const cutW = Math.max(0.55, rect.w * 0.13);
         for (const ratio of [0.48, 0.68, 0.86]) addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.12, cutW, rect.h * 0.42, '#030608', 0.95);
       }
+    }
+  }
+
+  function appendCraftTriggerDetails(group, rect, design) {
+    const systemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const accent = systemId === 'electronic' ? '#8ef9ff' : systemId === 'burstCam' ? '#ffda6e' : '#ff9bde';
+    const triggerLine = svgElement('line');
+    triggerLine.setAttribute('x1', String(rect.x + rect.w * 0.28));
+    triggerLine.setAttribute('y1', String(rect.y + rect.h * 0.14));
+    triggerLine.setAttribute('x2', String(rect.x + rect.w * 0.68));
+    triggerLine.setAttribute('y2', String(rect.y + rect.h * 0.86));
+    triggerLine.setAttribute('stroke', accent);
+    triggerLine.setAttribute('stroke-width', String(Math.max(0.3, rect.w * 0.12)));
+    triggerLine.setAttribute('opacity', '.9');
+    group.appendChild(triggerLine);
+    if (systemId !== 'standard') {
+      const chip = svgElement('rect');
+      chip.setAttribute('x', String(rect.x + rect.w * 0.12));
+      chip.setAttribute('y', String(rect.y + rect.h * 0.2));
+      chip.setAttribute('width', String(Math.max(0.25, rect.w * 0.22)));
+      chip.setAttribute('height', String(Math.max(0.25, rect.h * 0.25)));
+      chip.setAttribute('fill', accent);
+      chip.setAttribute('opacity', systemId === 'electronic' ? '.95' : '.72');
+      group.appendChild(chip);
     }
   }
 
@@ -6193,6 +6460,8 @@ button:disabled {
       ['СКОРОСТЬ', `×${stats.movementMultiplier.toFixed(2)}`],
       ['НАГРЕВ / ВЫСТРЕЛ', `${stats.heatPerShot.toFixed(1)}%`],
       ['ОХЛАЖДЕНИЕ', `${stats.coolRate.toFixed(1)}%/с`],
+      ['РЕЖИМ ОГНЯ', stats.fireMode === 'burst' ? `ОЧЕРЕДЬ ×${stats.burstCount}` : stats.fireMode.toUpperCase()],
+      ['СПУСК', stats.triggerSystemLabel],
       ['ПРОФИЛЬ СТВОЛА', stats.barrelProfileLabel],
       ['НАДУЛЬНИК', stats.muzzleTypeLabel],
       ['ВСПЫШКА', `×${stats.muzzleFlashMultiplier.toFixed(2)}`],
@@ -6257,7 +6526,7 @@ button:disabled {
   function getTutorialComponent(design) {
     const required = ['receiver', 'barrel', 'grip'];
     const subtype = WEAPON_CLASSES[design.classId]?.subtypes[design.subtype];
-    if (subtype?.mode !== 'single') required.push('magazine');
+    if (subtype && subtypeNeedsMagazine(design.classId, subtype.mode)) required.push('magazine');
     required.push('cartridge');
     return required.find((componentId) => !design.components[componentId]) || null;
   }
@@ -6397,7 +6666,7 @@ button:disabled {
   function normalizeAllComponents(design) {
     const components = cloneComponents(design.components);
     const working = { ...design, components };
-    const sequence = ['receiver', 'barrel', 'muzzle', 'stock', 'grip', 'foregrip', 'bipod', 'sight', 'magazine', 'cartridge', 'receiver', 'barrel', 'muzzle', 'magazine'];
+    const sequence = ['receiver', 'barrel', 'muzzle', 'stock', 'grip', 'trigger', 'foregrip', 'bipod', 'sight', 'magazine', 'cartridge', 'receiver', 'barrel', 'muzzle', 'magazine', 'trigger'];
     for (const componentId of sequence) {
       if (!components[componentId]) continue;
       components[componentId] = normalizeComponentRect(componentId, components[componentId], working);
@@ -6431,7 +6700,7 @@ button:disabled {
       } else if (componentId === 'sight') {
         const top = Math.min(receiver.y, barrel ? barrel.y : receiver.y);
         rect.y = top - rect.h + 1;
-      } else if (componentId === 'grip' || componentId === 'magazine') {
+      } else if (componentId === 'grip' || componentId === 'magazine' || componentId === 'trigger') {
         rect.y = receiverBottom - 1;
       } else if (componentId === 'foregrip') {
         rect.y = Math.max(receiverBottom, barrel ? barrel.y + barrel.h : receiverBottom) - 1;
@@ -6490,6 +6759,11 @@ button:disabled {
       rect.w = clamp(rect.w, 3, 9);
       rect.h = clamp(rect.h, 5, 16);
       rect.x = clamp(rect.x, receiver.x + 1, receiverRight - rect.w - 1);
+      rect.y = receiverBottom - 1;
+    } else if (componentId === 'trigger') {
+      rect.w = clamp(rect.w, 2, 7);
+      rect.h = clamp(rect.h, 2, 7);
+      rect.x = clamp(rect.x, receiver.x + receiver.w * 0.38, receiverRight - rect.w - 1);
       rect.y = receiverBottom - 1;
     } else if (componentId === 'foregrip') {
       const maxRight = barrel ? barrel.x + barrel.w : receiverRight;
@@ -6551,6 +6825,10 @@ button:disabled {
       const type = MUZZLE_DEVICE_TYPES[design?.muzzleType] || MUZZLE_DEVICE_TYPES.flashHider;
       cost += type.cost;
     }
+    if (componentId === 'trigger') {
+      const system = TRIGGER_SYSTEMS[design?.triggerSystem] || TRIGGER_SYSTEMS.standard;
+      cost += system.cost;
+    }
     return Math.max(1, Math.ceil(cost));
   }
 
@@ -6577,11 +6855,17 @@ button:disabled {
     const bipod = c.bipod;
     const magazine = c.magazine;
     const cartridge = c.cartridge;
+    const trigger = c.trigger;
     const limitBreak = Boolean(design.limitBreak);
     const barrelProfileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
     const barrelProfile = BARREL_PROFILES[barrelProfileId];
     const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
     const muzzleDevice = muzzle ? MUZZLE_DEVICE_TYPES[muzzleTypeId] : null;
+    const selectedTriggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const selectedTriggerSystem = TRIGGER_SYSTEMS[selectedTriggerSystemId];
+    const triggerSystem = trigger ? selectedTriggerSystem : TRIGGER_SYSTEMS.standard;
+    const triggerOverrideAllowed = Boolean(trigger && triggerSystem.modeOverride && ['semi', 'auto', 'burst'].includes(subtype.mode));
+    const fireMode = triggerOverrideAllowed ? triggerSystem.modeOverride : subtype.mode;
 
     const receiverArea = rectArea(receiver);
     const barrelArea = rectArea(barrel);
@@ -6600,7 +6884,7 @@ button:disabled {
       const stack = magazine.w >= cartridge.w * 1.55 ? 2 : magazine.w >= cartridge.w * 1.12 ? 1.45 : 1;
       capacity = Math.max(1, Math.floor(rows * stack * classDefinition.capacityMultiplier));
     }
-    const capacityCap = design.classId === 'machinegun' ? 220 : design.classId === 'smg' ? 80 : design.classId === 'sniper' ? (subtype.mode === 'bolt' ? 1 : 20) : design.classId === 'shotgun' ? 18 : 36;
+    const capacityCap = design.classId === 'machinegun' ? 220 : design.classId === 'smg' ? 80 : design.classId === 'carbine' ? 60 : design.classId === 'sniper' ? (subtype.mode === 'bolt' ? 1 : 20) : design.classId === 'shotgun' ? 18 : design.classId === 'revolver' ? 6 : 36;
     capacity = limitBreak ? clamp(capacity, 1, 1000000) : clamp(capacity, 1, capacityCap);
 
     const componentMasses = {
@@ -6610,6 +6894,7 @@ button:disabled {
       stock: rectArea(stock) * 0.0028,
       sight: rectArea(sight) * 0.004,
       grip: rectArea(grip) * 0.0027,
+      trigger: rectArea(trigger) * 0.0034,
       foregrip: rectArea(foregrip) * 0.0029,
       bipod: rectArea(bipod) * 0.0075,
       magazine: rectArea(magazine) * 0.0042
@@ -6634,6 +6919,7 @@ button:disabled {
     const gripQuality = grip ? clamp(18 - Math.abs(grip.h / Math.max(1, grip.w) - 2.2) * 7, 0, 18) : 0;
     let ergonomics = 51 + gripQuality + (stock ? 9 : 0) + (foregrip ? 8 : 0) + (sight ? 2 : 0);
     ergonomics += barrelProfile.ergonomicsBonus + (muzzleDevice?.ergonomicsBonus || 0);
+    ergonomics += trigger ? triggerSystem.accuracyBonus * 0.18 : 0;
     ergonomics -= weight * 2.35 + Math.abs(imbalance) * 1.7;
     ergonomics -= Math.max(0, totalLength - classDefinition.lengthRange[1] * 0.8) * 0.45;
     ergonomics -= Math.max(0, capacity - 25) * 0.09;
@@ -6648,14 +6934,14 @@ button:disabled {
     if (stock) recoil *= 0.74;
     if (foregrip) recoil *= 0.82;
     if (bipod) recoil *= 0.88;
-    recoil *= barrelProfile.recoilMultiplier * (muzzleDevice?.recoilMultiplier || 1);
+    recoil *= barrelProfile.recoilMultiplier * (muzzleDevice?.recoilMultiplier || 1) * triggerSystem.recoilMultiplier;
     recoil = limitBreak ? Math.max(2, recoil) : clamp(recoil, 2, 70);
 
     let accuracy = 36 + clamp(barrelLength / Math.max(1, classDefinition.targetBarrel), 0, 1.5) * 30;
     accuracy += sight ? 16 : 0;
     accuracy += stock ? 8 : 0;
     accuracy += foregrip ? 4 : 0;
-    accuracy += barrelProfile.accuracyBonus + (muzzleDevice?.accuracyBonus || 0);
+    accuracy += barrelProfile.accuracyBonus + (muzzleDevice?.accuracyBonus || 0) + triggerSystem.accuracyBonus;
     accuracy -= recoil * 0.43 + Math.abs(imbalance) * 1.15;
     accuracy = clamp(accuracy, limitBreak ? 1 : 8, 99);
 
@@ -6663,25 +6949,25 @@ button:disabled {
     const receiverFactor = clamp(receiverArea / Math.max(1, receiverDemand), 0.55, 1.12);
     const cyclePowerPenalty = clamp(1.12 - cartridgePower * 0.09, 0.7, 1.04);
     let rpm = subtype.rpm * receiverFactor * cyclePowerPenalty;
-    rpm *= clamp(0.86 + ergonomics / 420, 0.72, 1.08);
+    rpm *= clamp(0.86 + ergonomics / 420, 0.72, 1.08) * triggerSystem.rpmMultiplier;
     rpm = clamp(rpm, 32, 1100);
 
     const strength = (receiverArea / Math.max(1, cartridgeArea * 8.5 + 32)) * 0.58 +
       (barrelArea * barrelProfile.strengthMultiplier / Math.max(1, cartridgeArea * 4.8 + 16)) * 0.42;
     let reliability = 93 + subtype.reliability + clamp((strength - 0.8) * 18, -18, 8);
-    reliability += barrelProfile.reliabilityBonus + (muzzleDevice?.reliabilityBonus || 0);
+    reliability += barrelProfile.reliabilityBonus + (muzzleDevice?.reliabilityBonus || 0) + triggerSystem.reliabilityBonus;
     reliability -= Math.max(0, capacity - 45) * 0.055;
-    reliability -= subtype.mode === 'auto' || subtype.mode === 'burst' ? cartridgePower * 1.8 : 0;
+    reliability -= fireMode === 'auto' || fireMode === 'burst' ? cartridgePower * 1.8 : 0;
     reliability = clamp(reliability, limitBreak ? 1 : 50, 99.8);
 
     let heatPerShot = (cartridgePower * cartridgeArea * 3.9) / (barrelArea * 0.065 + 4) *
-      (subtype.mode === 'auto' || subtype.mode === 'burst' ? 1.18 : 1);
+      (fireMode === 'auto' || fireMode === 'burst' ? 1.18 : 1);
     heatPerShot *= barrelProfile.heatMultiplier * (muzzleDevice?.heatMultiplier || 1);
     heatPerShot = clamp(heatPerShot, 1.5, limitBreak ? 100 : 38);
     let coolRate = (8 + barrelArea * 0.05 + (bipod ? 1 : 0)) * barrelProfile.coolMultiplier * (muzzleDevice?.coolMultiplier || 1);
     coolRate = clamp(coolRate, 5, limitBreak ? 80 : 48);
 
-    const classReloadBase = { pistol: 0.86, sniper: 1.65, smg: 1.18, machinegun: 2.2, shotgun: 1.4 }[design.classId] || 1;
+    const classReloadBase = { pistol: 0.86, revolver: 1.12, smg: 1.18, carbine: 1.28, sniper: 1.65, machinegun: 2.2, shotgun: 1.4 }[design.classId] || 1;
     let reloadTime = classReloadBase + capacity * 0.026 + cartridgeArea * 0.052 + weight * 0.075 + (100 - ergonomics) * 0.009;
     if (subtype.mode === 'single') reloadTime = 0.95 + cartridgeArea * 0.08 + weight * 0.05;
     if (design.classId === 'sniper' && subtype.mode === 'bolt') reloadTime = 0.78 + cartridgeArea * 0.07 + weight * 0.045;
@@ -6694,7 +6980,9 @@ button:disabled {
     const movementMultiplier = limitBreak
       ? clamp((1.08 + ergonomics * 0.0008) / (1 + Math.max(0, weight - 1) * 0.05), 0.04, 1.06)
       : clamp(1.08 - weight * 0.036 + ergonomics * 0.0008, 0.48, 1.06);
-    let spread = clamp((100 - accuracy) * 0.00043 + recoil * 0.00013, 0.0022, limitBreak ? 0.42 : 0.09);
+    const muzzleSpreadMultiplier = muzzleDevice?.spreadMultiplier || 1;
+    const nonShotgunMuzzleSpread = 1 + (muzzleSpreadMultiplier - 1) * 0.2;
+    let spread = clamp(((100 - accuracy) * 0.00043 + recoil * 0.00013) * (design.classId === 'shotgun' ? muzzleSpreadMultiplier : nonShotgunMuzzleSpread), 0.0022, limitBreak ? 0.42 : 0.09);
     let crosshair = clamp(5 + (100 - accuracy) * 0.12 + recoil * 0.08, 5, limitBreak ? 70 : 22);
     const kick = clamp(recoil * 0.72, 5, limitBreak ? 140 : 38);
     let pellets = 1;
@@ -6719,7 +7007,11 @@ button:disabled {
     return {
       classId: design.classId,
       subtypeId: design.subtype,
-      fireMode: subtype.mode,
+      fireMode,
+      triggerSystemId: trigger ? selectedTriggerSystemId : 'standard',
+      triggerSystemLabel: trigger ? triggerSystem.label : 'БАЗОВЫЙ (НЕТ ДЕТАЛИ)',
+      triggerActive: Boolean(trigger),
+      burstCount: triggerSystem.burstCount || 3,
       weight,
       damage,
       pellets,
@@ -6785,9 +7077,12 @@ button:disabled {
     const bipod = c.bipod;
     const magazine = c.magazine;
     const cartridge = c.cartridge;
+    const trigger = c.trigger;
     const limitBreak = Boolean(design.limitBreak);
     const barrelProfileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
     const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    const triggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const triggerSystem = TRIGGER_SYSTEMS[triggerSystemId];
 
     const magazineRequired = subtypeNeedsMagazine(design.classId, subtype.mode);
     if (!receiver) errors.push('Нужна коробка — базовая несущая часть оружия.');
@@ -6826,12 +7121,15 @@ button:disabled {
     if (barrelProfileId === 'fluted' && barrel.h < 3) warnings.push('На очень тонком стволе канавки уменьшают запас прочности; профиль лучше работает на более толстом стволе.');
     if (barrelProfileId === 'radiator' && barrel.w < 10) warnings.push('Встроенный радиатор малоэффективен на очень коротком стволе.');
     if (barrelProfileId === 'heavy' && stats.weight > 9) warnings.push('Тяжёлый профиль приблизил оружие к порогу, после которого спринт отключается.');
+    if (muzzleTypeId === 'choke' && design.classId !== 'shotgun') warnings.push('Дульное сужение раскрывает потенциал только на дробовике; на этом классе эффект осыпи не используется.');
 
     if (magazine) {
       if (design.classId === 'sniper' && subtype.mode === 'bolt') {
         warnings.push('Для болтовой винтовки магазин не нужен: оружие заряжается по одному патрону, а эта деталь только утяжеляет конструкцию.');
       } else if (design.classId === 'shotgun' && subtype.mode === 'break') {
         warnings.push('Для переломного дробовика магазин не используется: схема уже ограничена двумя патронами.');
+      } else if (design.classId === 'revolver') {
+        warnings.push('Револьвер использует встроенный барабан на шесть патронов: внешняя деталь магазина только утяжеляет конструкцию.');
       } else {
         if (Math.abs(magazine.y - (receiver.y + receiver.h - 1)) > 1) errors.push('Магазин должен крепиться снизу коробки.');
         if (cartridge.w > magazine.w * 0.9 + 0.01) (limitBreak ? warnings : errors).push('Патрон длиннее 90% магазина: ёмкость и надёжность подачи резко снижены.');
@@ -6841,6 +7139,15 @@ button:disabled {
 
     if (Math.abs(grip.y - (receiver.y + receiver.h - 1)) > 1) errors.push('Основная рукоять должна крепиться снизу коробки.');
     if (magazine && overlapArea(grip, magazine) > Math.min(rectArea(grip), rectArea(magazine)) * 0.34) errors.push('Рукоять и магазин слишком сильно пересекаются.');
+    if (trigger) {
+      if (Math.abs(trigger.y - (receiver.y + receiver.h - 1)) > 1.5) errors.push('Спусковой механизм должен крепиться под коробкой.');
+      if (trigger.x < receiver.x + receiver.w * 0.3 || trigger.x > receiver.x + receiver.w * 0.9) warnings.push('Спуск расположен вне удобной зоны хвата: бонус эргономики снижен.');
+    } else if (triggerSystemId !== 'standard') {
+      warnings.push('Выбран нестандартный спуск, но компонент «Спуск» ещё не нарисован: работает базовый механизм.');
+    }
+    if (trigger && triggerSystem.modeOverride && !['semi', 'auto', 'burst'].includes(subtype.mode)) {
+      warnings.push('Этот спуск не может изменить выбранную ручную схему; он работает только как улучшенный базовый механизм.');
+    }
 
     const stockRequired = design.classId === 'sniper' || design.classId === 'machinegun' || stats.recoil > 30;
     if (stockRequired && !stock) errors.push('Для этого класса или уровня отдачи обязателен приклад.');
@@ -7160,7 +7467,7 @@ button:disabled {
     const depthRatio = clamp(Number(design.depthRatio) || 6, 1, 15);
     const baseDepth = clamp(modelHeight / depthRatio, 0.8, Math.max(1.1, modelHeight * 0.82));
     const boxes = [];
-    const depthFactors = { stock: 0.86, receiver: 1, barrel: 0.68, muzzle: 0.82, magazine: 0.76, grip: 0.78, foregrip: 0.7, bipod: 0.44, sight: 0.52 };
+    const depthFactors = { stock: 0.86, receiver: 1, barrel: 0.68, muzzle: 0.82, magazine: 0.76, grip: 0.78, trigger: 0.38, foregrip: 0.7, bipod: 0.44, sight: 0.52 };
     const addRectBox = (componentId, rect, suffix = '', overrides = {}) => {
       const definition = COMPONENT_DEFINITIONS[componentId];
       const depth = Math.max(0.45, baseDepth * (overrides.depthFactor || depthFactors[componentId] || 0.75));
@@ -7175,7 +7482,7 @@ button:disabled {
       return depth;
     };
 
-    for (const componentId of ['bipod', 'stock', 'magazine', 'grip', 'foregrip', 'receiver', 'barrel', 'muzzle', 'sight']) {
+    for (const componentId of ['bipod', 'stock', 'magazine', 'grip', 'trigger', 'foregrip', 'receiver', 'barrel', 'muzzle', 'sight']) {
       const rect = components[componentId];
       if (!rect) continue;
       if (componentId === 'barrel' && design.barrelProfile === 'tapered') {
@@ -7191,11 +7498,17 @@ button:disabled {
           addRectBox(componentId, segmentRect, `-segment-${index}`, { depthFactor: lerp(0.74, 0.48, start) });
         }
       } else {
-        const factor = componentId === 'barrel' && design.barrelProfile === 'heavy' ? 0.88 : undefined;
-        addRectBox(componentId, rect, '', factor ? { depthFactor: factor } : {});
+        const overrides = componentId === 'barrel' && design.barrelProfile === 'heavy'
+          ? { depthFactor: 0.88 }
+          : componentId === 'barrel' && design.barrelProfile === 'carbonSleeve'
+            ? { color: '#19282e', light: '#79a9aa', depthFactor: 0.78 }
+            : componentId === 'trigger'
+              ? { color: '#5b2d4d', light: '#ff9bde' }
+              : {};
+        addRectBox(componentId, rect, '', overrides);
       }
 
-      if (componentId === 'barrel' && design.barrelProfile === 'radiator') {
+      if (componentId === 'barrel' && (design.barrelProfile === 'radiator' || design.barrelProfile === 'cryo')) {
         const finCount = clamp(Math.floor(rect.w / Math.max(2, rect.h * 0.5)), 4, 12);
         for (let index = 1; index < finCount; index += 1) {
           const x = rect.x + rect.w * index / finCount;
@@ -7203,7 +7516,9 @@ button:disabled {
             `barrel-fin-${index}`,
             [x, -(rect.y + rect.h * 0.5), 0],
             [Math.max(0.22, rect.w * 0.018), rect.h * 1.28, baseDepth * 0.92],
-            '#81979f', '#c4d8dd', { strokeWidth: 0.32 }
+            design.barrelProfile === 'cryo' ? '#4b8a9a' : '#81979f',
+            design.barrelProfile === 'cryo' ? '#8ef9ff' : '#c4d8dd',
+            { strokeWidth: 0.32 }
           ));
         }
       }
@@ -7244,7 +7559,7 @@ button:disabled {
     return {
       boxes,
       anchors,
-      revision: `custom-mesh-v1:${design.updatedAt || 0}:${design.depthRatio || 6}:${design.barrelProfile || 'standard'}:${design.muzzleType || 'flashHider'}`
+      revision: `custom-mesh-v2:${design.updatedAt || 0}:${design.depthRatio || 6}:${design.barrelProfile || 'standard'}:${design.muzzleType || 'flashHider'}:${design.triggerSystem || 'standard'}`
     };
   }
 
@@ -7334,10 +7649,11 @@ button:disabled {
       damage: stats.damage,
       pellets: stats.pellets || 1,
       spread: stats.spread,
-      automatic: subtype.mode === 'auto',
-      fireMode: subtype.mode,
+      automatic: stats.fireMode === 'auto',
+      fireMode: stats.fireMode,
       burstInterval: cooldown,
       burstPause: 0.19 + cooldown * 1.2,
+      burstCount: stats.burstCount || 3,
       magazine: Math.max(1, Math.round(stats.capacity)),
       reloadTime: stats.reloadTime,
       kick: stats.kick,
@@ -7354,6 +7670,7 @@ button:disabled {
       heatPerShot: stats.heatPerShot,
       coolRate: stats.coolRate,
       reliability: stats.reliability,
+      triggerSystem: stats.triggerSystemId,
       jamChance: stats.jamChance,
       requiresBipod: stats.requiresBipod,
       bipodDeployTime: stats.bipodDeployTime,
@@ -7431,6 +7748,7 @@ button:disabled {
       reliability: Number(stats.reliability.toFixed(2)),
       barrelProfile: stats.barrelProfileId,
       muzzleType: stats.muzzleTypeId,
+      triggerSystem: stats.triggerSystemId,
       updatedAt: Date.now()
     };
   }
@@ -7562,12 +7880,14 @@ button:disabled {
   function subtypeNeedsMagazine(classId, subtypeMode) {
     if (classId === 'sniper' && subtypeMode === 'bolt') return false;
     if (classId === 'shotgun' && subtypeMode === 'break') return false;
+    if (classId === 'revolver') return false;
     return subtypeMode !== 'single';
   }
 
   function subtypeFixedCapacity(classId, subtypeMode) {
     if (classId === 'sniper' && subtypeMode === 'bolt') return 1;
     if (classId === 'shotgun' && subtypeMode === 'break') return 2;
+    if (classId === 'revolver') return 6;
     return null;
   }
 
@@ -7657,6 +7977,7 @@ button:disabled {
     const subtype = classDefinition.subtypes[value.subtype] ? value.subtype : Object.keys(classDefinition.subtypes)[0];
     const barrelProfile = BARREL_PROFILES[value.barrelProfile] ? value.barrelProfile : 'standard';
     const muzzleType = MUZZLE_DEVICE_TYPES[value.muzzleType] ? value.muzzleType : 'flashHider';
+    const triggerSystem = TRIGGER_SYSTEMS[value.triggerSystem] ? value.triggerSystem : 'standard';
     const components = {};
     for (const [componentId, rect] of Object.entries(value.components || {})) {
       if (!COMPONENT_DEFINITIONS[componentId] || !rect || typeof rect !== 'object') continue;
@@ -7684,6 +8005,7 @@ button:disabled {
       subtype,
       barrelProfile,
       muzzleType,
+      triggerSystem,
       depthRatio: clamp(Math.round(Number(value.depthRatio) || 6), 1, 15),
       limitBreak: Boolean(limitBreak),
       components,
@@ -7776,6 +8098,7 @@ button:disabled {
         musicSchedulerTimer = null;
       }
     }
+
   }
 
   function createNoiseBuffer(context, seconds) {
