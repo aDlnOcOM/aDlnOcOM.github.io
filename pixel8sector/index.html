@@ -2296,7 +2296,7 @@ button:disabled {
             </select>
           </div>
 
-          <p class="settings-help">Низкое качество уменьшает внутреннее разрешение WebGL, дальность прорисовки и эффекты без изменения механики. Камера корректно работает на 4:3, 5:4, 16:9 и ультрашироких экранах. Оружие всегда отображается справа как объёмная воксельная модель; ПКМ включает прицеливание только при установленном прицеле.</p>
+          <p class="settings-help">Мир загружается квадратами по 9×9 тайлов и выгружает дальние сектора. Переходы ведут только к более высокой сложности: за игроком запирается неоновая дверь, поэтому вернуться в менее опасный сектор нельзя. Низкое качество уменьшает внутреннее разрешение WebGL, число активных секторов и эффекты без изменения механики. Камера корректно работает на 4:3, 5:4, 16:9 и ультрашироких экранах. Оружие всегда отображается справа как объёмная воксельная модель; ПКМ включает прицеливание только при установленном прицеле.</p>
         </section>
 
         <section class="settings-panel" data-settings-panel="audio" hidden>
@@ -2491,13 +2491,14 @@ button:disabled {
   let HALF_FOV = FOV / 2;
   let PROJECTION = HALF_W / Math.tan(HALF_FOV);
   const MAX_RAY_DISTANCE = 38;
-  const CHUNK_SIZE = 12;
+  const CHUNK_SIZE = 9;
+  const WEBGL_SECTOR_SIZE = CHUNK_SIZE;
   const PLAYER_RADIUS = 0.25;
   const FLOW_RADIUS = 25;
   const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
   const FLOW_MAX = 32767;
   const ACTIVE_CHUNK_RADIUS = 1;
-  const ENTITY_DESPAWN_DISTANCE = 38;
+  const ENTITY_DESPAWN_DISTANCE = CHUNK_SIZE * 2.5;
   const MAX_ACTIVE_ENEMIES = 56;
   const MAX_ACTIVE_ORBS = 90;
   const WORLD_SEED = 0x4d4f4f44;
@@ -2536,9 +2537,9 @@ button:disabled {
   }
 
   const PERFORMANCE_SETTINGS_BY_PROFILE = Object.freeze({
-    low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0, gpuPixelRatio: 0.68, renderRadius: 10, effects: false }),
-    medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1, gpuPixelRatio: 1, renderRadius: 16, effects: true }),
-    high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2, gpuPixelRatio: 1.32, renderRadius: 21, effects: true })
+    low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0, gpuPixelRatio: 0.68, webglSectorRadius: 1, effects: false }),
+    medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1, gpuPixelRatio: 1, webglSectorRadius: 2, effects: true }),
+    high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2, gpuPixelRatio: 1.32, webglSectorRadius: 2, effects: true })
   });
   let performanceProfile = detectPerformanceProfile();
   let performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[performanceProfile];
@@ -3634,6 +3635,8 @@ button:disabled {
       wallMaterials,
       doorMaterial,
       mapKey: '',
+      activeSectors: new Map(),
+      sectorMatrix: new three.Matrix4(),
       lastMapBuild: -Infinity,
       weaponKey: '',
       weaponRoot: null,
@@ -3668,24 +3671,95 @@ button:disabled {
 
   function rebuildWebGLMap(force = false) {
     if (!webgl) return;
-    const centerX = Math.floor(player.x);
-    const centerY = Math.floor(player.y);
-    const radius = performanceSettings.renderRadius || 16;
-    const mapKey = `${centerX}:${centerY}:${radius}:${closedDoorTiles.size}:${performanceProfile}`;
+    const centerSectorX = floorDiv(Math.floor(player.x), WEBGL_SECTOR_SIZE);
+    const centerSectorY = floorDiv(Math.floor(player.y), WEBGL_SECTOR_SIZE);
+    const radius = performanceSettings.webglSectorRadius || 1;
+    const mapKey = `${centerSectorX}:${centerSectorY}:${radius}:${performanceProfile}`;
     if (!force && webgl.mapKey === mapKey) return;
 
-    webgl.mapGroup.clear();
-    for (let tileY = centerY - radius; tileY <= centerY + radius; tileY += 1) {
-      for (let tileX = centerX - radius; tileX <= centerX + radius; tileX += 1) {
-        if (!isWallTile(tileX, tileY)) continue;
-        const door = isClosedDoorTile(tileX, tileY);
-        const material = door ? webgl.doorMaterial : webgl.wallMaterials[wallMaterial(tileX, tileY)];
-        const block = new three.Mesh(webgl.wallGeometry, material);
-        block.position.set(tileX + 0.5, 1.2, tileY + 0.5);
-        webgl.mapGroup.add(block);
+    const required = new Set();
+    for (let sectorY = centerSectorY - radius; sectorY <= centerSectorY + radius; sectorY += 1) {
+      for (let sectorX = centerSectorX - radius; sectorX <= centerSectorX + radius; sectorX += 1) {
+        const key = getWebGLSectorKey(sectorX, sectorY);
+        required.add(key);
+        if (webgl.activeSectors.has(key)) continue;
+        const sector = createWebGLSector(sectorX, sectorY);
+        webgl.activeSectors.set(key, sector);
+        webgl.mapGroup.add(sector);
       }
     }
+
+    for (const [key, sector] of webgl.activeSectors) {
+      if (required.has(key)) continue;
+      unloadWebGLSector(key, sector);
+    }
     webgl.mapKey = mapKey;
+  }
+
+  function getWebGLSectorKey(sectorX, sectorY) {
+    return `${sectorX}:${sectorY}`;
+  }
+
+  function createWebGLSector(sectorX, sectorY) {
+    const sector = new three.Group();
+    const wallsByMaterial = Array.from({ length: webgl.wallMaterials.length + 1 }, () => []);
+    const startX = sectorX * WEBGL_SECTOR_SIZE;
+    const startY = sectorY * WEBGL_SECTOR_SIZE;
+
+    for (let localY = 0; localY < WEBGL_SECTOR_SIZE; localY += 1) {
+      for (let localX = 0; localX < WEBGL_SECTOR_SIZE; localX += 1) {
+        const tileX = startX + localX;
+        const tileY = startY + localY;
+        if (!isWallTile(tileX, tileY)) continue;
+        const materialIndex = isClosedDoorTile(tileX, tileY) ? webgl.wallMaterials.length : wallMaterial(tileX, tileY);
+        wallsByMaterial[materialIndex].push([tileX, tileY]);
+      }
+    }
+
+    for (let materialIndex = 0; materialIndex < wallsByMaterial.length; materialIndex += 1) {
+      const wallTiles = wallsByMaterial[materialIndex];
+      if (wallTiles.length === 0) continue;
+      const material = materialIndex === webgl.wallMaterials.length ? webgl.doorMaterial : webgl.wallMaterials[materialIndex];
+      const blocks = new three.InstancedMesh(webgl.wallGeometry, material, wallTiles.length);
+      blocks.frustumCulled = false;
+      for (let index = 0; index < wallTiles.length; index += 1) {
+        const [tileX, tileY] = wallTiles[index];
+        webgl.sectorMatrix.makeTranslation(tileX + 0.5, 1.2, tileY + 0.5);
+        blocks.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      blocks.instanceMatrix.needsUpdate = true;
+      sector.add(blocks);
+    }
+
+    sector.userData.sectorKey = getWebGLSectorKey(sectorX, sectorY);
+    return sector;
+  }
+
+  function unloadWebGLSector(key, sector) {
+    sector.parent?.remove(sector);
+    webgl.activeSectors.delete(key);
+  }
+
+  function clearWebGLSectors() {
+    if (!webgl) return;
+    for (const [key, sector] of webgl.activeSectors) unloadWebGLSector(key, sector);
+    webgl.mapKey = '';
+  }
+
+  function invalidateWebGLSectors(tiles) {
+    if (!webgl) return;
+    const invalidated = new Set();
+    for (const [tileX, tileY] of tiles) {
+      const key = getWebGLSectorKey(
+        floorDiv(tileX, WEBGL_SECTOR_SIZE),
+        floorDiv(tileY, WEBGL_SECTOR_SIZE)
+      );
+      if (invalidated.has(key)) continue;
+      invalidated.add(key);
+      const sector = webgl.activeSectors.get(key);
+      if (sector) unloadWebGLSector(key, sector);
+    }
+    webgl.mapKey = '';
   }
 
   function addWebGLVoxel(group, size, position, color, glow = 0) {
@@ -4894,6 +4968,10 @@ button:disabled {
     cameraBob = 0;
     lastChunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
     lastChunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
+    if (webgl) {
+      clearWebGLSectors();
+      rebuildWebGLMap(true);
+    }
     updateWeaponVisual(true);
     ensureNearbyChunks(performance.now());
     rebuildFlowField();
@@ -5044,9 +5122,9 @@ button:disabled {
     const chunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
     const chunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
     if (chunkX !== lastChunkX || chunkY !== lastChunkY) {
-      handleSectorTransition(lastChunkX, lastChunkY, chunkX, chunkY);
-      lastChunkX = chunkX;
-      lastChunkY = chunkY;
+      const enteredSector = handleSectorTransition(lastChunkX, lastChunkY, chunkX, chunkY);
+      lastChunkX = enteredSector ? chunkX : floorDiv(Math.floor(player.x), CHUNK_SIZE);
+      lastChunkY = enteredSector ? chunkY : floorDiv(Math.floor(player.y), CHUNK_SIZE);
     }
   }
 
@@ -5084,16 +5162,51 @@ button:disabled {
   function handleSectorTransition(fromCx, fromCy, toCx, toCy) {
     const fromDanger = getDangerForChunk(fromCx, fromCy);
     const toDanger = getDangerForChunk(toCx, toCy);
-    const multiplier = getScoreMultiplier(toDanger);
-    showMessage(`СЕКТОР ${toCx}:${toCy} · СЛОЖНОСТЬ ${toDanger} · ×${multiplier}`, 1.15);
-
-    if (toDanger <= fromDanger) return;
+    if (toDanger <= fromDanger) {
+      rejectSectorReturn(fromCx, fromCy, toCx, toCy);
+      return false;
+    }
     if (pendingSectorDoor) sealSectorDoor(pendingSectorDoor);
     pendingSectorDoor = createSectorDoor(fromCx, fromCy, toCx, toCy, toDanger);
+    sealNonAdvancingSectorGates(toCx, toCy, fromCx, fromCy);
+    const multiplier = getScoreMultiplier(toDanger);
+    showMessage(`СЕКТОР ${toCx}:${toCy} · СЛОЖНОСТЬ ${toDanger} · ×${multiplier}`, 1.15);
+    return true;
+  }
+
+  function sealNonAdvancingSectorGates(sectorX, sectorY, entryX, entryY) {
+    const danger = getDangerForChunk(sectorX, sectorY);
+    const blockedTiles = [];
+    for (const [nextX, nextY] of [[sectorX - 1, sectorY], [sectorX + 1, sectorY], [sectorX, sectorY - 1], [sectorX, sectorY + 1]]) {
+      if (nextX === entryX && nextY === entryY) continue;
+      if (getDangerForChunk(nextX, nextY) > danger) continue;
+      blockedTiles.push(...createSectorDoor(sectorX, sectorY, nextX, nextY, danger).tiles);
+    }
+    if (blockedTiles.length === 0) return;
+    closeSectorDoorTiles(blockedTiles, danger);
+    rebuildFlowField();
+  }
+
+  function rejectSectorReturn(fromCx, fromCy, toCx, toCy) {
+    if (pendingSectorDoor) sealSectorDoor(pendingSectorDoor);
+    const door = createSectorDoor(toCx, toCy, fromCx, fromCy, getDangerForChunk(fromCx, fromCy));
+    closeSectorDoorTiles(door.tiles, door.danger);
+    movePlayerBeyondDoor(fromCx, fromCy, toCx, toCy);
+    rebuildFlowField();
+    showMessage('ДВЕРЬ СЕКТОРА ЗАПЕРТА', 0.85);
+  }
+
+  function movePlayerBeyondDoor(fromCx, fromCy, toCx, toCy) {
+    const clearDistance = 1 + PLAYER_RADIUS + 0.08;
+    if (fromCx > toCx) player.x = fromCx * CHUNK_SIZE + clearDistance;
+    else if (fromCx < toCx) player.x = (fromCx + 1) * CHUNK_SIZE - clearDistance;
+    else if (fromCy > toCy) player.y = fromCy * CHUNK_SIZE + clearDistance;
+    else if (fromCy < toCy) player.y = (fromCy + 1) * CHUNK_SIZE - clearDistance;
   }
 
   function createSectorDoor(fromCx, fromCy, toCx, toCy, danger) {
     const tiles = [];
+    const lockDistance = 1 + PLAYER_RADIUS + 0.08;
     let axis = 'x';
     let threshold = 0;
     let sign = 1;
@@ -5101,29 +5214,29 @@ button:disabled {
     if (toCx > fromCx) {
       const boundary = toCx * CHUNK_SIZE;
       const baseY = toCy * CHUNK_SIZE;
-      for (const y of [baseY + 5, baseY + 6]) tiles.push([boundary - 1, y], [boundary, y]);
-      threshold = boundary + 1.2;
+      for (const y of [baseY + 4, baseY + 5]) tiles.push([boundary - 1, y], [boundary, y]);
+      threshold = boundary + lockDistance;
       sign = 1;
       axis = 'x';
     } else if (toCx < fromCx) {
       const boundary = fromCx * CHUNK_SIZE;
       const baseY = toCy * CHUNK_SIZE;
-      for (const y of [baseY + 5, baseY + 6]) tiles.push([boundary - 1, y], [boundary, y]);
-      threshold = boundary - 1.2;
+      for (const y of [baseY + 4, baseY + 5]) tiles.push([boundary - 1, y], [boundary, y]);
+      threshold = boundary - lockDistance;
       sign = -1;
       axis = 'x';
     } else if (toCy > fromCy) {
       const boundary = toCy * CHUNK_SIZE;
       const baseX = toCx * CHUNK_SIZE;
-      for (const x of [baseX + 5, baseX + 6]) tiles.push([x, boundary - 1], [x, boundary]);
-      threshold = boundary + 1.2;
+      for (const x of [baseX + 4, baseX + 5]) tiles.push([x, boundary - 1], [x, boundary]);
+      threshold = boundary + lockDistance;
       sign = 1;
       axis = 'y';
     } else {
       const boundary = fromCy * CHUNK_SIZE;
       const baseX = toCx * CHUNK_SIZE;
-      for (const x of [baseX + 5, baseX + 6]) tiles.push([x, boundary - 1], [x, boundary]);
-      threshold = boundary - 1.2;
+      for (const x of [baseX + 4, baseX + 5]) tiles.push([x, boundary - 1], [x, boundary]);
+      threshold = boundary - lockDistance;
       sign = -1;
       axis = 'y';
     }
@@ -5141,14 +5254,20 @@ button:disabled {
   function sealSectorDoor(door) {
     if (!door || door.sealed) return;
     door.sealed = true;
-    for (const [tileX, tileY] of door.tiles) {
-      closedDoorTiles.set(`${tileX},${tileY}`, { danger: door.danger });
-    }
+    closeSectorDoorTiles(door.tiles, door.danger);
     pendingSectorDoor = null;
     rebuildFlowField();
     if (minimapVisible) renderMinimap();
     showMessage('НЕОНОВАЯ ДВЕРЬ ЗАКРЫТА', 1.05);
     playDoorSealSound();
+  }
+
+  function closeSectorDoorTiles(tiles, danger) {
+    for (const [tileX, tileY] of tiles) {
+      closedDoorTiles.set(`${tileX},${tileY}`, { danger });
+    }
+    invalidateWebGLSectors(tiles);
+    rebuildWebGLMap();
   }
 
   function updateVisualTimers(dt) {
@@ -5604,15 +5723,12 @@ button:disabled {
       for (let cx = playerChunkX - ACTIVE_CHUNK_RADIUS; cx <= playerChunkX + ACTIVE_CHUNK_RADIUS; cx += 1) {
         const key = chunkKey(cx, cy);
         const existing = chunkStates.get(key);
-        if (existing) {
-          existing.lastSeen = now;
-          continue;
-        }
+        if (existing) continue;
         generateChunkEntities(cx, cy, now);
       }
     }
 
-    if (chunkStates.size > 360) pruneChunkStates(playerChunkX, playerChunkY);
+    pruneChunkStates(playerChunkX, playerChunkY);
   }
 
   function generateChunkEntities(cx, cy, now) {
@@ -5620,7 +5736,7 @@ button:disabled {
     const danger = getDangerForChunk(cx, cy);
     const rng = mulberry32(hash2(cx, cy, WORLD_SEED));
     const isOrigin = cx === 0 && cy === 0;
-    const state = { cx, cy, lastSeen: now };
+    const state = { cx, cy };
     chunkStates.set(key, state);
 
     const limitBreak = gameMode === 'limitbreak';
@@ -5780,14 +5896,9 @@ button:disabled {
   }
 
   function pruneChunkStates(playerChunkX, playerChunkY) {
-    const entries = [...chunkStates.entries()];
-    entries.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-    let removed = 0;
-    for (const [key, state] of entries) {
-      if (removed >= 60 || chunkStates.size <= 300) break;
+    for (const [key, state] of chunkStates) {
       if (Math.abs(state.cx - playerChunkX) <= ACTIVE_CHUNK_RADIUS + 1 && Math.abs(state.cy - playerChunkY) <= ACTIVE_CHUNK_RADIUS + 1) continue;
       chunkStates.delete(key);
-      removed += 1;
     }
   }
 
@@ -6420,30 +6531,30 @@ button:disabled {
     const edgeY = localY === 0 || localY === CHUNK_SIZE - 1;
 
     if (edgeX || edgeY) {
-      if (edgeX && (localY === 5 || localY === 6)) return false;
-      if (edgeY && (localX === 5 || localX === 6)) return false;
+      if (edgeX && (localY === 4 || localY === 5)) return false;
+      if (edgeY && (localX === 4 || localX === 5)) return false;
       return true;
     }
 
-    if (localX === 5 || localX === 6 || localY === 5 || localY === 6) return false;
+    if (localX === 4 || localX === 5 || localY === 4 || localY === 5) return false;
 
     const pattern = hash2(chunkX, chunkY, WORLD_SEED ^ 0x78ab12) % 7;
     switch (pattern) {
       case 1:
-        return (localX === 3 || localX === 8) && (localY === 3 || localY === 8);
+        return (localX === 2 || localX === 6) && (localY === 2 || localY === 6);
       case 2:
-        return (localY === 3 && localX >= 2 && localX <= 4) || (localY === 8 && localX >= 7 && localX <= 9);
+        return (localY === 2 && localX >= 1 && localX <= 3) || (localY === 6 && localX >= 5 && localX <= 7);
       case 3:
-        return (localX === 3 && localY >= 2 && localY <= 4) || (localX === 8 && localY >= 7 && localY <= 9);
+        return (localX === 2 && localY >= 1 && localY <= 3) || (localX === 6 && localY >= 5 && localY <= 7);
       case 4:
-        return (localX === 2 && localY >= 2 && localY <= 4) || (localY === 2 && localX >= 2 && localX <= 4) ||
-          (localX === 9 && localY >= 7 && localY <= 9) || (localY === 9 && localX >= 7 && localX <= 9);
+        return (localX === 1 && localY >= 1 && localY <= 3) || (localY === 1 && localX >= 1 && localX <= 3) ||
+          (localX === 7 && localY >= 5 && localY <= 7) || (localY === 7 && localX >= 5 && localX <= 7);
       case 5:
-        return (localX === 3 && localY === 4) || (localX === 4 && localY === 3) ||
-          (localX === 8 && localY === 7) || (localX === 7 && localY === 8);
+        return (localX === 2 && localY === 3) || (localX === 3 && localY === 2) ||
+          (localX === 6 && localY === 5) || (localX === 5 && localY === 6);
       case 6:
-        return (localY === 2 && localX >= 3 && localX <= 4) || (localY === 9 && localX >= 7 && localX <= 8) ||
-          (localX === 2 && localY >= 7 && localY <= 8) || (localX === 9 && localY >= 3 && localY <= 4);
+        return (localY === 1 && localX >= 2 && localX <= 3) || (localY === 7 && localX >= 5 && localX <= 6) ||
+          (localX === 1 && localY >= 5 && localY <= 6) || (localX === 7 && localY >= 2 && localY <= 3);
       default:
         return false;
     }
@@ -6454,7 +6565,7 @@ button:disabled {
   }
 
   function getDangerForChunk(cx, cy) {
-    const travelDanger = Math.floor((Math.abs(cx) + Math.abs(cy)) / 3);
+    const travelDanger = Math.abs(cx) + Math.abs(cy);
     const limitBreak = gameMode === 'limitbreak';
     const scoreDanger = Math.floor(player.score / (limitBreak ? 12 : 16));
     return (limitBreak ? 0 : 1) + travelDanger + scoreDanger;
