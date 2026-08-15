@@ -246,13 +246,18 @@
           <div><small>СЛОТЫ GUNCRAFT</small><strong id="menuUnlockedSlots">1 / 3</strong></div>
         </div>
 
+        <div id="menuPreload" class="menu-preload" role="status" aria-live="polite">
+          <div class="menu-preload-copy"><span>СИСТЕМА</span><strong id="menuPreloadLabel">ПОДГОТОВКА WEBGL И РЕСУРСОВ</strong></div>
+          <div class="menu-preload-track" aria-hidden="true"><span id="menuPreloadFill"></span></div>
+        </div>
+
         <div class="mode-grid">
           <article class="mode-card">
             <small>РЕЖИМ 01</small>
             <h3>CLASSIC</h3>
             <p>Три готовых оружия из воксельных модулей — в настоящем WebGL-виде от первого лица.</p>
             <div class="mode-record"><span>РЕКОРД</span><strong id="menuClassicRecord">0</strong></div>
-            <button id="startButton" type="button">НАЧАТЬ CLASSIC</button>
+            <button id="startButton" type="button" disabled>ПОДГОТОВКА CLASSIC</button>
           </article>
           <article id="guncraftModeCard" class="mode-card">
             <small>РЕЖИМ 02 · ROGUELIKE</small>
@@ -265,7 +270,7 @@
               <span class="limit-break-check" aria-hidden="true"></span>
               <span class="limit-break-copy"><strong>СРЫВ ЛИМИТОВ</strong><small>Отдельный рекорд, враги усилены уже с нулевой сложности, жёсткие пределы размеров отключены.</small></span>
             </label>
-            <button id="guncraftMenuButton" type="button" class="secondary-button">ОТКРЫТЬ КОНСТРУКТОР</button>
+            <button id="guncraftMenuButton" type="button" class="secondary-button" disabled>ПОДГОТОВКА КОНСТРУКТОРА</button>
           </article>
         </div>
 

@@ -30,6 +30,8 @@
   const PLAYER_CAMERA_RESPONSE = 34;
   const PLAYER_CAMERA_MAX_LAG = 0.07;
   const PLAYER_CAMERA_RADIUS = 0.09;
+  const POINTER_DELTA_LIMIT = 72;
+  const KENNEY_COLORMAP_FALLBACK = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1" height="1"%3E%3Crect width="1" height="1" fill="%238bd7e8"/%3E%3C/svg%3E';
   const FLOW_RADIUS = ARENA_SIZE;
   const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
   const FLOW_MAX = 32767;
@@ -176,6 +178,9 @@
   const menuClassicRecord = document.getElementById('menuClassicRecord');
   const menuGunCraftRecord = document.getElementById('menuGunCraftRecord');
   const menuLimitBreakRecord = document.getElementById('menuLimitBreakRecord');
+  const menuPreload = document.getElementById('menuPreload');
+  const menuPreloadLabel = document.getElementById('menuPreloadLabel');
+  const menuPreloadFill = document.getElementById('menuPreloadFill');
   const limitBreakToggle = document.getElementById('limitBreakToggle');
   const guncraftModeCard = document.getElementById('guncraftModeCard');
   const settingsTabs = document.getElementById('settingsTabs');
@@ -266,6 +271,8 @@
   let GLTFLoaderClass = null;
   let webgl = null;
   let webglLoading = false;
+  let gameResourcesReady = false;
+  let gamePreloadPromise = null;
 
   const DEFAULT_KEYBINDS = Object.freeze({
     moveForward: 'KeyW',
@@ -332,6 +339,7 @@
   let keybindCaptureAction = null;
   let mouseSensitivity = 1;
   let keybinds = { ...DEFAULT_KEYBINDS };
+  let discardNextPointerMotion = false;
   let started = false;
   let paused = true;
   let gameOver = false;
@@ -1109,17 +1117,22 @@
   updateMusicButton();
   updateMainMenu();
   resetGame();
-  void bootstrapWebGLRenderer();
+  void preloadGameResources();
   requestAnimationFrame(frame);
 
-  async function bootstrapWebGLRenderer() {
-    if (webglLoading || webgl) return;
+  async function bootstrapWebGLRenderer(onAssetProgress) {
+    if (webgl) {
+      await webgl.assetWeaponLoadPromise;
+      return;
+    }
+    if (webglLoading) return;
     webglLoading = true;
     try {
       three = window.THREE;
       GLTFLoaderClass = window.THREE?.GLTFLoader || null;
       if (!three) throw new Error('Local Three.js bundle is unavailable');
       initializeWebGLRenderer();
+      await loadWebGLAssetWeaponModels(onAssetProgress);
     } catch (error) {
       document.documentElement.dataset.renderer = 'svg';
       document.documentElement.dataset.rendererError = error instanceof Error ? error.message : 'WebGL bootstrap failed';
@@ -1231,6 +1244,7 @@
       weaponFlash: null,
       weaponGlowMaterials: [],
       assetWeaponTemplates: new Map(),
+      assetWeaponLoadPromise: null,
       effects: [],
       lastCameraFov: 0
     };
@@ -1239,7 +1253,52 @@
     rebuildWebGLMap(true);
     syncWebGLEntities();
     updateWebGLWeaponModel(true);
-    void loadWebGLAssetWeaponModels();
+  }
+
+  function setGamePreloadState(progress, label, ready = false) {
+    const normalizedProgress = clamp(progress, 0, 1);
+    menuPreloadLabel.textContent = label;
+    menuPreloadFill.style.transform = `scaleX(${Math.max(0.02, normalizedProgress)})`;
+    menuPreload.classList.toggle('ready', ready);
+    startButton.disabled = !ready;
+    guncraftMenuButton.disabled = !ready;
+    if (ready) {
+      startButton.textContent = 'НАЧАТЬ CLASSIC';
+      setLimitBreakMenuMode(Boolean(metaProgress.limitBreakEnabled), false);
+    } else {
+      startButton.textContent = 'ПОДГОТОВКА CLASSIC';
+      guncraftMenuButton.textContent = 'ПОДГОТОВКА КОНСТРУКТОРА';
+    }
+  }
+
+  async function preloadGameResources() {
+    if (gamePreloadPromise) return gamePreloadPromise;
+    setGamePreloadState(0.06, 'ЗАПУСК WEBGL');
+    gamePreloadPromise = (async () => {
+      await bootstrapWebGLRenderer((completed, total) => {
+        const progress = 0.18 + completed / Math.max(1, total) * 0.62;
+        setGamePreloadState(progress, `ЗАГРУЖАЕМ МОДЕЛИ ОРУЖИЯ · ${completed}/${total}`);
+      });
+      if (webgl) {
+        setGamePreloadState(0.86, 'ПРОГРЕВ РЕНДЕРА');
+        warmWebGLRenderer();
+      }
+      gameResourcesReady = true;
+      setGamePreloadState(1, webgl ? 'СИСТЕМЫ ГОТОВЫ' : 'SVG-РЕЖИМ ГОТОВ', true);
+    })().catch(() => {
+      gameResourcesReady = true;
+      setGamePreloadState(1, 'БАЗОВЫЙ РЕЖИМ ГОТОВ', true);
+    });
+    return gamePreloadPromise;
+  }
+
+  function warmWebGLRenderer() {
+    if (!webgl) return;
+    updateWebGLWeaponModel(true);
+    webgl.renderer.compile(webgl.scene, webgl.camera);
+    webgl.renderer.compile(webgl.weaponScene, webgl.weaponCamera);
+    renderWebGLWeapon();
+    renderWebGLScene(performance.now());
   }
 
   function getWebGLPixelRatio() {
@@ -1628,15 +1687,22 @@
     webgl.effects.push({ mesh: tracer, born: performance.now(), ttl: 70, strong: false, tracer: true, dispose: true });
   }
 
-  async function loadWebGLAssetWeaponModels() {
-    if (!webgl || !GLTFLoaderClass) return;
+  function loadWebGLAssetWeaponModels(onProgress) {
+    if (!webgl || !GLTFLoaderClass) return Promise.resolve();
+    if (webgl.assetWeaponLoadPromise) return webgl.assetWeaponLoadPromise;
     const loader = new GLTFLoaderClass();
+    loader.manager.setURLModifier((url) => url.endsWith('Textures/colormap.png') ? KENNEY_COLORMAP_FALLBACK : url);
     const models = [
       { index: 0, file: 'blaster-e.glb' },
       { index: 1, file: 'blaster-j.glb' },
       { index: 2, file: 'blaster-p.glb' }
     ];
-    for (const model of models) {
+    let completed = 0;
+    const notifyProgress = () => {
+      completed += 1;
+      onProgress?.(completed, models.length);
+    };
+    webgl.assetWeaponLoadPromise = Promise.all(models.map(async (model) => {
       try {
         const result = await new Promise((resolve, reject) => {
           loader.load(`./assets/models/kenney-blaster/${model.file}`, resolve, undefined, reject);
@@ -1670,8 +1736,11 @@
         if (player.weapon === model.index && !WEAPONS[player.weapon].custom) updateWebGLWeaponModel(true);
       } catch {
         // The procedural voxel model remains the local fallback for an unavailable asset.
+      } finally {
+        notifyProgress();
       }
-    }
+    })).then(() => undefined);
+    return webgl.assetWeaponLoadPromise;
   }
 
   function updateWebGLWeaponModel(force = false) {
@@ -2085,9 +2154,11 @@
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === app || document.pointerLockElement === gameView;
       if (locked && started && !gameOver) {
+        discardNextPointerMotion = true;
         paused = false;
         pauseOverlay.classList.remove('visible');
       } else if (started && !gameOver && !document.hidden && !startOverlay.classList.contains('visible') && !settingsOverlay.classList.contains('visible') && !craftOverlay.classList.contains('visible')) {
+        discardNextPointerMotion = true;
         paused = true;
         clearInput();
         pauseOverlay.classList.add('visible');
@@ -2096,10 +2167,16 @@
 
     document.addEventListener('mousemove', (event) => {
       if (paused || gameOver || document.pointerLockElement === null) return;
-      const turn = event.movementX * 0.00215 * mouseSensitivity;
+      if (discardNextPointerMotion) {
+        discardNextPointerMotion = false;
+        return;
+      }
+      const movementX = clamp(Number.isFinite(event.movementX) ? event.movementX : 0, -POINTER_DELTA_LIMIT, POINTER_DELTA_LIMIT);
+      const movementY = clamp(Number.isFinite(event.movementY) ? event.movementY : 0, -POINTER_DELTA_LIMIT, POINTER_DELTA_LIMIT);
+      const turn = movementX * 0.00215 * mouseSensitivity;
       player.angle = normalizeAngle(player.angle + turn);
-      player.pitch = clamp(player.pitch - event.movementY * 0.0018 * mouseSensitivity, -0.72, 0.72);
-      lookSway = clamp(lookSway + event.movementX * 0.12 * clamp(mouseSensitivity, 0.45, 2.2), -22, 22);
+      player.pitch = clamp(player.pitch - movementY * 0.0018 * mouseSensitivity, -0.72, 0.72);
+      lookSway = clamp(lookSway + movementX * 0.12 * clamp(mouseSensitivity, 0.45, 2.2), -22, 22);
     });
 
     document.addEventListener('keydown', (event) => {
@@ -2605,6 +2682,10 @@
   }
 
   function startGameMode(mode) {
+    if (!gameResourcesReady) {
+      showMessage('СИСТЕМЫ ЕЩЁ ПОДГОТАВЛИВАЮТСЯ', 0.9);
+      return;
+    }
     initAudio();
     gameMode = mode === 'limitbreak' ? 'limitbreak' : mode === 'guncraft' ? 'guncraft' : 'classic';
 
