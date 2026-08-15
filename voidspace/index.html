@@ -20,6 +20,7 @@
       <div class="lore">
         <p>Планета погибла в гамма-всплеске, вызванном пролётом чёрной дыры. Станция стала последним приютом человечества и была выброшена на далёкую устойчивую орбиту сверхмассивного объекта.</p>
         <p>Вы — владелец, пилот и капитан станции. Расширяйте каркас, перерабатывайте астероиды, спасайте экипаж и выдерживайте регулярные вражеские волны.</p>
+        <p>Каждая третья волна вскрывает эхо прежних экспедиций: выберите один «протокол Пустоты» и соберите собственную стратегию выживания.</p>
       </div>
       <div class="boot-actions">
         <button id="newGameBtn" class="btn btn--primary">Новая станция</button>
@@ -32,6 +33,7 @@
         <span>R — поворот</span>
         <span>H — тепловизор</span>
         <span>Space — пауза</span>
+        <span>⚙ — темы и управление</span>
       </div>
       <p id="assetStatus" class="boot-note">Загрузка локального набора симметричных PNG-спрайтов 16×16…</p>
     </section>
@@ -95,6 +97,11 @@
           <div class="section-title"><h2>Сводка</h2></div>
           <div id="compactStats" class="compact-stats"></div>
         </section>
+
+        <section class="side-section protocol-section">
+          <div class="section-title"><h2>Протоколы Пустоты</h2></div>
+          <div id="protocolList" class="protocol-list"></div>
+        </section>
       </aside>
 
       <section class="viewport-column">
@@ -130,6 +137,7 @@
           <div class="toolbar-spacer"></div>
           <button id="researchBtn" class="tool-btn tool-btn--cyan"><span>◈</span>Исследования</button>
           <button id="codexBtn" class="tool-btn"><span>≡</span>Кодекс</button>
+          <button id="settingsBtn" class="tool-btn"><span>⚙</span>Вид</button>
           <button id="saveBtn" class="tool-btn"><span>▣</span>Сохранить</button>
         </div>
 
@@ -186,8 +194,35 @@
         <button data-codex="recipes">Цепочки</button>
         <button data-codex="enemies">Враги</button>
         <button data-codex="systems">Системы</button>
+        <button data-codex="lore">Лор</button>
       </nav>
       <div id="codexContent" class="codex-content"></div>
+    </section>
+  </div>
+
+  <div id="settingsOverlay" class="overlay-panel" hidden>
+    <section class="overlay-card settings-card">
+      <header class="overlay-header">
+        <div><p class="eyebrow">CAPTAIN ACCESSIBILITY CONSOLE</p><h2>Вид и управление</h2></div>
+        <button class="close-overlay icon-btn" data-close="settingsOverlay">×</button>
+      </header>
+      <div class="settings-content">
+        <section>
+          <h3>Цветовая тема</h3>
+          <p>Меняет интерфейс без воздействия на игровые данные.</p>
+          <div id="settingsThemeChoices" class="theme-choices">
+            <button data-theme="void"><i></i>Пустота</button>
+            <button data-theme="ember"><i></i>Уголь</button>
+            <button data-theme="aurora"><i></i>Аврора</button>
+          </div>
+        </section>
+        <section class="settings-switches">
+          <label><input id="highContrastToggle" type="checkbox"> <span><b>Высокий контраст</b><small>Усиливает границы и читаемость интерфейса.</small></span></label>
+          <label><input id="tileNumbersToggle" type="checkbox"> <span><b>Номера на тайлах</b><small>Показывает номер каждого построенного тайла при приближении.</small></span></label>
+          <label><input id="invertPanToggle" type="checkbox"> <span><b>Инвертировать перетаскивание</b><small>Меняет направление перемещения камеры ПКМ. В VoidSpace нет «нулевой» сдвижной плитки.</small></span></label>
+        </section>
+        <p class="settings-note">Настройки сохраняются вместе со станцией и применяются сразу.</p>
+      </div>
     </section>
   </div>
 

@@ -9,12 +9,22 @@
   const CANVAS_W = GRID_W * TILE;
   const CANVAS_H = GRID_H * TILE;
   const SAVE_KEY = "voidspace-save-v1";
-  const SAVE_VERSION = 1;
+  const SAVE_VERSION = 2;
   const TAU = Math.PI * 2;
   const CATEGORY_ORDER = [
     "Каркасы", "Командование", "Экипаж", "Энергия", "Логистика", "Захват",
     "Термальные", "Обработка I", "Обработка II", "Обработка III", "Сборка",
     "Ядерные", "Вооружение", "Эндгейм"
+  ];
+  const DEFAULT_SETTINGS = { theme: "void", highContrast: false, tileNumbers: false, invertPan: false };
+  const VOID_PROTOCOLS = [
+    { id: "salvage-loop", name: "Контур сбора", rarity: "ОБЫЧНЫЙ", description: "+20% к количеству подобранного ресурса за уровень." },
+    { id: "cold-void", name: "Холодная орбита", rarity: "ОБЫЧНЫЙ", description: "+15% к охлаждению станции за уровень." },
+    { id: "reactor-harmonics", name: "Гармоники реактора", rarity: "НЕОБЫЧНЫЙ", description: "+9% к выработке энергии за уровень." },
+    { id: "combat-doctrine", name: "Доктрина перехвата", rarity: "НЕОБЫЧНЫЙ", description: "+20% науки за волну и уничтожение врагов за уровень." },
+    { id: "lucky-echo", name: "Удачное эхо", rarity: "РЕДКИЙ", description: "+6 п.п. к шансу редкого трофея за уровень." },
+    { id: "hardened-frame", name: "Закалённый каркас", rarity: "РЕДКИЙ", description: "−7% входящего урона станции за уровень." },
+    { id: "emergency-clock", name: "Аварийный хронометр", rarity: "НЕОБЫЧНЫЙ", description: "При выборе добавляет 25 секунд до следующей волны." }
   ];
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -596,7 +606,7 @@
     },
     {
       title: "Станция готова",
-      text: "Базовая линия запущена. Астероиды идут постоянно, враги — волнами каждые 2 минуты. Добыча и оборона образуют единый цикл: уничтожение → захват → переработка → расширение.",
+      text: "Базовая линия запущена. Астероиды идут постоянно, враги — волнами каждые 2 минуты. После каждой третьей волны вы выберете протокол Пустоты — постоянное улучшение для этого забега. Добыча и оборона образуют единый цикл: уничтожение → захват → переработка → расширение.",
       requirement: "Нажмите «Запустить орбитальный цикл».", action: "finish"
     }
   ];
@@ -613,12 +623,14 @@
     tutorialPanel: $("#tutorialPanel"), tutorialCounter: $("#tutorialCounter"), tutorialTitle: $("#tutorialTitle"), tutorialText: $("#tutorialText"),
     tutorialRequirement: $("#tutorialRequirement"), tutorialActionBtn: $("#tutorialActionBtn"), tutorialAutoBtn: $("#tutorialAutoBtn"),
     buildModeBtn: $("#buildModeBtn"), inspectModeBtn: $("#inspectModeBtn"), demolishModeBtn: $("#demolishModeBtn"), rotateBtn: $("#rotateBtn"),
-    researchBtn: $("#researchBtn"), codexBtn: $("#codexBtn"), saveBtn: $("#saveBtn"), eventLog: $("#eventLog"),
+    researchBtn: $("#researchBtn"), codexBtn: $("#codexBtn"), settingsBtn: $("#settingsBtn"), saveBtn: $("#saveBtn"), eventLog: $("#eventLog"),
+    protocolList: $("#protocolList"),
     buildPanel: $("#buildPanel"), inspectPanel: $("#inspectPanel"), closeInspectBtn: $("#closeInspectBtn"), inspectContent: $("#inspectContent"),
     buildSearch: $("#buildSearch"), categoryTabs: $("#categoryTabs"), buildList: $("#buildList"), rotationIndicator: $("#rotationIndicator"),
     hoverTooltip: $("#hoverTooltip"), combatBanner: $("#combatBanner"), toastStack: $("#toastStack"),
     researchOverlay: $("#researchOverlay"), researchCapText: $("#researchCapText"), researchOverlayPoints: $("#researchOverlayPoints"), researchTree: $("#researchTree"),
     codexOverlay: $("#codexOverlay"), codexTabs: $("#codexTabs"), codexContent: $("#codexContent"),
+    settingsOverlay: $("#settingsOverlay"), settingsThemeChoices: $("#settingsThemeChoices"), highContrastToggle: $("#highContrastToggle"), tileNumbersToggle: $("#tileNumbersToggle"), invertPanToggle: $("#invertPanToggle"),
     modalOverlay: $("#modalOverlay"), modalEyebrow: $("#modalEyebrow"), modalTitle: $("#modalTitle"), modalBody: $("#modalBody"), modalActions: $("#modalActions")
   };
 
@@ -740,6 +752,8 @@
       rotation: 0,
       category: "Каркасы",
       resourceViewAll: false,
+      settings: { ...DEFAULT_SETTINGS },
+      roguelike: { levels: {}, pendingOffers: [] },
       tutorial: { active: true, step: 0, progress: 0 },
       playTime: 0,
       waveStarted: false,
@@ -760,6 +774,111 @@
 
   function getTechSet() {
     return new Set(state?.researched || []);
+  }
+
+  function normalizeSettings(settings = {}) {
+    if (!settings || typeof settings !== "object") settings = {};
+    const theme = ["void", "ember", "aurora"].includes(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme;
+    return {
+      theme,
+      highContrast: Boolean(settings.highContrast),
+      tileNumbers: Boolean(settings.tileNumbers),
+      invertPan: Boolean(settings.invertPan)
+    };
+  }
+
+  function normalizeRoguelikeState(roguelike = {}) {
+    if (!roguelike || typeof roguelike !== "object") roguelike = {};
+    const validIds = new Set(VOID_PROTOCOLS.map((protocol) => protocol.id));
+    const levels = {};
+    for (const [id, level] of Object.entries(roguelike.levels || {})) {
+      if (validIds.has(id)) levels[id] = clamp(Math.floor(Number(level) || 0), 0, 3);
+    }
+    const pendingOffers = Array.isArray(roguelike.pendingOffers) ? roguelike.pendingOffers.filter((id) => validIds.has(id)).slice(0, 3) : [];
+    return { levels, pendingOffers };
+  }
+
+  function getProtocolLevel(id) {
+    return state?.roguelike?.levels?.[id] || 0;
+  }
+
+  function getProtocolBonus(id, perLevel) {
+    return 1 + getProtocolLevel(id) * perLevel;
+  }
+
+  function applyVisualSettings() {
+    const settings = normalizeSettings(state?.settings);
+    document.documentElement.dataset.voidTheme = settings.theme;
+    document.documentElement.dataset.voidContrast = settings.highContrast ? "high" : "normal";
+  }
+
+  function renderSettings() {
+    if (!state) return;
+    const settings = state.settings = normalizeSettings(state.settings);
+    $$("[data-theme]", DOM.settingsThemeChoices).forEach((button) => button.classList.toggle("is-active", button.dataset.theme === settings.theme));
+    DOM.highContrastToggle.checked = settings.highContrast;
+    DOM.tileNumbersToggle.checked = settings.tileNumbers;
+    DOM.invertPanToggle.checked = settings.invertPan;
+  }
+
+  function updateSetting(key, value) {
+    if (!state || !(key in DEFAULT_SETTINGS)) return;
+    state.settings = normalizeSettings({ ...state.settings, [key]: value });
+    applyVisualSettings();
+    renderSettings();
+    saveGame(true);
+  }
+
+  function renderProtocols() {
+    if (!state) return;
+    const entries = VOID_PROTOCOLS.filter((protocol) => getProtocolLevel(protocol.id) > 0);
+    DOM.protocolList.innerHTML = entries.length
+      ? entries.map((protocol) => `<div class="protocol-chip"><span>${escapeHtml(protocol.name)}</span><b>×${getProtocolLevel(protocol.id)}</b></div>`).join("")
+      : `<p>После каждой 3-й волны выберите один протокол.</p>`;
+  }
+
+  function getProtocolOffers() {
+    const pool = VOID_PROTOCOLS.filter((protocol) => getProtocolLevel(protocol.id) < 3);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, Math.min(3, pool.length)).map((protocol) => protocol.id);
+  }
+
+  function openProtocolDraft() {
+    if (!state || state.gameOver) return;
+    const roguelike = state.roguelike = normalizeRoguelikeState(state.roguelike);
+    if (!roguelike.pendingOffers.length) roguelike.pendingOffers = getProtocolOffers();
+    const offers = roguelike.pendingOffers.map((id) => VOID_PROTOCOLS.find((protocol) => protocol.id === id)).filter(Boolean);
+    if (!offers.length) return;
+    state.paused = true;
+    document.body.classList.add("is-paused");
+    showModal({
+      eyebrow: "VOID ECHO // ВЫБОР ПРОТОКОЛА",
+      title: "Сигнал из Пустоты",
+      body: `<p>Третья волна вскрыла обрывок архивной сети. Выберите один протокол: он останется с вами до конца экспедиции и может усилиться ещё дважды.</p><div class="protocol-draft">${offers.map((protocol) => `<article class="protocol-card"><span>${protocol.rarity}</span><h3>${escapeHtml(protocol.name)} <small>ур. ${getProtocolLevel(protocol.id) + 1}</small></h3><p>${escapeHtml(protocol.description)}</p></article>`).join("")}</div>`,
+      actions: offers.map((protocol, index) => ({ label: `Выбрать: ${protocol.name}`, primary: index === 0, onClick: () => selectProtocol(protocol.id) }))
+    });
+    DOM.modalOverlay.dataset.protocolDraft = "true";
+    renderTopbar();
+  }
+
+  function selectProtocol(id) {
+    if (!state || !state.roguelike?.pendingOffers.includes(id)) return;
+    const protocol = VOID_PROTOCOLS.find((item) => item.id === id);
+    if (!protocol) return;
+    const levels = state.roguelike.levels;
+    levels[id] = Math.min(3, (levels[id] || 0) + 1);
+    state.roguelike.pendingOffers = [];
+    if (id === "emergency-clock") state.waveTimer += 25;
+    state.paused = false;
+    delete DOM.modalOverlay.dataset.protocolDraft;
+    document.body.classList.remove("is-paused");
+    logEvent(`Архивный протокол активирован: «${protocol.name}» (ур. ${levels[id]}).`);
+    toast(`Протокол «${protocol.name}» активирован.`);
+    renderAllUI(true);
+    saveGame(true);
   }
 
   function getWaveTierCap() {
@@ -856,7 +975,8 @@
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return null;
       const loaded = JSON.parse(raw);
-      if (!loaded || loaded.version !== SAVE_VERSION || !Array.isArray(loaded.stations)) return null;
+      if (!loaded || ![1, SAVE_VERSION].includes(loaded.version) || !Array.isArray(loaded.stations)) return null;
+      loaded.version = SAVE_VERSION;
       loaded.inventory = { ...Object.fromEntries(Object.keys(RESOURCES).map((key) => [key, 0])), ...DEFAULT_INVENTORY, ...loaded.inventory };
       loaded.researched ||= [];
       loaded.logs ||= [];
@@ -871,6 +991,8 @@
       loaded.balance.rareLootPity ??= 0;
       loaded.balance.asteroidDrought ||= {};
       loaded.balance.recoveryWave ??= -99;
+      loaded.settings = normalizeSettings(loaded.settings);
+      loaded.roguelike = normalizeRoguelikeState(loaded.roguelike);
       loaded.stations.forEach(repairLoadedStation);
       return loaded;
     } catch (error) {
@@ -942,6 +1064,7 @@
 
   function startNewGame() {
     state = createNewState();
+    applyVisualSettings();
     resetRuntime();
     initSpriteBackground(state.seed);
     centerCameraOnStation(true);
@@ -957,6 +1080,7 @@
       return;
     }
     state = loaded;
+    applyVisualSettings();
     state.paused = false;
     resetRuntime();
     initSpriteBackground(state.seed);
@@ -965,6 +1089,7 @@
     logEvent("Сохранение восстановлено. Орбитальный цикл продолжен.");
     renderAllUI(true);
     updateTutorialUI();
+    if (state.roguelike.pendingOffers.length) openProtocolDraft();
   }
 
   function enterGame() {
@@ -1001,6 +1126,7 @@
   }
 
   function showModal({ eyebrow = "SYSTEM", title, body, actions = [] }) {
+    delete DOM.modalOverlay.dataset.protocolDraft;
     DOM.modalEyebrow.textContent = eyebrow;
     DOM.modalTitle.textContent = title;
     DOM.modalBody.innerHTML = body;
@@ -1253,7 +1379,7 @@
       DOM.tutorialPanel.hidden = true;
       showBanner("ОРБИТАЛЬНЫЙ ЦИКЛ ЗАПУЩЕН // ВОЛНА ЧЕРЕЗ 02:00", 4);
       logEvent("Инструктаж завершён. Запущен двухминутный волновой цикл.");
-      toast("Стартовые ресурсы сохранены. Первая волна через 2 минуты.");
+      toast("Стартовые ресурсы сохранены. Первая волна через 2 минуты; на 3-й волне откроется выбор протокола.");
       renderAllUI(true);
     }
   }
@@ -1386,8 +1512,9 @@
     const dx = event.clientX - runtime.camera.dragStartX;
     const dy = event.clientY - runtime.camera.dragStartY;
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) runtime.camera.moved = true;
-    runtime.camera.x = runtime.camera.dragCameraX - dx / runtime.camera.zoom;
-    runtime.camera.y = runtime.camera.dragCameraY - dy / runtime.camera.zoom;
+    const direction = state.settings?.invertPan ? -1 : 1;
+    runtime.camera.x = runtime.camera.dragCameraX - direction * dx / runtime.camera.zoom;
+    runtime.camera.y = runtime.camera.dragCameraY - direction * dy / runtime.camera.zoom;
     clampCamera();
     return true;
   }
@@ -1704,6 +1831,7 @@
     renderStatus(runtime.currentStats);
     renderResources();
     renderCompactStats(runtime.currentStats);
+    renderProtocols();
     if (forceBuild) {
       renderCategoryTabs();
       renderBuildList();
@@ -2235,12 +2363,19 @@
       DOM.codexContent.innerHTML = `<div class="codex-grid">${RECIPES.map((item) => `<article class="codex-card"><h3>${escapeHtml(item.name)}</h3><p class="recipe-line"><b>${formatRecipeSide(item.inputs)}</b> → <b>${formatRecipeSide(item.outputs)}</b></p><p>Этап ${item.stage} · ${item.time} сек. ${item.tech ? `· ${TECHNOLOGIES[item.tech].name}` : ""}</p></article>`).join("")}</div>`;
     } else if (mode === "enemies") {
       DOM.codexContent.innerHTML = `<div class="codex-grid">${Object.entries(ENEMIES).map(([key, enemy]) => `<article class="codex-card"><img class="codex-sprite" src="${spriteUrl("enemy", key)}" alt="" draggable="false"><h3>${escapeHtml(enemy.name)}${enemy.boss ? " // БОСС" : ""}</h3><p>Прочность ${enemy.hp}, броня ${enemy.armor}, скорость ${enemy.speed}, урон ${enemy.damage}. Тяжёлые классы чаще несут титановые и сверхпроводящие трофеи.</p></article>`).join("")}</div>`;
+    } else if (mode === "lore") {
+      DOM.codexContent.innerHTML = `<div class="codex-grid">
+        <article class="codex-card"><h3>После вспышки</h3><p>Гамма-всплеск разорвал атмосферу Земли за часы. «Ковчег-01» был испытательной орбитальной станцией и единственным кораблём, пережившим эвакуационный хаос.</p></article>
+        <article class="codex-card"><h3>Чёрная орбита</h3><p>Автоматический манёвр привязал станцию к устойчивой траектории вокруг сверхмассивного объекта. Здесь есть энергия приливов и бесконечный поток обломков — но нет безопасного пути домой.</p></article>
+        <article class="codex-card"><h3>Протоколы Пустоты</h3><p>Каждая третья волна активирует архивный фрагмент прежних экспедиций. Выберите один из трёх протоколов; одинаковый протокол можно усилить до III уровня. Это ваш набор синергий на текущий забег.</p></article>
+        <article class="codex-card"><h3>Петля выживания</h3><p>Расширьте связанный каркас, поставьте захват, проложите логистику и защитите уязвимые края. Астероиды дают сырьё, враги — науку и трофеи, а каждая волна повышает технологический потолок.</p></article>
+      </div>`;
     } else {
       DOM.codexContent.innerHTML = `<div class="codex-grid">
         <article class="codex-card"><h3>Несущая архитектура</h3><p>Модули нельзя ставить в пустоту. Каждый тайл требует связанной конструкции. Материал каркаса передаёт модулю базовую прочность, массу и теплоёмкость.</p></article>
         <article class="codex-card"><h3>Массовое строительство</h3><p>Зажмите ЛКМ и проведите по полю, чтобы проложить прямую линию модулей. Конвейеры, трубы и термопроводы автоматически поворачиваются вдоль линии; стоимость списывается только за успешно установленные объекты.</p></article>
         <article class="codex-card"><h3>Аварийное восстановление</h3><p>Критические материалы имеют медленные резервные рецепты. Редкий трофей гарантируется серией неудач, а генератор астероидов предотвращает бесконечную ресурсную засуху. Мостик выдаёт штрафной аварийный комплект только при полном провале добычи и обороны.</p></article>
-        <article class="codex-card"><h3>Волновой цикл</h3><p>Астероиды прибывают постоянно. Вражеская волна запускается каждые 120 секунд игрового времени. На волнах 5, 10 и 15 появляются особые боссы.</p></article>
+        <article class="codex-card"><h3>Волновой цикл</h3><p>Астероиды прибывают постоянно. Вражеская волна запускается каждые 120 секунд игрового времени. После каждой третьей волны выберите один из трёх протоколов Пустоты. На волнах 5, 10 и 15 появляются особые боссы.</p></article>
         <article class="codex-card"><h3>Экипаж</h3><p>Турели и заводы создают рабочие места. Каюты дают койки, жизнеобеспечение ограничивает реальную численность. Дефицит экипажа снижает общую эффективность.</p></article>
         <article class="codex-card"><h3>Теплота и температура</h3><p>Активные модули производят теплоту, каркас её накапливает, термопроводы распределяют, радиаторы отводят. Перегрев повреждает оборудование. Плазменное копьё использует тепло как боевой ресурс.</p></article>
         <article class="codex-card"><h3>Ядерная безопасность</h3><p>Изотопные линии создают радиацию. Радиационный колпак обеспечивает экранирование; превышение допустимого фона снижает эффективность экипажа.</p></article>
@@ -2354,9 +2489,14 @@
     }));
     DOM.researchBtn.addEventListener("click", () => { renderResearchTree(); DOM.researchOverlay.hidden = false; });
     DOM.codexBtn.addEventListener("click", () => { renderCodex(); DOM.codexOverlay.hidden = false; });
+    DOM.settingsBtn.addEventListener("click", () => { renderSettings(); DOM.settingsOverlay.hidden = false; });
+    DOM.settingsThemeChoices.addEventListener("click", (event) => { const button = event.target.closest("[data-theme]"); if (button) updateSetting("theme", button.dataset.theme); });
+    DOM.highContrastToggle.addEventListener("change", () => updateSetting("highContrast", DOM.highContrastToggle.checked));
+    DOM.tileNumbersToggle.addEventListener("change", () => updateSetting("tileNumbers", DOM.tileNumbersToggle.checked));
+    DOM.invertPanToggle.addEventListener("change", () => updateSetting("invertPan", DOM.invertPanToggle.checked));
     $$(".close-overlay").forEach((button) => button.addEventListener("click", () => { $("#" + button.dataset.close).hidden = true; }));
     DOM.codexTabs.addEventListener("click", (event) => { const button = event.target.closest("[data-codex]"); if (button) renderCodex(button.dataset.codex); });
-    [DOM.researchOverlay, DOM.codexOverlay].forEach((overlay) => overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.hidden = true; }));
+    [DOM.researchOverlay, DOM.codexOverlay, DOM.settingsOverlay].forEach((overlay) => overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.hidden = true; }));
 
     window.addEventListener("keydown", (event) => {
       if (!state || event.target.matches("input, select, textarea")) return;
@@ -2367,8 +2507,10 @@
       else if (event.key === "2") setMode("inspect");
       else if (event.key === "3") setMode("demolish");
       else if (event.key === "Escape") {
+        if (DOM.modalOverlay.dataset.protocolDraft) { toast("Сигнал Пустоты требует выбрать протокол.", "warn"); return; }
         DOM.researchOverlay.hidden = true;
         DOM.codexOverlay.hidden = true;
+        DOM.settingsOverlay.hidden = true;
         DOM.modalOverlay.hidden = true;
         setMode("build");
       }
@@ -2527,7 +2669,8 @@
       }
     }
 
-    powerOutput *= 1 + Math.min(0.18, powerNodes * 0.025);
+    powerOutput *= (1 + Math.min(0.18, powerNodes * 0.025)) * getProtocolBonus("reactor-harmonics", 0.09);
+    cooling *= getProtocolBonus("cold-void", 0.15);
     const availableCrew = Math.max(0, Math.min(station.crew, beds, lifeSupportCapacity));
     const crewEfficiency = jobs > 0 ? clamp(availableCrew / jobs, 0.12, 1) : 1;
     const powerEfficiency = powerDemand > 0 ? clamp(powerOutput / powerDemand, 0.08, 1) : 1;
@@ -2752,7 +2895,7 @@
 
     balance.rareLootPity += 1;
     const heavy = entity.enemyType.startsWith("heavy") || entity.enemyType === "bomber" || entity.enemyType === "heavyBomber";
-    const rareChance = 0.08 + Math.min(0.12, state.wave * 0.006) + (heavy ? 0.1 : 0);
+    const rareChance = 0.08 + Math.min(0.12, state.wave * 0.006) + (heavy ? 0.1 : 0) + getProtocolLevel("lucky-echo") * 0.06;
     const guaranteed = balance.rareLootPity >= 10 || def?.boss;
     if (guaranteed || Math.random() < rareChance) {
       const drops = def?.boss ? 3 : 1;
@@ -2874,7 +3017,7 @@
     if (!state || state.tutorial.active || state.gameOver) return;
     state.wave += 1;
     state.waveTimer = 120;
-    const science = 18 + state.wave * 7;
+    const science = Math.round((18 + state.wave * 7) * getProtocolBonus("combat-doctrine", 0.2));
     state.researchPoints += science;
     const resourceBonus = 4 + state.wave * 2;
     state.inventory.steelFrames = (state.inventory.steelFrames || 0) + resourceBonus;
@@ -2916,6 +3059,7 @@
     showBanner(banner, 4.5);
     logEvent(`Началась волна ${state.wave}. Получено ${science} очков исследования и аварийный комплект ресурсов.`);
     renderAllUI(true);
+    if (state.wave % 3 === 0) openProtocolDraft();
   }
 
   function chooseEnemyTarget() {
@@ -2992,6 +3136,7 @@
 
   function damageStationAt(x, y, damage, source = "атака") {
     const station = getStation();
+    damage *= Math.max(0.55, 1 - getProtocolLevel("hardened-frame") * 0.07);
     let gx = Math.floor(x / TILE), gy = Math.floor(y / TILE);
     if (gx < 0 || gy < 0 || gx >= GRID_W || gy >= GRID_H || !station.foundation[gy][gx]) {
       let best = null, bestDistance = Infinity;
@@ -3252,7 +3397,7 @@
       for (let i = 0; i < pieces; i++) dropLoot(entity.x, entity.y, entity.resourceKey, Math.max(1, Math.ceil(entity.reward / pieces)));
     } else if (entity.kind === "enemy") {
       state.kills += 1;
-      state.researchPoints += Math.max(1, Math.floor(entity.reward * 0.08));
+      state.researchPoints += Math.max(1, Math.floor(entity.reward * 0.08 * getProtocolBonus("combat-doctrine", 0.2)));
       state.score += entity.reward * 3;
       dropEnemySalvage(entity);
       if (ENEMIES[entity.enemyType]?.boss) {
@@ -3290,7 +3435,7 @@
         }
       }
       if (!best) continue;
-      const speed = best.def.collector.speed * stats.efficiency;
+      const speed = best.def.collector.speed * stats.efficiency * getProtocolBonus("salvage-loop", 0.08);
       const dx = best.center.x - loot.x, dy = best.center.y - loot.y;
       const distance = Math.max(0.001, Math.hypot(dx, dy));
       loot.vx += dx / distance * speed * dt * 2.3;
@@ -3323,7 +3468,8 @@
       toast(`Экипаж пополнен: +${rescued}.`);
       return;
     }
-    const added = addResource(loot.resourceKey, loot.amount, stats);
+    const amount = Math.ceil(loot.amount * getProtocolBonus("salvage-loop", 0.2));
+    const added = addResource(loot.resourceKey, amount, stats);
     if (added <= 0) return;
     loot.collected = true;
     state.resourcesCollected += added;
@@ -3758,6 +3904,13 @@
 
   function drawFoundation(ctx) {
     const station = getStation();
+    const showNumbers = state.settings?.tileNumbers && runtime.camera.zoom >= 1.05;
+    const numberStride = runtime.camera.zoom >= 1.7 ? 1 : 2;
+    if (showNumbers) {
+      ctx.font = "5px monospace";
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
+    }
     for (let y = 0; y < GRID_H; y++) {
       for (let x = 0; x < GRID_W; x++) {
         const foundation = station.foundation[y][x];
@@ -3774,6 +3927,10 @@
           ctx.fillStyle = temperatureColor(temp);
           ctx.fillRect(px, py, TILE, TILE);
           ctx.restore();
+        }
+        if (showNumbers && x % numberStride === 0 && y % numberStride === 0) {
+          ctx.fillStyle = "rgba(225,248,255,.78)";
+          ctx.fillText(String(y * GRID_W + x + 1), px + 1, py + 1);
         }
       }
     }
