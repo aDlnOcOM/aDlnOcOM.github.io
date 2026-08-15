@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#090a0d">
+  <meta name="theme-color" content="#06111f">
   <meta name="description" content="PIXEL SECTOR ∞ — автономный пиксельный WebGL-шутер на Three.js с процедурными 3D-моделями оружия, GunCraft, режимом «Срыв лимитов» и сохраняемыми настройками.">
   <title>PIXEL SECTOR ∞ · WebGL GunCraft · Voxel Weapons v15</title>
   <style>
 :root {
   color-scheme: dark;
-  --ui: #e9efec;
-  --muted: #9ca7a4;
-  --accent: #ff5538;
-  --panel: rgba(7, 9, 12, 0.74);
-  --line: rgba(219, 229, 225, 0.22);
+  --ui: #e9f6ff;
+  --muted: #9dafc3;
+  --accent: #ff4e8a;
+  --panel: rgba(4, 12, 23, 0.78);
+  --line: rgba(73, 220, 255, 0.26);
 }
 
 * {
@@ -26,7 +26,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #030406;
+  background: #020611;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ui);
   user-select: none;
@@ -42,7 +42,7 @@ button {
   max-width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 5px;
-  background: linear-gradient(180deg, #fa6547, #ba2c22);
+  background: linear-gradient(180deg, #ff5d96, #9d1e5a);
   color: #fff;
   padding: 14px 26px;
   font-weight: 900;
@@ -51,7 +51,7 @@ button {
   white-space: normal;
   overflow-wrap: anywhere;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(119, 16, 13, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 10px 30px rgba(118, 12, 74, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   transition: transform 120ms ease, filter 120ms ease;
 }
 
@@ -76,7 +76,7 @@ button:focus-visible {
   min-height: 100dvh;
   isolation: isolate;
   overflow: hidden;
-  background: #050608;
+  background: #050b16;
   cursor: crosshair;
 }
 
@@ -87,7 +87,7 @@ button:focus-visible {
   display: block;
   width: 100%;
   height: 100%;
-  background: #06090e;
+  background: #06111f;
   image-rendering: pixelated;
 }
 
@@ -154,7 +154,7 @@ html[data-performance-profile="low"] .hud-block {
   z-index: 4;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle at center, transparent 30%, rgba(190, 0, 13, 0.9) 130%);
+  background: radial-gradient(circle at center, transparent 30%, rgba(255, 35, 91, 0.88) 130%);
   transition: opacity 55ms linear;
 }
 
@@ -176,7 +176,7 @@ html[data-performance-profile="low"] .hud-block {
   padding: 9px 12px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: linear-gradient(180deg, rgba(14, 18, 22, 0.82), rgba(6, 8, 10, 0.76));
+  background: linear-gradient(180deg, rgba(12, 25, 39, 0.88), rgba(4, 10, 20, 0.82));
   backdrop-filter: blur(6px);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.04), 0 10px 30px rgba(0, 0, 0, 0.22);
 }
@@ -213,11 +213,11 @@ html[data-performance-profile="low"] .hud-block {
 }
 
 .hud-score strong {
-  color: #fff0a6;
+  color: #ffd166;
 }
 
 .hud-health strong {
-  color: #9eff9a;
+  color: #7ff0b4;
 }
 
 .health-track,
@@ -238,7 +238,7 @@ html[data-performance-profile="low"] .hud-block {
 }
 
 .health-track i {
-  background: linear-gradient(90deg, #dc3835, #f0b93a 44%, #62d775 72%);
+  background: linear-gradient(90deg, #ff3f70, #ffbc5c 44%, #63efb1 72%);
 }
 
 .weapon-readout {
@@ -271,7 +271,7 @@ html[data-performance-profile="low"] .hud-block {
 }
 
 .reload-track i {
-  background: linear-gradient(90deg, #32d7ff, #c969ff);
+  background: linear-gradient(90deg, #35ddff, #c75cff);
   transform: scaleX(0);
 }
 
@@ -286,7 +286,7 @@ html[data-performance-profile="low"] .hud-block {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.23);
   border-radius: 4px;
-  background: rgba(4, 6, 8, 0.76);
+  background: rgba(3, 10, 19, 0.82);
   color: #fff;
   font-size: clamp(11px, 2.2vw, 14px);
   font-weight: 900;
@@ -322,8 +322,8 @@ html[data-performance-profile="low"] .hud-block {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 5px;
-  background: rgba(7, 9, 12, 0.58);
-  color: #cbd4d1;
+  background: rgba(4, 12, 23, 0.7);
+  color: #c7d8e8;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -347,10 +347,10 @@ html[data-performance-profile="low"] .hud-block {
   box-shadow: 0 0 7px currentColor;
 }
 
-.legend-dot.demon { color: #b93b39; background: currentColor; }
-.legend-dot.mech { color: #aebfc4; background: currentColor; }
-.legend-dot.prince { color: #ff274c; background: currentColor; }
-.legend-dot.orb { color: #48dfff; background: currentColor; }
+.legend-dot.demon { color: #ff5a7d; background: currentColor; }
+.legend-dot.mech { color: #ffbd58; background: currentColor; }
+.legend-dot.prince { color: #d56cff; background: currentColor; }
+.legend-dot.orb { color: #46e5ff; background: currentColor; }
 
 .audio-toggle {
   position: absolute;
@@ -364,9 +364,9 @@ html[data-performance-profile="low"] .hud-block {
   min-width: 108px;
   min-height: 35px;
   padding: 8px 10px;
-  border-color: rgba(96, 232, 255, 0.32);
-  background: linear-gradient(180deg, rgba(24, 37, 47, 0.94), rgba(7, 11, 16, 0.94));
-  color: #aeefff;
+  border-color: rgba(73, 220, 255, 0.38);
+  background: linear-gradient(180deg, rgba(16, 37, 58, 0.96), rgba(4, 12, 23, 0.96));
+  color: #b9f3ff;
   font-size: 9px;
   letter-spacing: 0.1em;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35), inset 0 1px rgba(255, 255, 255, 0.06);
@@ -378,8 +378,8 @@ html[data-performance-profile="low"] .hud-block {
 }
 
 .audio-toggle[aria-pressed="true"] {
-  border-color: rgba(255, 101, 89, 0.42);
-  color: #ff8a7d;
+  border-color: rgba(255, 94, 150, 0.5);
+  color: #ff9fc3;
 }
 
 .audio-toggle > span:first-child {
@@ -421,8 +421,8 @@ html[data-performance-profile="low"] .hud-block {
   opacity: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 38%, rgba(82, 20, 30, 0.2), transparent 42%),
-    rgba(2, 3, 5, 0.82);
+    radial-gradient(circle at 50% 38%, rgba(114, 35, 116, 0.24), transparent 42%),
+    rgba(2, 6, 15, 0.86);
   backdrop-filter: blur(8px);
   transition: opacity 180ms ease, visibility 0s linear 180ms;
 }
@@ -444,7 +444,7 @@ html[data-performance-profile="low"] .hud-block {
   overscroll-behavior: contain;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 10px;
-  background: linear-gradient(145deg, rgba(17, 20, 24, 0.97), rgba(5, 7, 9, 0.97));
+  background: linear-gradient(145deg, rgba(13, 29, 46, 0.98), rgba(4, 10, 21, 0.98));
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), inset 0 1px rgba(255, 255, 255, 0.06);
   text-align: center;
 }
@@ -456,7 +456,7 @@ html[data-performance-profile="low"] .hud-block {
 .eyebrow {
   max-width: 100%;
   margin: 0 0 8px;
-  color: #fb6a4e;
+  color: #51e3ff;
   font-size: clamp(9px, 2.4vw, 11px);
   font-weight: 900;
   line-height: 1.35;
@@ -474,7 +474,7 @@ h2 {
   letter-spacing: -0.045em;
   overflow-wrap: anywhere;
   text-wrap: balance;
-  text-shadow: 0 7px 0 rgba(86, 13, 14, 0.42);
+  text-shadow: 0 7px 0 rgba(14, 48, 77, 0.54);
 }
 
 h1 {
@@ -482,7 +482,7 @@ h1 {
 }
 
 h1 span {
-  color: #ff5b3c;
+  color: #ff6aa3;
 }
 
 h2 {
@@ -3510,15 +3510,26 @@ button:disabled {
     spheres: 0
   };
 
+  const WORLD_COLORS = Object.freeze({
+    void: 0x050914,
+    floor: 0x0a1a28,
+    ceiling: 0x040914,
+    gridPrimary: 0x2aa4c2,
+    gridSecondary: 0x102c41,
+    cyan: 0x38e2ff,
+    magenta: 0xff4d93,
+    amber: 0xffb74d,
+    mint: 0x65e5af
+  });
   const baseWallColors = [
-    [126, 49, 47],
-    [83, 101, 108],
-    [69, 92, 65],
-    [91, 66, 105],
-    [119, 86, 51]
+    [33, 102, 132],
+    [76, 44, 116],
+    [126, 42, 73],
+    [139, 76, 37],
+    [38, 109, 78]
   ];
   const wallPalette = buildWallPalette();
-  const neonWallColors = ['#ff5575', '#45e9ff', '#7dff6b', '#cf5bff', '#ffc14a'];
+  const neonWallColors = ['#45dcff', '#c96bff', '#ff5b93', '#ffbb5c', '#70efa8'];
 
   prepareClassicWeaponModels();
   applyViewSettings(false);
@@ -3549,6 +3560,11 @@ button:disabled {
     }
   }
 
+  function getLinearWebGLColor(value) {
+    const color = new three.Color(value);
+    return typeof color.convertSRGBToLinear === 'function' ? color.convertSRGBToLinear() : color;
+  }
+
   function initializeWebGLRenderer() {
     if (!three || !webglCanvas || webgl) return;
 
@@ -3564,12 +3580,12 @@ button:disabled {
       renderer.outputEncoding = three.sRGBEncoding;
     }
     renderer.toneMapping = three.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
-    renderer.setClearColor(0x06090e, 1);
+    renderer.toneMappingExposure = 0.82;
+    renderer.setClearColor(getLinearWebGLColor(WORLD_COLORS.void), 1);
 
     const scene = new three.Scene();
-    scene.background = new three.Color(0x06090e);
-    scene.fog = new three.FogExp2(0x06090e, performanceProfile === 'low' ? 0.075 : 0.058);
+    scene.background = getLinearWebGLColor(WORLD_COLORS.void);
+    scene.fog = new three.FogExp2(getLinearWebGLColor(WORLD_COLORS.void), performanceProfile === 'low' ? 0.082 : 0.064);
 
     const camera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.04, MAX_RAY_DISTANCE + 8);
     const weaponScene = new three.Scene();
@@ -3579,40 +3595,43 @@ button:disabled {
     const effectGroup = new three.Group();
     const environmentGroup = new three.Group();
     const weaponMount = new three.Group();
-    const floorMaterial = new three.MeshStandardMaterial({ color: 0x12111b, roughness: 0.92, metalness: 0.12 });
-    const ceilingMaterial = new three.MeshStandardMaterial({ color: 0x080b13, roughness: 1, metalness: 0.04, side: three.BackSide });
+    const floorMaterial = new three.MeshStandardMaterial({ color: getLinearWebGLColor(WORLD_COLORS.floor), roughness: 0.88, metalness: 0.2 });
+    const ceilingMaterial = new three.MeshStandardMaterial({ color: getLinearWebGLColor(WORLD_COLORS.ceiling), roughness: 1, metalness: 0.06, side: three.BackSide });
     const floor = new three.Mesh(new three.PlaneGeometry(54, 54), floorMaterial);
     const ceiling = new three.Mesh(new three.PlaneGeometry(54, 54), ceilingMaterial);
-    const grid = new three.GridHelper(52, 52, 0x2c6977, 0x152b35);
+    const grid = new three.GridHelper(52, 52, WORLD_COLORS.gridPrimary, WORLD_COLORS.gridSecondary);
     floor.rotation.x = -Math.PI / 2;
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.y = 2.42;
     grid.position.y = 0.012;
     grid.material.transparent = true;
-    grid.material.opacity = performanceProfile === 'low' ? 0.12 : 0.29;
+    grid.material.opacity = performanceProfile === 'low' ? 0.1 : 0.24;
     environmentGroup.add(floor, ceiling, grid);
 
-    const hemisphere = new three.HemisphereLight(0x9eeeff, 0x1a0714, 1.7);
-    const keyLight = new three.DirectionalLight(0xffa7c2, 1.15);
-    const playerLight = new three.PointLight(0x38e8ff, 9.5, 14, 2);
+    const hemisphere = new three.HemisphereLight(getLinearWebGLColor(0x4da6d4), getLinearWebGLColor(0x100614), 0.92);
+    const keyLight = new three.DirectionalLight(getLinearWebGLColor(0xff6da3), 0.66);
+    const playerLight = new three.PointLight(getLinearWebGLColor(WORLD_COLORS.cyan), 5.4, 12, 2);
     keyLight.position.set(-8, 11, 5);
     scene.add(environmentGroup, mapGroup, entityGroup, effectGroup, hemisphere, keyLight, playerLight, camera);
     weaponScene.add(weaponMount);
 
-    const wallMaterials = baseWallColors.map(([red, green, blue]) => new three.MeshStandardMaterial({
-      color: new three.Color(red / 255, green / 255, blue / 255),
-      emissive: new three.Color(red / 255, green / 255, blue / 255),
-      emissiveIntensity: performanceProfile === 'low' ? 0.025 : 0.08,
-      roughness: 0.72,
-      metalness: 0.26,
-      flatShading: true
-    }));
+    const wallMaterials = baseWallColors.map(([red, green, blue]) => {
+      const color = getLinearWebGLColor((red << 16) | (green << 8) | blue);
+      return new three.MeshStandardMaterial({
+        color,
+        emissive: color.clone(),
+        emissiveIntensity: performanceProfile === 'low' ? 0.035 : 0.09,
+        roughness: 0.78,
+        metalness: 0.32,
+        flatShading: true
+      });
+    });
     const doorMaterial = new three.MeshStandardMaterial({
-      color: 0x123442,
-      emissive: 0x27dff4,
-      emissiveIntensity: 0.72,
-      roughness: 0.44,
-      metalness: 0.62,
+      color: getLinearWebGLColor(0x0c3650),
+      emissive: getLinearWebGLColor(WORLD_COLORS.cyan),
+      emissiveIntensity: 0.98,
+      roughness: 0.38,
+      metalness: 0.74,
       flatShading: true
     });
 
@@ -3782,10 +3801,10 @@ button:disabled {
     const group = new three.Group();
     const glowMaterials = [];
     const palette = kind === 'prince'
-      ? { shell: 0x861432, plate: 0xd52e54, glow: 0xff6f92 }
+      ? { shell: 0x42104e, plate: 0x9e2f91, glow: 0xff7bc8 }
       : kind === 'mech'
-        ? { shell: 0x324149, plate: 0x718995, glow: 0xffc64b }
-        : { shell: 0x5c1924, plate: 0xa9363c, glow: 0xff593e };
+        ? { shell: 0x283447, plate: 0x547494, glow: WORLD_COLORS.amber }
+        : { shell: 0x3b1835, plate: 0xa52e5d, glow: WORLD_COLORS.magenta };
     addWebGLVoxel(group, [0.62, 0.64, 0.4], [0, 0.78, 0], palette.plate);
     addWebGLVoxel(group, [0.52, 0.44, 0.46], [0, 1.3, 0], palette.shell);
     addWebGLVoxel(group, [0.22, 0.12, 0.06], [-0.14, 1.32, -0.25], palette.glow, 1.45);
@@ -3811,11 +3830,11 @@ button:disabled {
     const group = new three.Group();
     const core = new three.Mesh(
       new three.OctahedronGeometry(0.18, 0),
-      new three.MeshStandardMaterial({ color: 0x9dffff, emissive: 0x35dfff, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.7, flatShading: true })
+      new three.MeshStandardMaterial({ color: 0xb7f8ff, emissive: WORLD_COLORS.cyan, emissiveIntensity: 1.7, roughness: 0.2, metalness: 0.7, flatShading: true })
     );
     const ring = new three.Mesh(
       new three.TorusGeometry(0.26, 0.025, 4, 8),
-      new three.MeshBasicMaterial({ color: 0x2a9fff, transparent: true, opacity: 0.72 })
+      new three.MeshBasicMaterial({ color: 0x6eeaff, transparent: true, opacity: 0.72 })
     );
     ring.rotation.x = Math.PI / 2;
     group.add(core, ring);
@@ -3825,7 +3844,7 @@ button:disabled {
 
   function createWebGLProjectileMesh(kind) {
     if (!webgl) return null;
-    const color = kind === 'prince' ? 0xff4b35 : 0xffc542;
+    const color = kind === 'prince' ? WORLD_COLORS.magenta : WORLD_COLORS.amber;
     const mesh = new three.Mesh(
       new three.BoxGeometry(kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17),
       new three.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.4, roughness: 0.32, metalness: 0.45, flatShading: true })
@@ -3933,9 +3952,9 @@ button:disabled {
     }
     root.rotation.y = Math.PI / 2;
     const muzzle = model.anchors?.muzzle || vec3(18, 2, 0);
-    const flash = new three.PointLight(0xff8533, 0, 4.6, 2);
+    const flash = new three.PointLight(WORLD_COLORS.amber, 0, 4.6, 2);
     flash.position.set(muzzle.x * scale, muzzle.y * scale, muzzle.z * scale);
-    const flashCore = new three.Mesh(new three.OctahedronGeometry(0.09, 0), new three.MeshBasicMaterial({ color: 0xffc75d }));
+    const flashCore = new three.Mesh(new three.OctahedronGeometry(0.09, 0), new three.MeshBasicMaterial({ color: 0xffd37a }));
     flashCore.position.copy(flash.position);
     flashCore.visible = false;
     root.add(flash, flashCore);
