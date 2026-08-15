@@ -306,6 +306,39 @@ html[data-performance-profile="low"] .hud-block {
   transform: translate(-50%, 0);
 }
 
+#waveStatus {
+  position: absolute;
+  z-index: 8;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(360px, calc(100vw - 28px));
+  padding: 8px 13px;
+  border: 1px solid rgba(73, 220, 255, 0.34);
+  border-radius: 5px;
+  background: rgba(4, 12, 23, 0.78);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.06);
+  color: #a9c4d9;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#waveStatus strong {
+  color: #56e7ff;
+  font-size: 13px;
+}
+
+#waveStatus b {
+  color: #ffd166;
+}
+
 #legend {
   position: absolute;
   z-index: 5;
@@ -1979,7 +2012,7 @@ button:disabled {
   </style>
 </head>
 <body>
-  <main id="app" aria-label="PIXEL SECTOR — бесконечный пиксельный шутер">
+  <main id="app" aria-label="PIXEL SECTOR — волновой пиксельный шутер">
     <canvas id="webglCanvas" aria-label="Трёхмерное игровое поле WebGL"></canvas>
     <svg id="gameView" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Игровое поле">
       <defs>
@@ -2190,6 +2223,8 @@ button:disabled {
       <span id="multiplierLegend">множитель сектора ×1</span>
     </aside>
 
+    <div id="waveStatus" aria-live="polite"><span>ВОЛНА <strong id="waveValue">0</strong></span><span>ОЧКИ <b id="waveScoreValue">0</b></span><span id="wavePhaseValue">ПОДГОТОВКА</span></div>
+
     <button id="audioToggle" class="audio-toggle" type="button" aria-pressed="false" title="Включить или выключить музыку (M)">
       <span aria-hidden="true">♫</span><span id="musicStatus">МУЗЫКА</span>
     </button>
@@ -2206,7 +2241,7 @@ button:disabled {
       <div class="overlay-card main-menu-card">
         <p class="eyebrow">ПИКСЕЛЬНЫЙ НЕОНОВЫЙ WEBGL-SECTOR</p>
         <h1>PIXEL SECTOR <span>∞</span></h1>
-        <p class="lead">Два бесконечных режима, закрывающиеся секторные двери и конструктор оружия. В GunCraft доступен отдельный экстремальный вариант «Срыв лимитов» со свободными размерами деталей и усиленными врагами.</p>
+        <p class="lead">Оба режима проходят на перестраиваемой арене 10×10: каждые десять волн окружение меняется, а опасность нарастает. В GunCraft доступен отдельный экстремальный вариант «Срыв лимитов» со свободными размерами деталей и усиленными врагами.</p>
 
         <div class="menu-meta" aria-label="Сохранённый прогресс">
           <div><small>ОЧКИ МОДИФИКАЦИИ</small><strong id="menuModPoints">0</strong></div>
@@ -2242,8 +2277,9 @@ button:disabled {
         <div class="controls-grid">
           <span><kbd id="hintMoveKeys">W A S D</kbd> движение</span>
           <span><kbd>МЫШЬ</kbd> обзор</span>
-          <span><kbd id="hintFireKey">ЛКМ / SPACE</kbd> огонь</span>
+          <span><kbd id="hintFireKey">ЛКМ / F</kbd> огонь</span>
           <span><kbd>ПКМ</kbd> прицелиться, если есть прицел</span>
+          <span><kbd id="hintJumpKey">ПРОБЕЛ</kbd> прыжок и подъёмы</span>
           <span><kbd id="hintWeaponKeys">1 2 3</kbd> оружие в Classic</span>
           <span><kbd id="hintSprintKey">SHIFT</kbd> бег</span>
           <span><kbd id="hintReloadKey">R</kbd> перезарядка</span>
@@ -2491,9 +2527,14 @@ button:disabled {
   let HALF_FOV = FOV / 2;
   let PROJECTION = HALF_W / Math.tan(HALF_FOV);
   const MAX_RAY_DISTANCE = 38;
-  const CHUNK_SIZE = 9;
+  const ARENA_SIZE = 10;
+  const CHUNK_SIZE = ARENA_SIZE;
   const WEBGL_SECTOR_SIZE = CHUNK_SIZE;
   const PLAYER_RADIUS = 0.25;
+  const PLAYER_EYE_HEIGHT = 0.78;
+  const PLAYER_JUMP_SPEED = 5.45;
+  const PLAYER_GRAVITY = 15;
+  const PLAYER_STEP_HEIGHT = 0.52;
   const FLOW_RADIUS = 25;
   const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
   const FLOW_MAX = 32767;
@@ -2602,6 +2643,9 @@ button:disabled {
   const sectorValue = document.getElementById('sectorValue');
   const dangerValue = document.getElementById('dangerValue');
   const multiplierLegend = document.getElementById('multiplierLegend');
+  const waveValue = document.getElementById('waveValue');
+  const waveScoreValue = document.getElementById('waveScoreValue');
+  const wavePhaseValue = document.getElementById('wavePhaseValue');
   const audioToggle = document.getElementById('audioToggle');
   const musicStatus = document.getElementById('musicStatus');
 
@@ -2658,6 +2702,7 @@ button:disabled {
   const resetKeybindsButton = document.getElementById('resetKeybindsButton');
   const hintMoveKeys = document.getElementById('hintMoveKeys');
   const hintFireKey = document.getElementById('hintFireKey');
+  const hintJumpKey = document.getElementById('hintJumpKey');
   const hintWeaponKeys = document.getElementById('hintWeaponKeys');
   const hintSprintKey = document.getElementById('hintSprintKey');
   const hintReloadKey = document.getElementById('hintReloadKey');
@@ -2735,7 +2780,8 @@ button:disabled {
     turnLeft: 'ArrowLeft',
     turnRight: 'ArrowRight',
     sprint: 'ShiftLeft',
-    fire: 'Space',
+    jump: 'Space',
+    fire: 'KeyF',
     reload: 'KeyR',
     map: 'Tab',
     music: 'KeyM',
@@ -2754,6 +2800,7 @@ button:disabled {
     { id: 'turnLeft', label: 'Поворот влево' },
     { id: 'turnRight', label: 'Поворот вправо' },
     { id: 'sprint', label: 'Бег' },
+    { id: 'jump', label: 'Прыжок / подъём' },
     { id: 'fire', label: 'Огонь с клавиатуры' },
     { id: 'reload', label: 'Перезарядка' },
     { id: 'map', label: 'Мини-карта' },
@@ -2780,6 +2827,7 @@ button:disabled {
   const keys = Object.create(null);
   let triggerHeld = false;
   let triggerPressed = false;
+  let jumpQueued = false;
   let aimHeld = false;
   let aimAmount = 0;
   const weaponPosition = 'right';
@@ -2839,6 +2887,18 @@ button:disabled {
   let effectsVolume = 0.85;
   let musicMuted = false;
   let effectsMuted = false;
+
+  let arena = null;
+  const waveState = {
+    wave: 0,
+    phase: 'countdown',
+    timer: 3,
+    pendingSpawns: 0,
+    spawnTimer: 0,
+    targetEnemies: 0,
+    arenaIndex: 1,
+    revision: 0
+  };
 
   const enemies = [];
   const orbs = [];
@@ -3495,6 +3555,10 @@ button:disabled {
     x: 5.5,
     y: 5.5,
     angle: 0,
+    pitch: 0,
+    elevation: 0,
+    verticalVelocity: 0,
+    grounded: true,
     health: 100,
     score: 0,
     highScore: getModeHighScore(),
@@ -3651,6 +3715,7 @@ button:disabled {
       playerLight,
       weaponMount,
       wallGeometry: new three.BoxGeometry(1, 2.4, 1),
+      platformGeometry: new three.BoxGeometry(1, 1, 1),
       wallMaterials,
       doorMaterial,
       mapKey: '',
@@ -3688,8 +3753,127 @@ button:disabled {
     webgl.weaponCamera.updateProjectionMatrix();
   }
 
+  function createArenaLayout(index) {
+    const rng = mulberry32(hash2(index, 0x51, WORLD_SEED));
+    const tiles = Array.from({ length: ARENA_SIZE }, () => Array.from({ length: ARENA_SIZE }, () => ({ height: 0 })));
+    const pillars = new Set();
+    const spawn = { x: 1.5, y: 1.5 };
+
+    for (let tileY = 1; tileY < ARENA_SIZE - 1; tileY += 1) {
+      for (let tileX = 1; tileX < ARENA_SIZE - 1; tileX += 1) {
+        if (tileX <= 2 && tileY <= 2) continue;
+        const roll = rng();
+        if (roll < 0.13) tiles[tileY][tileX].height = 0.42;
+        else if (roll < 0.2) tiles[tileY][tileX].height = 0.84;
+      }
+    }
+
+    const pillarCount = 3 + Math.min(5, Math.floor(index / 2));
+    for (let attempt = 0; pillars.size < pillarCount && attempt < 90; attempt += 1) {
+      const tileX = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
+      const tileY = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
+      if (Math.hypot(tileX + 0.5 - spawn.x, tileY + 0.5 - spawn.y) < 3.2) continue;
+      pillars.add(`${tileX},${tileY}`);
+      tiles[tileY][tileX].height = 0;
+    }
+
+    for (let tileY = 0; tileY <= 2; tileY += 1) {
+      for (let tileX = 0; tileX <= 2; tileX += 1) {
+        if (tileX > 0 && tileY > 0) tiles[tileY][tileX].height = 0;
+        pillars.delete(`${tileX},${tileY}`);
+      }
+    }
+
+    // A guaranteed two-step rise makes every reconstruction readable and traversable:
+    // 0 → 0.42 → 0.84, with the reverse route acting as a descent.
+    const rampX = 3 + Math.floor(rng() * 4);
+    const rampY = 3 + Math.floor(rng() * 4);
+    tiles[rampY][rampX].height = 0.42;
+    tiles[rampY][rampX + 1].height = 0.84;
+    pillars.delete(`${rampX},${rampY}`);
+    pillars.delete(`${rampX + 1},${rampY}`);
+
+    return { index, revision: waveState.revision + 1, tiles, pillars, spawn };
+  }
+
+  function resetArena(index) {
+    arena = createArenaLayout(index);
+    waveState.revision = arena.revision;
+    player.x = arena.spawn.x;
+    player.y = arena.spawn.y;
+    player.elevation = getArenaFloorHeightAt(player.x, player.y);
+    player.verticalVelocity = 0;
+    player.grounded = true;
+    if (webgl) {
+      clearWebGLSectors();
+      rebuildWebGLMap(true);
+    }
+    rebuildFlowField();
+  }
+
+  function getArenaFloorHeightAt(x, y) {
+    if (!arena) return 0;
+    const tileX = Math.floor(x);
+    const tileY = Math.floor(y);
+    if (tileX < 0 || tileY < 0 || tileX >= ARENA_SIZE || tileY >= ARENA_SIZE) return 0;
+    return arena.tiles[tileY][tileX].height || 0;
+  }
+
+  function isArenaBlockedTile(tileX, tileY) {
+    if (!arena) return false;
+    if (tileX <= 0 || tileY <= 0 || tileX >= ARENA_SIZE - 1 || tileY >= ARENA_SIZE - 1) return true;
+    return arena.pillars.has(`${tileX},${tileY}`);
+  }
+
+  function rebuildWebGLArena(force = false) {
+    if (!webgl || !arena) return;
+    const mapKey = `arena:${arena.revision}`;
+    if (!force && webgl.mapKey === mapKey) return;
+
+    clearWebGLSectors();
+    const stage = new three.Group();
+    const wallsByMaterial = Array.from({ length: webgl.wallMaterials.length }, () => []);
+    for (let tileY = 0; tileY < ARENA_SIZE; tileY += 1) {
+      for (let tileX = 0; tileX < ARENA_SIZE; tileX += 1) {
+        if (isArenaBlockedTile(tileX, tileY)) {
+          wallsByMaterial[wallMaterial(tileX, tileY)].push([tileX, tileY]);
+          continue;
+        }
+        const height = getArenaFloorHeightAt(tileX + 0.5, tileY + 0.5);
+        if (height <= 0) continue;
+        const platform = new three.Mesh(
+          webgl.platformGeometry,
+          webgl.wallMaterials[(tileX + tileY + 1) % webgl.wallMaterials.length]
+        );
+        platform.position.set(tileX + 0.5, height * 0.5, tileY + 0.5);
+        platform.scale.set(1, height, 1);
+        stage.add(platform);
+      }
+    }
+    for (let materialIndex = 0; materialIndex < wallsByMaterial.length; materialIndex += 1) {
+      const wallTiles = wallsByMaterial[materialIndex];
+      if (wallTiles.length === 0) continue;
+      const blocks = new three.InstancedMesh(webgl.wallGeometry, webgl.wallMaterials[materialIndex], wallTiles.length);
+      blocks.frustumCulled = false;
+      for (let index = 0; index < wallTiles.length; index += 1) {
+        const [tileX, tileY] = wallTiles[index];
+        webgl.sectorMatrix.makeTranslation(tileX + 0.5, 1.2, tileY + 0.5);
+        blocks.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      blocks.instanceMatrix.needsUpdate = true;
+      stage.add(blocks);
+    }
+    webgl.mapGroup.add(stage);
+    webgl.activeSectors.set('arena', stage);
+    webgl.mapKey = mapKey;
+  }
+
   function rebuildWebGLMap(force = false) {
     if (!webgl) return;
+    if (arena) {
+      rebuildWebGLArena(force);
+      return;
+    }
     const centerSectorX = floorDiv(Math.floor(player.x), WEBGL_SECTOR_SIZE);
     const centerSectorY = floorDiv(Math.floor(player.y), WEBGL_SECTOR_SIZE);
     const radius = performanceSettings.webglSectorRadius || 1;
@@ -4013,23 +4197,29 @@ button:disabled {
       webgl.lastMapBuild = now;
     }
     webgl.floor.position.set(player.x, -0.015, player.y);
-    webgl.ceiling.position.set(player.x, 2.42, player.y);
+    webgl.ceiling.position.set(player.x, 5.6, player.y);
     webgl.grid.position.set(player.x, 0.012, player.y);
-    webgl.playerLight.position.set(player.x, 1.15, player.y);
-    webgl.camera.position.set(player.x, 0.78 + cameraBob * 0.0035, player.y);
+    const eyeY = player.elevation + PLAYER_EYE_HEIGHT + cameraBob * 0.0035;
+    const pitchCos = Math.cos(player.pitch);
+    webgl.playerLight.position.set(player.x, eyeY + 0.32, player.y);
+    webgl.camera.position.set(player.x, eyeY, player.y);
     const effectiveFov = FOV * 180 / Math.PI;
     if (Math.abs(webgl.lastCameraFov - effectiveFov) > 0.02) {
       webgl.camera.fov = effectiveFov;
       webgl.camera.updateProjectionMatrix();
       webgl.lastCameraFov = effectiveFov;
     }
-    webgl.camera.lookAt(player.x + Math.cos(player.angle), 0.78 + cameraBob * 0.0035, player.y + Math.sin(player.angle));
+    webgl.camera.lookAt(
+      player.x + Math.cos(player.angle) * pitchCos,
+      eyeY + Math.sin(player.pitch),
+      player.y + Math.sin(player.angle) * pitchCos
+    );
     for (const enemy of enemies) {
       const mesh = enemy.webglMesh;
       if (!mesh) continue;
       const fade = enemy.dead ? clamp(enemy.deathTimer / 0.58, 0, 1) : 1;
       mesh.visible = fade > 0.02;
-      mesh.position.set(enemy.x, Math.sin(now * 0.004 + enemy.phase) * 0.035, enemy.y);
+      mesh.position.set(enemy.x, enemy.elevation + Math.sin(now * 0.004 + enemy.phase) * 0.035, enemy.y);
       mesh.rotation.y = Math.atan2(player.x - enemy.x, player.y - enemy.y);
       mesh.scale.setScalar((enemy.kind === 'prince' ? 1.16 : 1) * (enemy.dead ? 0.6 + fade * 0.4 : 1 + enemy.hitFlash * 0.9));
       for (const material of mesh.userData.glowMaterials || []) material.emissiveIntensity = 0.72 + enemy.hitFlash * 2.1;
@@ -4038,14 +4228,14 @@ button:disabled {
       const mesh = orb.webglMesh;
       if (!mesh) continue;
       const pulse = 1 + Math.sin(now * 0.006 + orb.phase) * 0.15;
-      mesh.position.set(orb.x, 0.43 + Math.sin(now * 0.004 + orb.phase) * 0.07, orb.y);
+      mesh.position.set(orb.x, orb.elevation + 0.43 + Math.sin(now * 0.004 + orb.phase) * 0.07, orb.y);
       mesh.rotation.y = now * 0.002;
       mesh.scale.setScalar(pulse);
     }
     for (const projectile of projectiles) {
       const mesh = projectile.webglMesh;
       if (!mesh) continue;
-      mesh.position.set(projectile.x, 0.58 + Math.sin(now * 0.014 + projectile.phase) * 0.07, projectile.y);
+      mesh.position.set(projectile.x, projectile.elevation + 0.58 + Math.sin(now * 0.014 + projectile.phase) * 0.07, projectile.y);
       mesh.rotation.set(now * 0.01, now * 0.013, now * 0.008);
     }
     for (let index = webgl.effects.length - 1; index >= 0; index -= 1) {
@@ -4327,6 +4517,7 @@ button:disabled {
       if (paused || gameOver || document.pointerLockElement === null) return;
       const turn = event.movementX * 0.00215 * mouseSensitivity;
       player.angle = normalizeAngle(player.angle + turn);
+      player.pitch = clamp(player.pitch - event.movementY * 0.0018 * mouseSensitivity, -0.72, 0.72);
       lookSway = clamp(lookSway + event.movementX * 0.12 * clamp(mouseSensitivity, 0.45, 2.2), -22, 22);
     });
 
@@ -4383,6 +4574,7 @@ button:disabled {
         triggerPressed = true;
         triggerHeld = true;
       }
+      if (isActionCode('jump', event.code) && !keys[event.code]) jumpQueued = true;
       keys[event.code] = true;
     });
 
@@ -4544,6 +4736,7 @@ button:disabled {
   function renderControlHints() {
     hintMoveKeys.textContent = [keybinds.moveForward, keybinds.moveLeft, keybinds.moveBackward, keybinds.moveRight].map(formatKeyCode).join(' ');
     hintFireKey.textContent = `ЛКМ / ${formatKeyCode(keybinds.fire)}`;
+    hintJumpKey.textContent = formatKeyCode(keybinds.jump);
     hintWeaponKeys.textContent = [keybinds.weapon1, keybinds.weapon2, keybinds.weapon3].map(formatKeyCode).join(' ');
     hintSprintKey.textContent = formatKeyCode(keybinds.sprint);
     hintReloadKey.textContent = formatKeyCode(keybinds.reload);
@@ -4826,6 +5019,7 @@ button:disabled {
     for (const key of Object.keys(keys)) keys[key] = false;
     triggerHeld = false;
     triggerPressed = false;
+    jumpQueued = false;
     aimHeld = false;
   }
 
@@ -4863,9 +5057,9 @@ button:disabled {
     deathOverlay.classList.remove('visible');
     requestPointerLock();
     const startMessages = {
-      classic: 'CLASSIC · СЕКТОР АКТИВЕН',
-      guncraft: 'GUNCRAFT · ВЫЖИВАНИЕ',
-      limitbreak: 'СРЫВ ЛИМИТОВ · НУЛЕВАЯ СЛОЖНОСТЬ УСИЛЕНА'
+      classic: 'БЕЗОПАСНЫЙ СПАВН · ВОЛНА ЧЕРЕЗ 3',
+      guncraft: 'GUNCRAFT · БЕЗОПАСНЫЙ СПАВН',
+      limitbreak: 'СРЫВ ЛИМИТОВ · БЕЗОПАСНЫЙ СПАВН'
     };
     showMessage(startMessages[gameMode], 1.45);
   }
@@ -4951,9 +5145,11 @@ button:disabled {
     chunkStates.clear();
     closedDoorTiles.clear();
     pendingSectorDoor = null;
-    player.x = 5.5;
-    player.y = 5.5;
     player.angle = 0;
+    player.pitch = 0;
+    player.elevation = 0;
+    player.verticalVelocity = 0;
+    player.grounded = true;
     player.health = 100;
     player.score = 0;
     player.highScore = getModeHighScore();
@@ -4985,15 +5181,18 @@ button:disabled {
     systemMessageCooldown = 0;
     runRewardGranted = false;
     cameraBob = 0;
+    waveState.wave = 0;
+    waveState.phase = 'countdown';
+    waveState.timer = 3;
+    waveState.pendingSpawns = 0;
+    waveState.spawnTimer = 0;
+    waveState.targetEnemies = 0;
+    waveState.arenaIndex = 1;
+    waveState.revision = 0;
+    resetArena(waveState.arenaIndex);
     lastChunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
     lastChunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
-    if (webgl) {
-      clearWebGLSectors();
-      rebuildWebGLMap(true);
-    }
     updateWeaponVisual(true);
-    ensureNearbyChunks(performance.now());
-    rebuildFlowField();
     updateHud(true);
     renderScene(performance.now());
   }
@@ -5040,7 +5239,6 @@ button:disabled {
   function update(dt, now) {
     updatePlayer(dt);
     updateWeaponSystems(dt);
-    updatePendingSectorDoor();
 
     player.fireTimer = Math.max(0, player.fireTimer - dt);
     player.invulnerableTimer = Math.max(0, player.invulnerableTimer - dt);
@@ -5077,12 +5275,7 @@ button:disabled {
       flowTimer = 0.32;
     }
 
-    spawnTimer -= dt;
-    if (spawnTimer <= 0) {
-      ensureNearbyChunks(now);
-      cleanupDistantEntities();
-      spawnTimer = 0.65;
-    }
+    updateWaveDirector(dt);
 
     updateEnemies(dt, now);
     updateProjectiles(dt);
@@ -5096,6 +5289,57 @@ button:disabled {
     }
 
     updateHud(false);
+  }
+
+  function updateWaveDirector(dt) {
+    if (waveState.phase === 'countdown') {
+      waveState.timer -= dt;
+      if (waveState.timer <= 0) startNextWave();
+      return;
+    }
+
+    if (waveState.phase !== 'active') return;
+
+    waveState.spawnTimer -= dt;
+    if (waveState.pendingSpawns > 0 && enemies.length < MAX_ACTIVE_ENEMIES && waveState.spawnTimer <= 0) {
+      const danger = Math.max(1, waveState.wave + (waveState.arenaIndex - 1) * 2);
+      const rng = mulberry32(hash2(waveState.wave, waveState.pendingSpawns, WORLD_SEED ^ waveState.revision));
+      const position = findOpenPositionInChunk(0, 0, rng, 3.8);
+      if (position) {
+        spawnEnemy(chooseEnemyType(rng, danger), position.x, position.y, danger, rng);
+        waveState.pendingSpawns -= 1;
+      } else {
+        waveState.pendingSpawns = Math.max(0, waveState.pendingSpawns - 1);
+      }
+      waveState.spawnTimer = Math.max(0.18, 0.48 - waveState.wave * 0.007);
+    }
+
+    if (waveState.pendingSpawns === 0 && enemies.length === 0 && projectiles.length === 0) completeWave();
+  }
+
+  function startNextWave() {
+    waveState.wave += 1;
+    waveState.phase = 'active';
+    waveState.targetEnemies = Math.min(MAX_ACTIVE_ENEMIES, 2 + Math.ceil(waveState.wave * 1.2) + Math.floor(waveState.wave / 4));
+    waveState.pendingSpawns = waveState.targetEnemies;
+    waveState.spawnTimer = 0;
+    showMessage(`ВОЛНА ${waveState.wave} · ${waveState.targetEnemies} ЦЕЛЕЙ`, 1.1);
+  }
+
+  function completeWave() {
+    const rebuilt = waveState.wave > 0 && waveState.wave % 10 === 0;
+    if (rebuilt) {
+      waveState.arenaIndex += 1;
+      for (let index = orbs.length - 1; index >= 0; index -= 1) removeOrbAt(index);
+      resetArena(waveState.arenaIndex);
+      showMessage(`АРЕНА ${waveState.arenaIndex} ПЕРЕСОБРАНА · БЕЗОПАСНЫЙ СПАВН`, 1.5);
+    } else {
+      showMessage(`ВОЛНА ${waveState.wave} ВЫЖИТА`, 0.85);
+    }
+    waveState.phase = 'countdown';
+    waveState.timer = rebuilt ? 4.5 : 3;
+    waveState.pendingSpawns = 0;
+    waveState.spawnTimer = 0;
   }
 
   function updatePlayer(dt) {
@@ -5131,19 +5375,55 @@ button:disabled {
     const moveY = (sin * forward + cos * strafe) * speed * dt;
     const moving = Math.min(1, Math.hypot(moveX, moveY) / Math.max(0.0001, speed * dt));
 
+    if (jumpQueued && player.grounded) {
+      player.verticalVelocity = PLAYER_JUMP_SPEED;
+      player.grounded = false;
+    }
+    jumpQueued = false;
+
     if (moving > 0) {
-      moveBody(player, moveX, moveY, PLAYER_RADIUS);
+      movePlayerBody(moveX, moveY);
       player.bobPhase += dt * (sprinting ? 13.5 : 9.6) * clamp(movementMultiplier, 0.65, 1.1);
     }
     player.movingAmount = lerp(player.movingAmount, moving, 1 - Math.exp(-dt * 12));
     cameraBob = Math.sin(player.bobPhase * 2) * 2.8 * player.movingAmount;
+    updatePlayerElevation(dt);
+  }
 
-    const chunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
-    const chunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
-    if (chunkX !== lastChunkX || chunkY !== lastChunkY) {
-      const enteredSector = handleSectorTransition(lastChunkX, lastChunkY, chunkX, chunkY);
-      lastChunkX = enteredSector ? chunkX : floorDiv(Math.floor(player.x), CHUNK_SIZE);
-      lastChunkY = enteredSector ? chunkY : floorDiv(Math.floor(player.y), CHUNK_SIZE);
+  function movePlayerBody(dx, dy) {
+    const tryMove = (nextX, nextY) => {
+      if (circleHitsWall(nextX, nextY, PLAYER_RADIUS)) return false;
+      const targetFloor = getArenaFloorHeightAt(nextX, nextY);
+      if (targetFloor > player.elevation + PLAYER_STEP_HEIGHT) return false;
+      player.x = nextX;
+      player.y = nextY;
+      if (player.grounded && targetFloor >= player.elevation) player.elevation = targetFloor;
+      return true;
+    };
+
+    if (!tryMove(player.x + dx, player.y + dy)) {
+      if (!tryMove(player.x + dx, player.y)) tryMove(player.x, player.y + dy);
+    }
+  }
+
+  function updatePlayerElevation(dt) {
+    const floor = getArenaFloorHeightAt(player.x, player.y);
+    if (player.elevation <= floor && player.verticalVelocity <= 0) {
+      player.elevation = floor;
+      player.verticalVelocity = 0;
+      player.grounded = true;
+      return;
+    }
+
+    player.verticalVelocity -= PLAYER_GRAVITY * dt;
+    player.elevation += player.verticalVelocity * dt;
+    const nextFloor = getArenaFloorHeightAt(player.x, player.y);
+    if (player.elevation <= nextFloor) {
+      player.elevation = nextFloor;
+      player.verticalVelocity = 0;
+      player.grounded = true;
+    } else {
+      player.grounded = false;
     }
   }
 
@@ -5402,7 +5682,8 @@ button:disabled {
     let didHit = false;
     for (let pellet = 0; pellet < weapon.pellets; pellet += 1) {
       const randomSpread = gaussianishRandom() * effectiveSpread;
-      if (traceShot(player.angle + randomSpread, weapon.damage)) didHit = true;
+      const verticalSpread = gaussianishRandom() * effectiveSpread * 0.56;
+      if (traceShot(player.angle + randomSpread, player.pitch + verticalSpread, weapon.damage)) didHit = true;
     }
 
     if (didHit) hitMarkerTimer = 0.105;
@@ -5421,13 +5702,15 @@ button:disabled {
     showMessage(text, 0.75);
   }
 
-  function traceShot(angle, damage) {
+  function traceShot(angle, pitch, damage) {
     castRayInto(player.x, player.y, angle, MAX_RAY_DISTANCE, shotRayScratch);
-    const maxDistance = shotRayScratch.distance;
+    const maxDistance = Math.min(shotRayScratch.distance, getArenaRayBlockDistance(angle, pitch, shotRayScratch.distance));
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
+    const eyeElevation = player.elevation + PLAYER_EYE_HEIGHT;
     let nearestEnemy = null;
     let nearestT = maxDistance;
+    let hitHead = false;
 
     for (const enemy of enemies) {
       if (enemy.dead) continue;
@@ -5437,9 +5720,13 @@ button:disabled {
       if (projection <= 0 || projection >= nearestT) continue;
       const perpendicularSquared = dx * dx + dy * dy - projection * projection;
       const hitRadius = enemy.radius * (enemy.kind === 'prince' ? 1.2 : 1.05);
-      if (perpendicularSquared <= hitRadius * hitRadius) {
+      const hitElevation = eyeElevation + Math.tan(pitch) * projection;
+      const bodyBottom = enemy.elevation;
+      const bodyTop = bodyBottom + enemy.definition.height;
+      if (perpendicularSquared <= hitRadius * hitRadius && hitElevation >= bodyBottom && hitElevation <= bodyTop) {
         nearestT = projection;
         nearestEnemy = enemy;
+        hitHead = hitElevation >= bodyBottom + enemy.definition.height * 0.72;
       }
     }
 
@@ -5448,10 +5735,24 @@ button:disabled {
       return false;
     }
 
-    const variedDamage = damage * (0.9 + Math.random() * 0.2);
+    const variedDamage = damage * (0.9 + Math.random() * 0.2) * (hitHead ? 1.5 : 1);
     damageEnemy(nearestEnemy, variedDamage);
     spawnImpactFx(angle, nearestT, true);
+    if (hitHead) showMessage('ПОПАДАНИЕ В ГОЛОВУ · ×1.5', 0.45);
     return true;
+  }
+
+  function getArenaRayBlockDistance(angle, pitch, limit) {
+    if (!arena) return limit;
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const eyeElevation = player.elevation + PLAYER_EYE_HEIGHT;
+    for (let distance = 0.12; distance < limit; distance += 0.08) {
+      const floor = getArenaFloorHeightAt(player.x + dirX * distance, player.y + dirY * distance);
+      const rayElevation = eyeElevation + Math.tan(pitch) * distance;
+      if (floor > rayElevation + 0.025) return distance;
+    }
+    return limit;
   }
 
   function damageEnemy(enemy, amount) {
@@ -5489,9 +5790,7 @@ button:disabled {
   }
 
   function getCurrentDanger() {
-    const chunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
-    const chunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
-    return getDangerForChunk(chunkX, chunkY);
+    return Math.max(1, waveState.wave + (waveState.arenaIndex - 1) * 2);
   }
 
   function updateEnemies(dt, now) {
@@ -5505,6 +5804,7 @@ button:disabled {
         continue;
       }
 
+      enemy.elevation = getArenaFloorHeightAt(enemy.x, enemy.y);
       enemy.attackTimer -= dt;
       enemy.losTimer -= dt;
       if (enemy.losTimer <= 0) {
@@ -5546,7 +5846,7 @@ button:disabled {
           moveX = -directionY * strafeSign * 0.46;
           moveY = directionX * strafeSign * 0.46;
         }
-        moveBody(enemy, moveX * definition.speed * enemy.speedScale * dt, moveY * definition.speed * enemy.speedScale * dt, enemy.radius);
+        moveElevatedBody(enemy, moveX * definition.speed * enemy.speedScale * dt, moveY * definition.speed * enemy.speedScale * dt, enemy.radius);
       } else {
         let chaseX;
         let chaseY;
@@ -5558,8 +5858,9 @@ button:disabled {
           chaseX = flowDirection.x;
           chaseY = flowDirection.y;
         }
-        moveBody(enemy, chaseX * definition.speed * enemy.speedScale * dt, chaseY * definition.speed * enemy.speedScale * dt, enemy.radius);
+        moveElevatedBody(enemy, chaseX * definition.speed * enemy.speedScale * dt, chaseY * definition.speed * enemy.speedScale * dt, enemy.radius);
       }
+      enemy.elevation = getArenaFloorHeightAt(enemy.x, enemy.y);
     }
   }
 
@@ -5573,6 +5874,7 @@ button:disabled {
       kind: enemy.kind,
       x: enemy.x + Math.cos(angle) * (enemy.radius + 0.18),
       y: enemy.y + Math.sin(angle) * (enemy.radius + 0.18),
+      elevation: enemy.elevation + definition.height * 0.56,
       vx: Math.cos(angle) * definition.projectileSpeed,
       vy: Math.sin(angle) * definition.projectileSpeed,
       radius,
@@ -5602,7 +5904,7 @@ button:disabled {
 
       const nextX = projectile.x + projectile.vx * dt;
       const nextY = projectile.y + projectile.vy * dt;
-      if (circleHitsWall(nextX, nextY, projectile.radius)) {
+      if (circleHitsWall(nextX, nextY, projectile.radius) || getArenaFloorHeightAt(nextX, nextY) > projectile.elevation + 0.58) {
         spawnWorldBurst(projectile.x, projectile.y, projectile.kind === 'prince');
         removeProjectileAt(i);
         continue;
@@ -5613,7 +5915,9 @@ button:disabled {
       const dx = player.x - projectile.x;
       const dy = player.y - projectile.y;
       const collisionRadius = PLAYER_RADIUS + projectile.radius;
-      if (dx * dx + dy * dy <= collisionRadius * collisionRadius) {
+      const projectileElevation = projectile.elevation + 0.58;
+      const playerCenterElevation = player.elevation + PLAYER_EYE_HEIGHT * 0.62;
+      if (dx * dx + dy * dy <= collisionRadius * collisionRadius && Math.abs(projectileElevation - playerCenterElevation) < 0.72) {
         hurtPlayer(projectile.damage);
         spawnWorldBurst(projectile.x, projectile.y, projectile.kind === 'prince');
         removeProjectileAt(i);
@@ -5654,8 +5958,8 @@ button:disabled {
         const push = (minDistance - distance) * 0.5 * Math.min(1, dt * 16);
         const nx = dx / distance;
         const ny = dy / distance;
-        moveBody(first, -nx * push, -ny * push, first.radius);
-        moveBody(second, nx * push, ny * push, second.radius);
+        moveElevatedBody(first, -nx * push, -ny * push, first.radius);
+        moveElevatedBody(second, nx * push, ny * push, second.radius);
       }
     }
   }
@@ -5809,6 +6113,7 @@ button:disabled {
       danger,
       x,
       y,
+      elevation: getArenaFloorHeightAt(x, y),
       radius: definition.radius,
       health: definition.health * healthScale,
       maxHealth: definition.health * healthScale,
@@ -5838,6 +6143,7 @@ button:disabled {
       id: entityId++,
       x,
       y,
+      elevation: getArenaFloorHeightAt(x, y),
       danger,
       radius: 0.18,
       height: 0.44,
@@ -6348,9 +6654,7 @@ button:disabled {
 
   function updateHud(force) {
     const health = Math.max(0, Math.round(player.health));
-    const chunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
-    const chunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
-    const danger = getDangerForChunk(chunkX, chunkY);
+    const danger = getCurrentDanger();
     const multiplier = getScoreMultiplier(danger);
     const weapon = WEAPONS[player.weapon];
     const currentAmmo = player.ammo[player.weapon];
@@ -6364,9 +6668,14 @@ button:disabled {
     if (force || healthValue.textContent !== String(health)) healthValue.textContent = String(health);
     healthBar.style.transform = `scaleX(${clamp(health / 100, 0, 1)})`;
     healthValue.parentElement.style.color = health <= 25 ? '#ff5d53' : health <= 55 ? '#ffd25d' : '#9eff9a';
-    sectorValue.textContent = `${chunkX} : ${chunkY}`;
+    sectorValue.textContent = `${ARENA_SIZE} × ${ARENA_SIZE}`;
     dangerValue.textContent = String(danger);
-    multiplierLegend.textContent = `множитель сектора ×${multiplier}`;
+    multiplierLegend.textContent = `АРЕНА ${waveState.arenaIndex} · ×${multiplier}`;
+    waveValue.textContent = String(waveState.wave);
+    waveScoreValue.textContent = String(player.score);
+    wavePhaseValue.textContent = waveState.phase === 'active'
+      ? `В БОЮ · ${waveState.pendingSpawns + enemies.filter((enemy) => !enemy.dead).length}`
+      : `СТАРТ ${Math.max(0, Math.ceil(waveState.timer))}`;
     weaponName.textContent = weapon.name;
     ammoValue.textContent = `${currentAmmo} / ${weapon.magazine}`;
     ammoStatus.textContent = reloading ? `ЗАРЯДКА ${formatSeconds(reloadRemaining)}` : 'МАГАЗИН';
@@ -6541,6 +6850,7 @@ button:disabled {
   }
 
   function isWallTile(tileX, tileY) {
+    if (arena) return isArenaBlockedTile(tileX, tileY);
     if (isClosedDoorTile(tileX, tileY)) return true;
     const localX = modulo(tileX, CHUNK_SIZE);
     const localY = modulo(tileY, CHUNK_SIZE);
@@ -6986,6 +7296,21 @@ button:disabled {
     craftTriggerSystemHint.innerHTML = hasTrigger
       ? `<strong>${triggerSystem.label}</strong> — ${triggerSystem.description}`
       : `Выбран <strong>${triggerSystem.label}</strong>. Добавьте компонент «Спуск» под коробкой, чтобы стоимость и эффекты вступили в силу.`;
+  }
+
+  function moveElevatedBody(body, dx, dy, radius) {
+    const tryMove = (nextX, nextY) => {
+      if (circleHitsWall(nextX, nextY, radius)) return false;
+      const targetFloor = getArenaFloorHeightAt(nextX, nextY);
+      if (targetFloor > body.elevation + PLAYER_STEP_HEIGHT) return false;
+      body.x = nextX;
+      body.y = nextY;
+      body.elevation = targetFloor;
+      return true;
+    };
+    if (!tryMove(body.x + dx, body.y + dy)) {
+      if (!tryMove(body.x + dx, body.y)) tryMove(body.x, body.y + dy);
+    }
   }
 
   function changeCraftUpgradeOption(field, value, definitions) {
