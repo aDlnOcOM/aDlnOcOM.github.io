@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#090a0d">
-  <meta name="description" content="PIXEL SECTOR ∞ — автономный пиксельный SVG-raycaster с процедурными 3D-моделями оружия, GunCraft, режимом «Срыв лимитов» и сохраняемыми настройками.">
-  <title>PIXEL SECTOR ∞ · GunCraft · Right Weapon v14</title>
+  <meta name="description" content="PIXEL SECTOR ∞ — автономный пиксельный WebGL-шутер на Three.js с процедурными 3D-моделями оружия, GunCraft, режимом «Срыв лимитов» и сохраняемыми настройками.">
+  <title>PIXEL SECTOR ∞ · WebGL GunCraft · Voxel Weapons v15</title>
   <style>
 :root {
   color-scheme: dark;
@@ -80,11 +80,43 @@ button:focus-visible {
   cursor: crosshair;
 }
 
-#gameView {
+#webglCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
-  background: #090b0e;
+  background: #06090e;
+  image-rendering: pixelated;
+}
+
+#gameView {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+html:not([data-renderer="webgl"]) #webglCanvas {
+  display: none;
+}
+
+html[data-renderer="webgl"] #gameView > rect,
+html[data-renderer="webgl"] #floorGuides,
+html[data-renderer="webgl"] #wallLayer,
+html[data-renderer="webgl"] #spriteLayer,
+html[data-renderer="webgl"] #worldFxLayer,
+html[data-renderer="webgl"] #weaponLayer {
+  display: none;
+}
+
+html[data-performance-profile="low"] #webglCanvas {
+  image-rendering: pixelated;
 }
 
 #spriteLayer,
@@ -1948,6 +1980,7 @@ button:disabled {
 </head>
 <body>
   <main id="app" aria-label="PIXEL SECTOR — бесконечный пиксельный шутер">
+    <canvas id="webglCanvas" aria-label="Трёхмерное игровое поле WebGL"></canvas>
     <svg id="gameView" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Игровое поле">
       <defs>
         <linearGradient id="ceilingGradient" x1="0" y1="0" x2="0" y2="1">
@@ -2171,7 +2204,7 @@ button:disabled {
 
     <section id="startOverlay" class="overlay visible" aria-modal="true" role="dialog">
       <div class="overlay-card main-menu-card">
-        <p class="eyebrow">ПИКСЕЛЬНЫЙ НЕОНОВЫЙ RAYCASTER</p>
+        <p class="eyebrow">ПИКСЕЛЬНЫЙ НЕОНОВЫЙ WEBGL-SECTOR</p>
         <h1>PIXEL SECTOR <span>∞</span></h1>
         <p class="lead">Два бесконечных режима, закрывающиеся секторные двери и конструктор оружия. В GunCraft доступен отдельный экстремальный вариант «Срыв лимитов» со свободными размерами деталей и усиленными врагами.</p>
 
@@ -2185,14 +2218,14 @@ button:disabled {
           <article class="mode-card">
             <small>РЕЖИМ 01</small>
             <h3>CLASSIC</h3>
-            <p>Три готовых оружия, автоматически собранных как 3D-модели и спроецированных выбранной камерой.</p>
+            <p>Три готовых оружия из воксельных модулей — в настоящем WebGL-виде от первого лица.</p>
             <div class="mode-record"><span>РЕКОРД</span><strong id="menuClassicRecord">0</strong></div>
             <button id="startButton" type="button">НАЧАТЬ CLASSIC</button>
           </article>
           <article id="guncraftModeCard" class="mode-card">
             <small>РЕЖИМ 02 · ROGUELIKE</small>
             <h3>GUNCRAFT</h3>
-            <p>Нарисуйте чертёж: игра построит по нему 3D-модель, рассчитает характеристики и создаст игровую проекцию.</p>
+            <p>Нарисуйте чертёж: игра соберёт его из кубов и прямоугольных модулей, рассчитает характеристики и покажет в WebGL.</p>
             <div class="mode-record"><span>РЕКОРД GUNCRAFT</span><strong id="menuGunCraftRecord">0</strong></div>
             <div class="mode-record limit-break-record"><span>РЕКОРД СРЫВА</span><strong id="menuLimitBreakRecord">0</strong></div>
             <label class="limit-break-toggle" for="limitBreakToggle">
@@ -2263,7 +2296,7 @@ button:disabled {
             </select>
           </div>
 
-          <p class="settings-help">Низкое качество уменьшает число лучей, частоту кадров и визуальные эффекты без изменения механики. Рендер автоматически сохраняет полезную область на 4:3, 5:4, 16:9 и ультрашироких экранах. Оружие всегда отображается справа фиксированной псевдо-изометрической камерой; ПКМ включает прицеливание только при установленном прицеле.</p>
+          <p class="settings-help">Низкое качество уменьшает внутреннее разрешение WebGL, дальность прорисовки и эффекты без изменения механики. Камера корректно работает на 4:3, 5:4, 16:9 и ультрашироких экранах. Оружие всегда отображается справа как объёмная воксельная модель; ПКМ включает прицеливание только при установленном прицеле.</p>
         </section>
 
         <section class="settings-panel" data-settings-panel="audio" hidden>
@@ -2441,6 +2474,8 @@ button:disabled {
     <noscript>Для запуска игры необходим JavaScript.</noscript>
   </main>
 
+  <script src="./assets/vendor/three.min.js"></script>
+  <script src="./assets/vendor/GLTFLoader.global.js"></script>
   <script>
 (() => {
   'use strict';
@@ -2501,9 +2536,9 @@ button:disabled {
   }
 
   const PERFORMANCE_SETTINGS_BY_PROFILE = Object.freeze({
-    low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0 }),
-    medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1 }),
-    high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2 })
+    low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0, gpuPixelRatio: 0.68, renderRadius: 10, effects: false }),
+    medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1, gpuPixelRatio: 1, renderRadius: 16, effects: true }),
+    high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2, gpuPixelRatio: 1.32, renderRadius: 21, effects: true })
   });
   let performanceProfile = detectPerformanceProfile();
   let performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[performanceProfile];
@@ -2522,6 +2557,7 @@ button:disabled {
   let resizeRenderTimer = 0;
 
   const app = document.getElementById('app');
+  const webglCanvas = document.getElementById('webglCanvas');
   const gameView = document.getElementById('gameView');
   const wallLayer = document.getElementById('wallLayer');
   const spriteLayer = document.getElementById('spriteLayer');
@@ -2685,6 +2721,10 @@ button:disabled {
   const flow = new Int16Array(FLOW_SIZE * FLOW_SIZE);
   const flowQueue = new Int32Array(FLOW_SIZE * FLOW_SIZE);
   const renderables = [];
+  let three = null;
+  let GLTFLoaderClass = null;
+  let webgl = null;
+  let webglLoading = false;
 
   const DEFAULT_KEYBINDS = Object.freeze({
     moveForward: 'KeyW',
@@ -3489,7 +3529,453 @@ button:disabled {
   updateMusicButton();
   updateMainMenu();
   resetGame();
+  void bootstrapWebGLRenderer();
   requestAnimationFrame(frame);
+
+  async function bootstrapWebGLRenderer() {
+    if (webglLoading || webgl) return;
+    webglLoading = true;
+    try {
+      three = window.THREE;
+      GLTFLoaderClass = window.THREE?.GLTFLoader || null;
+      if (!three) throw new Error('Local Three.js bundle is unavailable');
+      initializeWebGLRenderer();
+    } catch (error) {
+      document.documentElement.dataset.renderer = 'svg';
+      document.documentElement.dataset.rendererError = error instanceof Error ? error.message : 'WebGL bootstrap failed';
+    } finally {
+      webglLoading = false;
+    }
+  }
+
+  function initializeWebGLRenderer() {
+    if (!three || !webglCanvas || webgl) return;
+
+    const renderer = new three.WebGLRenderer({
+      canvas: webglCanvas,
+      antialias: performanceProfile === 'high',
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
+    if ('outputColorSpace' in renderer && three.SRGBColorSpace) {
+      renderer.outputColorSpace = three.SRGBColorSpace;
+    } else if (three.sRGBEncoding) {
+      renderer.outputEncoding = three.sRGBEncoding;
+    }
+    renderer.toneMapping = three.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
+    renderer.setClearColor(0x06090e, 1);
+
+    const scene = new three.Scene();
+    scene.background = new three.Color(0x06090e);
+    scene.fog = new three.FogExp2(0x06090e, performanceProfile === 'low' ? 0.075 : 0.058);
+
+    const camera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.04, MAX_RAY_DISTANCE + 8);
+    const weaponScene = new three.Scene();
+    const weaponCamera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.01, 10);
+    const mapGroup = new three.Group();
+    const entityGroup = new three.Group();
+    const effectGroup = new three.Group();
+    const environmentGroup = new three.Group();
+    const weaponMount = new three.Group();
+    const floorMaterial = new three.MeshStandardMaterial({ color: 0x12111b, roughness: 0.92, metalness: 0.12 });
+    const ceilingMaterial = new three.MeshStandardMaterial({ color: 0x080b13, roughness: 1, metalness: 0.04, side: three.BackSide });
+    const floor = new three.Mesh(new three.PlaneGeometry(54, 54), floorMaterial);
+    const ceiling = new three.Mesh(new three.PlaneGeometry(54, 54), ceilingMaterial);
+    const grid = new three.GridHelper(52, 52, 0x2c6977, 0x152b35);
+    floor.rotation.x = -Math.PI / 2;
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 2.42;
+    grid.position.y = 0.012;
+    grid.material.transparent = true;
+    grid.material.opacity = performanceProfile === 'low' ? 0.12 : 0.29;
+    environmentGroup.add(floor, ceiling, grid);
+
+    const hemisphere = new three.HemisphereLight(0x9eeeff, 0x1a0714, 1.7);
+    const keyLight = new three.DirectionalLight(0xffa7c2, 1.15);
+    const playerLight = new three.PointLight(0x38e8ff, 9.5, 14, 2);
+    keyLight.position.set(-8, 11, 5);
+    scene.add(environmentGroup, mapGroup, entityGroup, effectGroup, hemisphere, keyLight, playerLight, camera);
+    weaponScene.add(weaponMount);
+
+    const wallMaterials = baseWallColors.map(([red, green, blue]) => new three.MeshStandardMaterial({
+      color: new three.Color(red / 255, green / 255, blue / 255),
+      emissive: new three.Color(red / 255, green / 255, blue / 255),
+      emissiveIntensity: performanceProfile === 'low' ? 0.025 : 0.08,
+      roughness: 0.72,
+      metalness: 0.26,
+      flatShading: true
+    }));
+    const doorMaterial = new three.MeshStandardMaterial({
+      color: 0x123442,
+      emissive: 0x27dff4,
+      emissiveIntensity: 0.72,
+      roughness: 0.44,
+      metalness: 0.62,
+      flatShading: true
+    });
+
+    webgl = {
+      renderer,
+      scene,
+      camera,
+      weaponScene,
+      weaponCamera,
+      mapGroup,
+      entityGroup,
+      effectGroup,
+      environmentGroup,
+      floor,
+      ceiling,
+      grid,
+      playerLight,
+      weaponMount,
+      wallGeometry: new three.BoxGeometry(1, 2.4, 1),
+      wallMaterials,
+      doorMaterial,
+      mapKey: '',
+      lastMapBuild: -Infinity,
+      weaponKey: '',
+      weaponRoot: null,
+      weaponFlash: null,
+      weaponGlowMaterials: [],
+      assetWeaponTemplates: new Map(),
+      effects: [],
+      lastCameraFov: 0
+    };
+    document.documentElement.dataset.renderer = 'webgl';
+    refreshRenderViewport(true);
+    rebuildWebGLMap(true);
+    syncWebGLEntities();
+    updateWebGLWeaponModel(true);
+    void loadWebGLAssetWeaponModels();
+  }
+
+  function getWebGLPixelRatio() {
+    const nativeRatio = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+    return Math.max(0.55, nativeRatio * (performanceSettings.gpuPixelRatio || 1));
+  }
+
+  function resizeWebGLRenderer(cssWidth, cssHeight) {
+    if (!webgl) return;
+    webgl.renderer.setPixelRatio(getWebGLPixelRatio());
+    webgl.renderer.setSize(cssWidth, cssHeight, false);
+    webgl.camera.aspect = cssWidth / Math.max(1, cssHeight);
+    webgl.camera.updateProjectionMatrix();
+    webgl.weaponCamera.aspect = webgl.camera.aspect;
+    webgl.weaponCamera.updateProjectionMatrix();
+  }
+
+  function rebuildWebGLMap(force = false) {
+    if (!webgl) return;
+    const centerX = Math.floor(player.x);
+    const centerY = Math.floor(player.y);
+    const radius = performanceSettings.renderRadius || 16;
+    const mapKey = `${centerX}:${centerY}:${radius}:${closedDoorTiles.size}:${performanceProfile}`;
+    if (!force && webgl.mapKey === mapKey) return;
+
+    webgl.mapGroup.clear();
+    for (let tileY = centerY - radius; tileY <= centerY + radius; tileY += 1) {
+      for (let tileX = centerX - radius; tileX <= centerX + radius; tileX += 1) {
+        if (!isWallTile(tileX, tileY)) continue;
+        const door = isClosedDoorTile(tileX, tileY);
+        const material = door ? webgl.doorMaterial : webgl.wallMaterials[wallMaterial(tileX, tileY)];
+        const block = new three.Mesh(webgl.wallGeometry, material);
+        block.position.set(tileX + 0.5, 1.2, tileY + 0.5);
+        webgl.mapGroup.add(block);
+      }
+    }
+    webgl.mapKey = mapKey;
+  }
+
+  function addWebGLVoxel(group, size, position, color, glow = 0) {
+    const material = new three.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: glow,
+      roughness: 0.58,
+      metalness: 0.38,
+      flatShading: true
+    });
+    const mesh = new three.Mesh(new three.BoxGeometry(size[0], size[1], size[2]), material);
+    mesh.position.set(position[0], position[1], position[2]);
+    group.add(mesh);
+    return material;
+  }
+
+  function createWebGLEnemyMesh(kind) {
+    if (!webgl) return null;
+    const group = new three.Group();
+    const glowMaterials = [];
+    const palette = kind === 'prince'
+      ? { shell: 0x861432, plate: 0xd52e54, glow: 0xff6f92 }
+      : kind === 'mech'
+        ? { shell: 0x324149, plate: 0x718995, glow: 0xffc64b }
+        : { shell: 0x5c1924, plate: 0xa9363c, glow: 0xff593e };
+    addWebGLVoxel(group, [0.62, 0.64, 0.4], [0, 0.78, 0], palette.plate);
+    addWebGLVoxel(group, [0.52, 0.44, 0.46], [0, 1.3, 0], palette.shell);
+    addWebGLVoxel(group, [0.22, 0.12, 0.06], [-0.14, 1.32, -0.25], palette.glow, 1.45);
+    glowMaterials.push(group.children.at(-1).material);
+    addWebGLVoxel(group, [0.22, 0.12, 0.06], [0.14, 1.32, -0.25], palette.glow, 1.45);
+    glowMaterials.push(group.children.at(-1).material);
+    addWebGLVoxel(group, [0.17, 0.48, 0.22], [-0.36, 0.72, 0], palette.shell);
+    addWebGLVoxel(group, [0.17, 0.48, 0.22], [0.36, 0.72, 0], palette.shell);
+    addWebGLVoxel(group, [0.21, 0.38, 0.27], [-0.18, 0.22, 0], palette.shell);
+    addWebGLVoxel(group, [0.21, 0.38, 0.27], [0.18, 0.22, 0], palette.shell);
+    if (kind === 'prince') {
+      addWebGLVoxel(group, [0.13, 0.42, 0.18], [-0.33, 1.6, 0], palette.plate);
+      addWebGLVoxel(group, [0.13, 0.42, 0.18], [0.33, 1.6, 0], palette.plate);
+      group.scale.setScalar(1.16);
+    }
+    group.userData.glowMaterials = glowMaterials;
+    webgl.entityGroup.add(group);
+    return group;
+  }
+
+  function createWebGLOrbMesh() {
+    if (!webgl) return null;
+    const group = new three.Group();
+    const core = new three.Mesh(
+      new three.OctahedronGeometry(0.18, 0),
+      new three.MeshStandardMaterial({ color: 0x9dffff, emissive: 0x35dfff, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.7, flatShading: true })
+    );
+    const ring = new three.Mesh(
+      new three.TorusGeometry(0.26, 0.025, 4, 8),
+      new three.MeshBasicMaterial({ color: 0x2a9fff, transparent: true, opacity: 0.72 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    group.add(core, ring);
+    webgl.entityGroup.add(group);
+    return group;
+  }
+
+  function createWebGLProjectileMesh(kind) {
+    if (!webgl) return null;
+    const color = kind === 'prince' ? 0xff4b35 : 0xffc542;
+    const mesh = new three.Mesh(
+      new three.BoxGeometry(kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17),
+      new three.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.4, roughness: 0.32, metalness: 0.45, flatShading: true })
+    );
+    webgl.entityGroup.add(mesh);
+    return mesh;
+  }
+
+  function removeWebGLEntityMesh(entity) {
+    if (!entity?.webglMesh) return;
+    entity.webglMesh.parent?.remove(entity.webglMesh);
+    entity.webglMesh = null;
+  }
+
+  function syncWebGLEntities() {
+    if (!webgl) return;
+    for (const enemy of enemies) if (!enemy.webglMesh) enemy.webglMesh = createWebGLEnemyMesh(enemy.kind);
+    for (const orb of orbs) if (!orb.webglMesh) orb.webglMesh = createWebGLOrbMesh();
+    for (const projectile of projectiles) if (!projectile.webglMesh) projectile.webglMesh = createWebGLProjectileMesh(projectile.kind);
+  }
+
+  function addWebGLEffect(x, y, color, strong = false) {
+    if (!webgl || !performanceSettings.effects) return;
+    const mesh = new three.Mesh(
+      new three.OctahedronGeometry(strong ? 0.27 : 0.14, 0),
+      new three.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false })
+    );
+    mesh.position.set(x, 0.72, y);
+    webgl.effectGroup.add(mesh);
+    webgl.effects.push({ mesh, born: performance.now(), ttl: strong ? 250 : 150, strong });
+  }
+
+  async function loadWebGLAssetWeaponModels() {
+    if (!webgl || !GLTFLoaderClass) return;
+    const loader = new GLTFLoaderClass();
+    const models = [
+      { index: 0, file: 'blaster-e.glb' },
+      { index: 1, file: 'blaster-j.glb' },
+      { index: 2, file: 'blaster-p.glb' }
+    ];
+    for (const model of models) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          loader.load(`./assets/models/kenney-blaster/${model.file}`, resolve, undefined, reject);
+        });
+        const template = result.scene;
+        const bounds = new three.Box3().setFromObject(template);
+        const size = bounds.getSize(new three.Vector3());
+        const center = bounds.getCenter(new three.Vector3());
+        template.position.sub(center);
+        const length = Math.max(size.x, size.z, 0.001);
+        template.scale.setScalar(1.05 / length);
+        if (size.z > size.x) template.rotation.y = Math.PI / 2;
+        template.traverse((node) => {
+          if (!node.isMesh) return;
+          node.castShadow = false;
+          node.receiveShadow = false;
+          const materials = Array.isArray(node.material) ? node.material : [node.material];
+          for (const material of materials) {
+            material.flatShading = true;
+            material.metalness = Math.max(0.18, material.metalness || 0);
+            material.roughness = Math.min(0.7, material.roughness || 0.55);
+            if (material.map) {
+              material.map.magFilter = three.NearestFilter;
+              material.map.minFilter = three.NearestMipmapNearestFilter;
+              material.map.needsUpdate = true;
+            }
+            material.needsUpdate = true;
+          }
+        });
+        webgl.assetWeaponTemplates.set(model.index, template);
+        if (player.weapon === model.index && !WEAPONS[player.weapon].custom) updateWebGLWeaponModel(true);
+      } catch {
+        // The procedural voxel model remains the local fallback for an unavailable asset.
+      }
+    }
+  }
+
+  function updateWebGLWeaponModel(force = false) {
+    if (!webgl) return;
+    const weapon = WEAPONS[player.weapon];
+    if (!weapon) return;
+    const key = `${player.weapon}:${weapon.model3d?.revision || weapon.viewRevision || weapon.name}`;
+    if (!force && webgl.weaponKey === key) return;
+
+    webgl.weaponMount.clear();
+    const root = new three.Group();
+    const model = weapon.model3d || buildClassicWeapon3DModel(player.weapon);
+    const scale = weapon.custom ? 0.024 : 0.021;
+    const glowMaterials = [];
+    const assetTemplate = weapon.custom ? null : webgl.assetWeaponTemplates.get(player.weapon);
+    if (assetTemplate) {
+      root.add(assetTemplate.clone(true));
+    } else {
+      for (const box of model.boxes || []) {
+        const material = addWebGLVoxel(
+          root,
+          [box.size.x * scale, box.size.y * scale, box.size.z * scale],
+          [box.center.x * scale, box.center.y * scale, box.center.z * scale],
+          box.light || box.color,
+          box.id.includes('sight') || box.id.includes('cryo') ? 0.35 : 0.04
+        );
+        glowMaterials.push(material);
+      }
+    }
+    root.rotation.y = Math.PI / 2;
+    const muzzle = model.anchors?.muzzle || vec3(18, 2, 0);
+    const flash = new three.PointLight(0xff8533, 0, 4.6, 2);
+    flash.position.set(muzzle.x * scale, muzzle.y * scale, muzzle.z * scale);
+    const flashCore = new three.Mesh(new three.OctahedronGeometry(0.09, 0), new three.MeshBasicMaterial({ color: 0xffc75d }));
+    flashCore.position.copy(flash.position);
+    flashCore.visible = false;
+    root.add(flash, flashCore);
+    root.traverse((node) => {
+      if (!node.isMesh) return;
+      node.renderOrder = 20;
+      node.frustumCulled = false;
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      const viewmodelMaterials = materials.map((material) => new three.MeshBasicMaterial({
+        color: material.color,
+        transparent: material.transparent,
+        opacity: material.opacity,
+        depthTest: false,
+        depthWrite: false
+      }));
+      node.material = Array.isArray(node.material) ? viewmodelMaterials : viewmodelMaterials[0];
+    });
+    webgl.weaponMount.add(root);
+    webgl.weaponRoot = root;
+    webgl.weaponFlash = { light: flash, core: flashCore };
+    webgl.weaponGlowMaterials = glowMaterials;
+    webgl.weaponKey = key;
+  }
+
+  function renderWebGLWeapon() {
+    if (!webgl) return;
+    updateWebGLWeaponModel(false);
+    const root = webgl.weaponRoot;
+    const weapon = WEAPONS[player.weapon];
+    if (!root || !weapon) return;
+    const reloadRemaining = player.reloadTimers[player.weapon];
+    const reloadTotal = Math.max(0.001, player.reloadTotals[player.weapon]);
+    const reloadProgress = reloadRemaining > 0 ? clamp(1 - reloadRemaining / reloadTotal, 0, 1) : 0;
+    const reloadPose = reloadRemaining > 0 ? Math.pow(Math.sin(reloadProgress * Math.PI), 0.52) : 0;
+    const stability = (bipodDeployed ? 0.16 : (weapon.swayScale || 1)) * lerp(1, 0.25, aimAmount);
+    const bobX = Math.sin(player.bobPhase) * player.movingAmount * 0.035 * stability + lookSway * 0.0016;
+    const bobY = Math.abs(Math.cos(player.bobPhase)) * player.movingAmount * 0.027 * stability + weaponKick * 0.011;
+    root.position.set(lerp(0.36, 0, aimAmount) + bobX, lerp(-0.26, -0.1, aimAmount) - bobY - reloadPose * 0.16, lerp(-0.68, -0.46, aimAmount));
+    root.rotation.set(reloadPose * 0.15, Math.PI / 2, lookSway * 0.0025 * stability + reloadPose * (weapon.custom ? -0.24 : 0.18));
+    root.scale.setScalar(1 - reloadPose * 0.08);
+    const flashStrength = muzzleTimer > 0 ? clamp(muzzleTimer * 20 * (weapon.muzzleFlashIntensity || 1), 0, 1) : 0;
+    if (webgl.weaponFlash) {
+      webgl.weaponFlash.light.intensity = flashStrength * 3.8;
+      webgl.weaponFlash.core.visible = flashStrength > 0.02;
+      webgl.weaponFlash.core.scale.setScalar(0.6 + flashStrength * 2.5);
+    }
+    const heat = weapon.custom ? clamp(weaponHeat / 100, 0, 1) : 0;
+    for (const material of webgl.weaponGlowMaterials) material.emissiveIntensity = 0.035 + heat * 0.16;
+  }
+
+  function renderWebGLScene(now) {
+    if (!webgl) return;
+    syncWebGLEntities();
+    if (now - webgl.lastMapBuild > 180) {
+      rebuildWebGLMap();
+      webgl.lastMapBuild = now;
+    }
+    webgl.floor.position.set(player.x, -0.015, player.y);
+    webgl.ceiling.position.set(player.x, 2.42, player.y);
+    webgl.grid.position.set(player.x, 0.012, player.y);
+    webgl.playerLight.position.set(player.x, 1.15, player.y);
+    webgl.camera.position.set(player.x, 0.78 + cameraBob * 0.0035, player.y);
+    const effectiveFov = FOV * 180 / Math.PI;
+    if (Math.abs(webgl.lastCameraFov - effectiveFov) > 0.02) {
+      webgl.camera.fov = effectiveFov;
+      webgl.camera.updateProjectionMatrix();
+      webgl.lastCameraFov = effectiveFov;
+    }
+    webgl.camera.lookAt(player.x + Math.cos(player.angle), 0.78 + cameraBob * 0.0035, player.y + Math.sin(player.angle));
+    for (const enemy of enemies) {
+      const mesh = enemy.webglMesh;
+      if (!mesh) continue;
+      const fade = enemy.dead ? clamp(enemy.deathTimer / 0.58, 0, 1) : 1;
+      mesh.visible = fade > 0.02;
+      mesh.position.set(enemy.x, Math.sin(now * 0.004 + enemy.phase) * 0.035, enemy.y);
+      mesh.rotation.y = Math.atan2(player.x - enemy.x, player.y - enemy.y);
+      mesh.scale.setScalar((enemy.kind === 'prince' ? 1.16 : 1) * (enemy.dead ? 0.6 + fade * 0.4 : 1 + enemy.hitFlash * 0.9));
+      for (const material of mesh.userData.glowMaterials || []) material.emissiveIntensity = 0.72 + enemy.hitFlash * 2.1;
+    }
+    for (const orb of orbs) {
+      const mesh = orb.webglMesh;
+      if (!mesh) continue;
+      const pulse = 1 + Math.sin(now * 0.006 + orb.phase) * 0.15;
+      mesh.position.set(orb.x, 0.43 + Math.sin(now * 0.004 + orb.phase) * 0.07, orb.y);
+      mesh.rotation.y = now * 0.002;
+      mesh.scale.setScalar(pulse);
+    }
+    for (const projectile of projectiles) {
+      const mesh = projectile.webglMesh;
+      if (!mesh) continue;
+      mesh.position.set(projectile.x, 0.58 + Math.sin(now * 0.014 + projectile.phase) * 0.07, projectile.y);
+      mesh.rotation.set(now * 0.01, now * 0.013, now * 0.008);
+    }
+    for (let index = webgl.effects.length - 1; index >= 0; index -= 1) {
+      const effect = webgl.effects[index];
+      const progress = (now - effect.born) / effect.ttl;
+      if (progress >= 1) {
+        effect.mesh.parent?.remove(effect.mesh);
+        webgl.effects.splice(index, 1);
+        continue;
+      }
+      effect.mesh.scale.setScalar(0.8 + progress * (effect.strong ? 5 : 3));
+      effect.mesh.material.opacity = 1 - progress;
+    }
+    if (Math.abs(webgl.weaponCamera.fov - effectiveFov) > 0.02) {
+      webgl.weaponCamera.fov = effectiveFov;
+      webgl.weaponCamera.updateProjectionMatrix();
+    }
+    webgl.renderer.autoClear = false;
+    webgl.renderer.clear();
+    webgl.renderer.render(webgl.scene, webgl.camera);
+    webgl.renderer.clearDepth();
+    webgl.renderer.render(webgl.weaponScene, webgl.weaponCamera);
+  }
 
   function svgElement(name) {
     return document.createElementNS(SVG_NS, name);
@@ -3543,16 +4029,25 @@ button:disabled {
     gameView.setAttribute('viewBox', `${renderViewX.toFixed(3)} ${renderViewY.toFixed(3)} ${renderViewWidth.toFixed(3)} ${renderViewHeight.toFixed(3)}`);
     gameView.setAttribute('preserveAspectRatio', 'none');
 
-    const nextRayCount = getTargetRayCount(cssWidth);
-    if (force || geometryChanged || nextRayCount !== RAY_COUNT) {
-      RAY_COUNT = nextRayCount;
-      COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
-      initializeWallColumns();
+    if (webgl) {
+      wallLayer.replaceChildren();
+      wallColumns.length = 0;
+      resizeWebGLRenderer(cssWidth, cssHeight);
     } else {
-      COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
+      const nextRayCount = getTargetRayCount(cssWidth);
+      if (force || geometryChanged || nextRayCount !== RAY_COUNT) {
+        RAY_COUNT = nextRayCount;
+        COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
+        initializeWallColumns();
+      } else {
+        COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
+      }
     }
     updateProjection();
-    if (force || geometryChanged) refreshWeaponProjectionLayouts();
+    if (force || geometryChanged) {
+      refreshWeaponProjectionLayouts();
+      if (webgl) rebuildWebGLMap(true);
+    }
   }
 
   function initializeWallColumns() {
@@ -4128,6 +4623,11 @@ button:disabled {
     activeFrameInterval = 1000 / performanceSettings.maxFps;
     idleFrameInterval = 1000 / performanceSettings.idleFps;
     document.documentElement.dataset.performanceProfile = nextProfile;
+    if (webgl) {
+      webgl.scene.fog.density = nextProfile === 'low' ? 0.075 : 0.058;
+      webgl.grid.material.opacity = nextProfile === 'low' ? 0.12 : 0.29;
+      rebuildWebGLMap(true);
+    }
     lastRenderedTime = 0;
     refreshRenderViewport(true);
   }
@@ -4402,9 +4902,18 @@ button:disabled {
   }
 
   function clearAllEntities() {
-    for (const enemy of enemies) enemy.group.remove();
-    for (const orb of orbs) orb.group.remove();
-    for (const projectile of projectiles) projectile.group.remove();
+    for (const enemy of enemies) {
+      enemy.group.remove();
+      removeWebGLEntityMesh(enemy);
+    }
+    for (const orb of orbs) {
+      orb.group.remove();
+      removeWebGLEntityMesh(orb);
+    }
+    for (const projectile of projectiles) {
+      projectile.group.remove();
+      removeWebGLEntityMesh(projectile);
+    }
     enemies.length = 0;
     orbs.length = 0;
     projectiles.length = 0;
@@ -4939,6 +5448,7 @@ button:disabled {
     const sprite = createSimpleSprite(enemy.kind === 'prince' ? '#projectile-prince' : '#projectile-mech');
     projectile.group = sprite.group;
     projectile.use = sprite.use;
+    projectile.webglMesh = createWebGLProjectileMesh(projectile.kind);
     projectiles.push(projectile);
     playEnemyShotSound(enemy.kind);
   }
@@ -5183,12 +5693,13 @@ button:disabled {
       healthFill: sprite.healthFill,
       visibleDistance: 0
     };
+    enemy.webglMesh = createWebGLEnemyMesh(kind);
     enemies.push(enemy);
   }
 
   function spawnOrb(x, y, phaseSeed, danger = getCurrentDanger()) {
     const sprite = createSimpleSprite('#point-orb');
-    orbs.push({
+    const orb = {
       id: entityId++,
       x,
       y,
@@ -5199,7 +5710,9 @@ button:disabled {
       group: sprite.group,
       use: sprite.use,
       visibleDistance: 0
-    });
+    };
+    orb.webglMesh = createWebGLOrbMesh();
+    orbs.push(orb);
   }
 
   function createEnemySprite(symbol) {
@@ -5282,6 +5795,7 @@ button:disabled {
     const enemy = enemies[index];
     if (!enemy) return;
     enemy.group.remove();
+    removeWebGLEntityMesh(enemy);
     enemies.splice(index, 1);
   }
 
@@ -5289,6 +5803,7 @@ button:disabled {
     const orb = orbs[index];
     if (!orb) return;
     orb.group.remove();
+    removeWebGLEntityMesh(orb);
     orbs.splice(index, 1);
   }
 
@@ -5296,6 +5811,7 @@ button:disabled {
     const projectile = projectiles[index];
     if (!projectile) return;
     projectile.group.remove();
+    removeWebGLEntityMesh(projectile);
     projectiles.splice(index, 1);
   }
 
@@ -5373,6 +5889,11 @@ button:disabled {
 
   function renderScene(now) {
     updateProjection();
+    if (webgl) {
+      renderWeapon();
+      renderWebGLScene(now);
+      return;
+    }
     renderWalls();
     renderSprites(now);
     renderWeapon();
@@ -5551,6 +6072,7 @@ button:disabled {
   }
 
   function renderWeapon() {
+    if (webgl) renderWebGLWeapon();
     updateWeaponVisual(false);
     const weapon = WEAPONS[player.weapon];
     const view = getWeaponView(weapon, weaponPosition);
@@ -5744,6 +6266,15 @@ button:disabled {
   }
 
   function spawnImpactFx(angle, distance, hitEnemy) {
+    if (webgl) {
+      addWebGLEffect(
+        player.x + Math.cos(angle) * distance,
+        player.y + Math.sin(angle) * distance,
+        hitEnemy ? 0xff7558 : 0xffd77a,
+        hitEnemy
+      );
+      return;
+    }
     const relative = normalizeAngle(angle - player.angle);
     const screenX = HALF_W + Math.tan(relative) * PROJECTION;
     const screenY = HALF_H + cameraBob + (hitEnemy ? gaussianishRandom() * 12 : gaussianishRandom() * 5);
@@ -5768,6 +6299,10 @@ button:disabled {
   }
 
   function spawnWorldBurst(x, y, strong) {
+    if (webgl) {
+      addWebGLEffect(x, y, strong ? 0xff5b27 : 0xffd14e, strong);
+      return;
+    }
     const projection = projectWorldPoint(x, y, 0.2);
     if (!projection.visible) return;
     const group = svgElement('g');
@@ -7524,6 +8059,8 @@ button:disabled {
       add('grip', [-0.5, -7.5, 0], [5.7, 10.5, 4.8], '#1a2429', '#4e6169');
       add('grip-inset', [-0.5, -7.4, -2.5], [3.5, 7.6, 0.55], '#76513e', '#a77b61', { strokeWidth: 0.35 });
       add('trigger-guard', [4.3, -3.6, 0], [5.5, 3.6, 1.3], '#11191d', '#5b6c72');
+      add('pulse-cell', [7.8, 0.9, -3.15], [7.8, 2.2, 0.62], '#ce2e91', '#ff9bdc', { strokeWidth: 0.3 });
+      add('pixel-rail', [12.2, 6.05, 0], [16.5, 0.7, 1.35], '#1f9eb7', '#81f6ff', { strokeWidth: 0.25 });
       add('rear-sight', [2.5, 6.05, 0], [3.4, 1.2, 1.5], '#0a0f12', '#a6bcc3');
       add('front-sight', [19, 5.72, 0], [1.2, 1.1, 1.2], '#0a0f12', '#a6bcc3');
       anchors = { muzzle: vec3(25.7, 3.2, 0), aim: vec3(10.5, 6.1, 0) };
@@ -7534,6 +8071,8 @@ button:disabled {
       add('tube', [18.5, 0.8, 0], [29, 2.6, 3.4], '#172329', '#647981');
       add('pump', [12.2, -1.1, 0], [11, 6.4, 6.6], '#875635', '#d49a68');
       add('grip', [-7, -6.5, 0], [5.5, 8.5, 5.2], '#1b252a', '#5d7078');
+      add('shell-window', [7.5, 3.6, -3.85], [11.5, 2.5, 0.7], '#c85032', '#ffc16d', { strokeWidth: 0.3 });
+      add('top-rail', [13.5, 6.05, 0], [39, 0.7, 1.1], '#20889e', '#83f6ff', { strokeWidth: 0.25 });
       add('rear-sight', [-0.5, 5.8, 0], [2.5, 1.1, 1.4], '#080d10', '#9eb4bb');
       add('front-sight', [37.5, 5.9, 0], [1.2, 1.15, 1.2], '#080d10', '#9eb4bb');
       anchors = { muzzle: vec3(40.2, 4.1, 0), aim: vec3(18, 5.95, 0) };
@@ -7547,6 +8086,8 @@ button:disabled {
       add('grip', [-12, -8.2, 0], [5.8, 10.5, 5.2], '#192328', '#586c74');
       add('foregrip', [12, -4.5, 0], [5, 7.5, 4.8], '#26363d', '#708891');
       add('carry-handle', [-4, 9.2, 0], [13, 2.4, 2.2], '#10181c', '#8ca1a8');
+      add('energy-belt', [-1.5, -6.2, -4.55], [18.5, 2.4, 0.72], '#bd317e', '#ff9fd5', { strokeWidth: 0.28 });
+      add('cooling-rail', [19, 7.3, 0], [37, 0.82, 1.05], '#1d94a7', '#85f7ff', { strokeWidth: 0.25 });
       add('front-sight', [33, 7.1, 0], [1.4, 2.5, 1.5], '#080d10', '#a5b9bf');
       anchors = { muzzle: vec3(46.2, 3.5, 0), aim: vec3(14, 8.35, 0) };
     }
