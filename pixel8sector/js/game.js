@@ -26,6 +26,10 @@
   const PLAYER_GRAVITY = 17.5;
   const PLAYER_STEP_HEIGHT = 0.52;
   const PLAYER_MOVE_SUBSTEP = 0.1;
+  const PLAYER_COLLISION_SKIN = 0.018;
+  const PLAYER_CAMERA_RESPONSE = 34;
+  const PLAYER_CAMERA_MAX_LAG = 0.07;
+  const PLAYER_CAMERA_RADIUS = 0.09;
   const FLOW_RADIUS = ARENA_SIZE;
   const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
   const FLOW_MAX = 32767;
@@ -1055,6 +1059,8 @@
     pitch: 0,
     elevation: 0,
     viewElevation: 0,
+    viewX: 5.5,
+    viewY: 5.5,
     verticalVelocity: 0,
     grounded: true,
     health: 100,
@@ -1323,6 +1329,8 @@
     player.y = arena.spawn.y;
     player.elevation = getArenaFloorHeightAt(player.x, player.y);
     player.viewElevation = player.elevation;
+    player.viewX = player.x;
+    player.viewY = player.y;
     player.verticalVelocity = 0;
     player.grounded = true;
     if (webgl) {
@@ -1755,13 +1763,13 @@
       rebuildWebGLMap();
       webgl.lastMapBuild = now;
     }
-    webgl.floor.position.set(player.x, -0.015, player.y);
-    webgl.ceiling.position.set(player.x, 5.6, player.y);
-    webgl.grid.position.set(player.x, 0.012, player.y);
+    webgl.floor.position.set(player.viewX, -0.015, player.viewY);
+    webgl.ceiling.position.set(player.viewX, 5.6, player.viewY);
+    webgl.grid.position.set(player.viewX, 0.012, player.viewY);
     const eyeY = player.viewElevation + PLAYER_EYE_HEIGHT + cameraBob * 0.0035;
     const pitchCos = Math.cos(player.pitch);
-    webgl.playerLight.position.set(player.x, eyeY + 0.32, player.y);
-    webgl.camera.position.set(player.x, eyeY, player.y);
+    webgl.playerLight.position.set(player.viewX, eyeY + 0.32, player.viewY);
+    webgl.camera.position.set(player.viewX, eyeY, player.viewY);
     const effectiveFov = FOV * 180 / Math.PI;
     if (Math.abs(webgl.lastCameraFov - effectiveFov) > 0.02) {
       webgl.camera.fov = effectiveFov;
@@ -1769,9 +1777,9 @@
       webgl.lastCameraFov = effectiveFov;
     }
     webgl.camera.lookAt(
-      player.x + Math.cos(player.angle) * pitchCos,
+      player.viewX + Math.cos(player.angle) * pitchCos,
       eyeY + Math.sin(player.pitch),
-      player.y + Math.sin(player.angle) * pitchCos
+      player.viewY + Math.sin(player.angle) * pitchCos
     );
     for (const enemy of enemies) {
       const mesh = enemy.webglMesh;
@@ -2721,6 +2729,8 @@
     player.angle = 0;
     player.pitch = 0;
     player.elevation = 0;
+    player.viewX = 0;
+    player.viewY = 0;
     player.verticalVelocity = 0;
     player.grounded = true;
     player.health = 100;
@@ -2961,29 +2971,59 @@
     player.movingAmount = lerp(player.movingAmount, moving, 1 - Math.exp(-dt * 12));
     cameraBob = Math.sin(player.bobPhase * 2) * 2.8 * player.movingAmount;
     updatePlayerElevation(dt);
+    updatePlayerViewPosition(dt);
   }
 
   function movePlayerBody(dx, dy) {
     const stepCount = Math.max(1, Math.ceil(Math.hypot(dx, dy) / PLAYER_MOVE_SUBSTEP));
     const stepX = dx / stepCount;
     const stepY = dy / stepCount;
-    const tryMove = (nextX, nextY) => {
-      if (circleHitsWall(nextX, nextY, PLAYER_RADIUS)) return false;
+    const canMoveTo = (nextX, nextY) => {
+      if (circleHitsWall(nextX, nextY, PLAYER_RADIUS + PLAYER_COLLISION_SKIN)) return false;
       const targetFloor = getArenaFloorHeightAt(nextX, nextY);
       if (targetFloor > player.elevation + PLAYER_STEP_HEIGHT) return false;
       if (!player.grounded && targetFloor > player.elevation + 0.02) return false;
+      return true;
+    };
+    const commitMove = (nextX, nextY) => {
+      const targetFloor = getArenaFloorHeightAt(nextX, nextY);
       player.x = nextX;
       player.y = nextY;
       if (player.grounded && targetFloor >= player.elevation) {
         player.elevation = targetFloor;
         player.verticalVelocity = 0;
       }
+    };
+    const tryMove = (nextX, nextY) => {
+      if (!canMoveTo(nextX, nextY)) return false;
+      commitMove(nextX, nextY);
       return true;
     };
 
     for (let step = 0; step < stepCount; step += 1) {
-      if (!tryMove(player.x + stepX, player.y + stepY)) {
-        if (!tryMove(player.x + stepX, player.y)) tryMove(player.x, player.y + stepY);
+      if (tryMove(player.x + stepX, player.y + stepY)) continue;
+
+      const contact = getCircleWallContact(player.x + stepX, player.y + stepY, PLAYER_RADIUS + PLAYER_COLLISION_SKIN);
+      if (contact) {
+        const intoWall = stepX * contact.x + stepY * contact.y;
+        if (intoWall < 0) {
+          const slideX = stepX - contact.x * intoWall;
+          const slideY = stepY - contact.y * intoWall;
+          if (Math.hypot(slideX, slideY) > 0.00001 && tryMove(player.x + slideX, player.y + slideY)) continue;
+        }
+      }
+
+      const xCandidate = { x: player.x + stepX, y: player.y };
+      const yCandidate = { x: player.x, y: player.y + stepY };
+      const canMoveX = canMoveTo(xCandidate.x, xCandidate.y);
+      const canMoveY = canMoveTo(yCandidate.x, yCandidate.y);
+      if (canMoveX && canMoveY) {
+        if (Math.abs(stepX) >= Math.abs(stepY)) commitMove(xCandidate.x, xCandidate.y);
+        else commitMove(yCandidate.x, yCandidate.y);
+      } else if (canMoveX) {
+        commitMove(xCandidate.x, xCandidate.y);
+      } else if (canMoveY) {
+        commitMove(yCandidate.x, yCandidate.y);
       }
     }
   }
@@ -3021,6 +3061,27 @@
     const blend = 1 - Math.exp(-response * dt);
     player.viewElevation = lerp(player.viewElevation, player.elevation, blend);
     if (Math.abs(player.viewElevation - player.elevation) < 0.0005) player.viewElevation = player.elevation;
+  }
+
+  function updatePlayerViewPosition(dt) {
+    const offsetX = player.x - player.viewX;
+    const offsetY = player.y - player.viewY;
+    const offsetLength = Math.hypot(offsetX, offsetY);
+    if (offsetLength > PLAYER_CAMERA_MAX_LAG) {
+      const scale = PLAYER_CAMERA_MAX_LAG / offsetLength;
+      player.viewX = player.x - offsetX * scale;
+      player.viewY = player.y - offsetY * scale;
+    }
+    const blend = 1 - Math.exp(-PLAYER_CAMERA_RESPONSE * dt);
+    const nextX = lerp(player.viewX, player.x, blend);
+    const nextY = lerp(player.viewY, player.y, blend);
+    if (circleHitsWall(nextX, nextY, PLAYER_CAMERA_RADIUS)) {
+      player.viewX = player.x;
+      player.viewY = player.y;
+      return;
+    }
+    player.viewX = nextX;
+    player.viewY = nextY;
   }
 
   function updateWeaponSystems(dt) {
@@ -3097,6 +3158,8 @@
     else if (fromCx < toCx) player.x = (fromCx + 1) * CHUNK_SIZE - clearDistance;
     else if (fromCy > toCy) player.y = fromCy * CHUNK_SIZE + clearDistance;
     else if (fromCy < toCy) player.y = (fromCy + 1) * CHUNK_SIZE - clearDistance;
+    player.viewX = player.x;
+    player.viewY = player.y;
   }
 
   function createSectorDoor(fromCx, fromCy, toCx, toCy, danger) {
@@ -4409,6 +4472,50 @@
       }
     }
     return false;
+  }
+
+  function getCircleWallContact(x, y, radius) {
+    const minX = Math.floor(x - radius);
+    const maxX = Math.floor(x + radius);
+    const minY = Math.floor(y - radius);
+    const maxY = Math.floor(y + radius);
+    let normalX = 0;
+    let normalY = 0;
+    let contactCount = 0;
+
+    for (let tileY = minY; tileY <= maxY; tileY += 1) {
+      for (let tileX = minX; tileX <= maxX; tileX += 1) {
+        if (!isWallTile(tileX, tileY)) continue;
+        const nearestX = clamp(x, tileX, tileX + 1);
+        const nearestY = clamp(y, tileY, tileY + 1);
+        let offsetX = x - nearestX;
+        let offsetY = y - nearestY;
+        const distance = Math.hypot(offsetX, offsetY);
+        if (distance >= radius) continue;
+        if (distance < 0.00001) {
+          const centerX = tileX + 0.5;
+          const centerY = tileY + 0.5;
+          if (Math.abs(x - centerX) >= Math.abs(y - centerY)) {
+            offsetX = x >= centerX ? 1 : -1;
+            offsetY = 0;
+          } else {
+            offsetX = 0;
+            offsetY = y >= centerY ? 1 : -1;
+          }
+        } else {
+          offsetX /= distance;
+          offsetY /= distance;
+        }
+        normalX += offsetX;
+        normalY += offsetY;
+        contactCount += 1;
+      }
+    }
+
+    if (contactCount === 0) return null;
+    const length = Math.hypot(normalX, normalY);
+    if (length < 0.00001) return null;
+    return { x: normalX / length, y: normalY / length };
   }
 
   function castRayInto(originX, originY, angle, maxDistance, out) {
