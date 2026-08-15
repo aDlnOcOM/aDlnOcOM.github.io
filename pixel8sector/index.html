@@ -108,6 +108,14 @@ button:focus-visible {
   mix-blend-mode: overlay;
 }
 
+html[data-performance-profile="low"] #scanlines {
+  opacity: 0.06;
+}
+
+html[data-performance-profile="low"] .hud-block {
+  backdrop-filter: none;
+}
+
 #damageFlash {
   position: absolute;
   inset: 0;
@@ -2231,7 +2239,17 @@ button:disabled {
             <div class="range-scale"><span>45°</span><span>120°</span></div>
           </div>
 
-          <p class="settings-help">Оружие всегда отображается справа фиксированной псевдо-изометрической камерой. ПКМ включает прицеливание только при установленном прицеле. Ограничение высоты: 1/4 экрана без прицеливания и 1/3 при прицеливании.</p>
+          <div class="view-setting">
+            <label class="view-setting-header" for="graphicsQuality"><span>Качество графики</span><strong id="graphicsQualityStatus">АВТО</strong></label>
+            <select id="graphicsQuality" class="craft-select">
+              <option value="auto">АВТОМАТИЧЕСКИ</option>
+              <option value="low">НИЗКОЕ · 60 FPS</option>
+              <option value="medium">СРЕДНЕЕ · 75 FPS</option>
+              <option value="high">ВЫСОКОЕ · 120 FPS</option>
+            </select>
+          </div>
+
+          <p class="settings-help">Низкое качество уменьшает число лучей, частоту кадров и визуальные эффекты без изменения механики. Рендер автоматически сохраняет полезную область на 4:3, 5:4, 16:9 и ультрашироких экранах. Оружие всегда отображается справа фиксированной псевдо-изометрической камерой; ПКМ включает прицеливание только при установленном прицеле.</p>
         </section>
 
         <section class="settings-panel" data-settings-panel="audio" hidden>
@@ -2435,9 +2453,22 @@ button:disabled {
   const MAX_ACTIVE_ORBS = 90;
   const WORLD_SEED = 0x4d4f4f44;
 
+  const GRAPHICS_QUALITY_STORAGE_KEY = 'pixel-sector-graphics-quality-v1';
+
+  function getGraphicsQualityPreference() {
+    try {
+      const value = localStorage.getItem(GRAPHICS_QUALITY_STORAGE_KEY);
+      return value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+    } catch {
+      return 'auto';
+    }
+  }
+
   function detectPerformanceProfile() {
     const forced = new URLSearchParams(window.location.search).get('quality');
     if (forced === 'low' || forced === 'medium' || forced === 'high') return forced;
+    const preference = getGraphicsQualityPreference();
+    if (preference !== 'auto') return preference;
 
     const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || VIEW_W);
     const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || VIEW_H);
@@ -2455,23 +2486,24 @@ button:disabled {
     return 'high';
   }
 
-  const PERFORMANCE_PROFILE = detectPerformanceProfile();
-  const PERFORMANCE_SETTINGS = Object.freeze({
+  const PERFORMANCE_SETTINGS_BY_PROFILE = Object.freeze({
     low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0 }),
     medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1 }),
     high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2 })
-  })[PERFORMANCE_PROFILE];
-  const ACTIVE_FRAME_INTERVAL = 1000 / PERFORMANCE_SETTINGS.maxFps;
-  const IDLE_FRAME_INTERVAL = 1000 / PERFORMANCE_SETTINGS.idleFps;
+  });
+  let performanceProfile = detectPerformanceProfile();
+  let performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[performanceProfile];
+  let activeFrameInterval = 1000 / performanceSettings.maxFps;
+  let idleFrameInterval = 1000 / performanceSettings.idleFps;
   const BASE_VIEW_ASPECT = VIEW_W / VIEW_H;
 
-  document.documentElement.dataset.performanceProfile = PERFORMANCE_PROFILE;
+  document.documentElement.dataset.performanceProfile = performanceProfile;
 
   let renderViewX = 0;
   let renderViewY = 0;
   let renderViewWidth = VIEW_W;
   let renderViewHeight = VIEW_H;
-  let RAY_COUNT = PERFORMANCE_SETTINGS.maxRays;
+  let RAY_COUNT = performanceSettings.maxRays;
   let COLUMN_WIDTH = VIEW_W / RAY_COUNT;
   let resizeRenderTimer = 0;
 
@@ -2558,6 +2590,8 @@ button:disabled {
   const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')];
   const viewFov = document.getElementById('viewFov');
   const viewFovValue = document.getElementById('viewFovValue');
+  const graphicsQuality = document.getElementById('graphicsQuality');
+  const graphicsQualityStatus = document.getElementById('graphicsQualityStatus');
   const settingsMusicVolume = document.getElementById('settingsMusicVolume');
   const settingsMusicVolumeValue = document.getElementById('settingsMusicVolumeValue');
   const settingsMusicMuteButton = document.getElementById('settingsMusicMuteButton');
@@ -3455,9 +3489,9 @@ button:disabled {
 
   function getTargetRayCount(cssWidth) {
     const visibleWidthRatio = renderViewWidth / VIEW_W;
-    const qualityLimit = Math.round(PERFORMANCE_SETTINGS.maxRays * visibleWidthRatio);
-    const pixelLimit = Math.round(cssWidth / PERFORMANCE_SETTINGS.targetColumnPixels);
-    return Math.max(64, Math.min(PERFORMANCE_SETTINGS.maxRays, qualityLimit, pixelLimit));
+    const qualityLimit = Math.round(performanceSettings.maxRays * visibleWidthRatio);
+    const pixelLimit = Math.round(cssWidth / performanceSettings.targetColumnPixels);
+    return Math.max(64, Math.min(performanceSettings.maxRays, qualityLimit, pixelLimit));
   }
 
   function refreshRenderViewport(force = false) {
@@ -3518,10 +3552,10 @@ button:disabled {
       rect.setAttribute('y', '0');
       rect.setAttribute('height', String(VIEW_H));
       rect.setAttribute('fill', '#20171a');
-      rect.setAttribute('stroke', PERFORMANCE_SETTINGS.wallStrokes ? '#37efff' : 'none');
-      rect.setAttribute('stroke-width', PERFORMANCE_SETTINGS.wallStrokes ? '0.6' : '0');
-      rect.setAttribute('stroke-opacity', PERFORMANCE_SETTINGS.wallStrokes ? '0.2' : '0');
-      if (PERFORMANCE_SETTINGS.wallStrokes) rect.setAttribute('paint-order', 'stroke fill');
+      rect.setAttribute('stroke', performanceSettings.wallStrokes ? '#37efff' : 'none');
+      rect.setAttribute('stroke-width', performanceSettings.wallStrokes ? '0.6' : '0');
+      rect.setAttribute('stroke-opacity', performanceSettings.wallStrokes ? '0.2' : '0');
+      if (performanceSettings.wallStrokes) rect.setAttribute('paint-order', 'stroke fill');
       fragment.appendChild(rect);
       wallColumns.push(rect);
     }
@@ -3599,6 +3633,9 @@ button:disabled {
 
     viewFov.addEventListener('input', () => {
       setViewFov(Number.parseInt(viewFov.value, 10));
+    });
+    graphicsQuality.addEventListener('change', () => {
+      setGraphicsQuality(graphicsQuality.value);
     });
 
     settingsTabs.addEventListener('click', (event) => {
@@ -4060,6 +4097,37 @@ button:disabled {
   function syncViewSettingsUi() {
     viewFov.value = String(viewFovDegrees);
     viewFovValue.textContent = `${viewFovDegrees}°`;
+    const preference = getGraphicsQualityPreference();
+    graphicsQuality.value = preference;
+    const labels = { low: 'НИЗКОЕ', medium: 'СРЕДНЕЕ', high: 'ВЫСОКОЕ' };
+    graphicsQualityStatus.textContent = preference === 'auto'
+      ? `АВТО · ${labels[performanceProfile]}`
+      : labels[performanceProfile];
+  }
+
+  function applyPerformanceProfile(profile) {
+    const nextProfile = PERFORMANCE_SETTINGS_BY_PROFILE[profile] ? profile : 'medium';
+    performanceProfile = nextProfile;
+    performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[nextProfile];
+    activeFrameInterval = 1000 / performanceSettings.maxFps;
+    idleFrameInterval = 1000 / performanceSettings.idleFps;
+    document.documentElement.dataset.performanceProfile = nextProfile;
+    lastRenderedTime = 0;
+    refreshRenderViewport(true);
+  }
+
+  function setGraphicsQuality(value) {
+    const preference = value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+    try {
+      if (preference === 'auto') localStorage.removeItem(GRAPHICS_QUALITY_STORAGE_KEY);
+      else localStorage.setItem(GRAPHICS_QUALITY_STORAGE_KEY, preference);
+    } catch {
+      // Настройка остаётся активной до закрытия вкладки, если хранилище недоступно.
+    }
+    const nextProfile = preference === 'auto' ? detectPerformanceProfile() : preference;
+    applyPerformanceProfile(nextProfile);
+    syncViewSettingsUi();
+    showMessage(`ГРАФИКА · ${graphicsQualityStatus.textContent}`, 0.9);
   }
 
   function setViewFov(value) {
@@ -4331,7 +4399,7 @@ button:disabled {
     requestAnimationFrame(frame);
 
     const active = !paused && !gameOver;
-    const frameInterval = active ? ACTIVE_FRAME_INTERVAL : IDLE_FRAME_INTERVAL;
+    const frameInterval = active ? activeFrameInterval : idleFrameInterval;
     if (lastRenderedTime === 0) lastRenderedTime = now - frameInterval;
     const sinceLastRender = now - lastRenderedTime;
     if (sinceLastRender + 0.25 < frameInterval) return;
@@ -5295,7 +5363,7 @@ button:disabled {
   }
 
   function renderWalls() {
-    const decimals = PERFORMANCE_SETTINGS.geometryDecimals;
+    const decimals = performanceSettings.geometryDecimals;
     for (let i = 0; i < RAY_COUNT; i += 1) {
       const rayAngle = player.angle - HALF_FOV + ((i + 0.5) / RAY_COUNT) * FOV;
       castRayInto(player.x, player.y, rayAngle, MAX_RAY_DISTANCE, rayScratch);
@@ -5319,7 +5387,7 @@ button:disabled {
         setSvgAttributeCached(rect, 'stroke-opacity', clamp(1 - correctedDistance / 42, 0.3, 0.95).toFixed(2));
       } else {
         setSvgAttributeCached(rect, 'fill', wallPalette[material][side][shade]);
-        if (PERFORMANCE_SETTINGS.wallStrokes) {
+        if (performanceSettings.wallStrokes) {
           setSvgAttributeCached(rect, 'stroke', neonWallColors[material]);
           setSvgAttributeCached(rect, 'stroke-width', correctedDistance < 7 ? '1.05' : '0.58');
           setSvgAttributeCached(rect, 'stroke-opacity', clamp(0.62 - correctedDistance * 0.013, 0.13, 0.58).toFixed(2));
