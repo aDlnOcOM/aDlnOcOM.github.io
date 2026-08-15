@@ -8,10 +8,18 @@
 
 const STORAGE_KEY = "null15-infinite-roll-save-v1";
 const SETTINGS_KEY = "null15-infinite-roll-settings-v1";
-const BUILD = "2.0.0";
+const BUILD = "2.1.0";
 const BOARD_ANIMATION_MS = 180;
 const DICE = ["", "001", "010", "011", "100", "101", "110"];
 const PRIME_VALUES = new Set([2, 3, 5, 7, 11, 13]);
+const DEFAULT_SETTINGS = {
+  sound: true,
+  theme: "void",
+  highContrast: false,
+  tileLabels: "binary",
+  controls: "pointer",
+};
+const THEME_COLORS = { void: "#05070a", amber: "#100a04", matrix: "#020b08" };
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -37,6 +45,17 @@ function hashSeed(seed) {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0 || 0x9e3779b9;
+}
+
+function normalizeSettings(settings = {}) {
+  if (!settings || typeof settings !== "object") return { ...DEFAULT_SETTINGS };
+  return {
+    sound: typeof settings.sound === "boolean" ? settings.sound : DEFAULT_SETTINGS.sound,
+    theme: ["void", "amber", "matrix"].includes(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme,
+    highContrast: Boolean(settings.highContrast),
+    tileLabels: ["binary", "decimal", "both"].includes(settings.tileLabels) ? settings.tileLabels : DEFAULT_SETTINGS.tileLabels,
+    controls: ["pointer", "tile"].includes(settings.controls) ? settings.controls : DEFAULT_SETTINGS.controls,
+  };
 }
 
 const PATTERNS = [
@@ -251,6 +270,17 @@ const RELICS = [
   { id: "blood_cache", name: "KILL CACHE", desc: "Завершение системного процесса восстанавливает 3 INTEGRITY." },
   { id: "static_ward", name: "FIREWALL RULE", desc: "Каждый breach начинается с 10 FIREWALL." },
   { id: "last_packet", name: "LAST ACK", desc: "Один раз за exploit chain предотвращает disconnect и возвращает 25% INTEGRITY." },
+];
+
+const KERNEL_DIRECTIVES = [
+  { id: "warm_cache", name: "WARM CACHE", rarity: "COMMON", desc: "Каждый breach начинается с +1 BIT CHARGE за уровень." },
+  { id: "guard_page", name: "GUARD PAGE", rarity: "COMMON", desc: "Каждый breach начинается с +5 FIREWALL за уровень." },
+  { id: "bounty_daemon", name: "BOUNTY DAEMON", rarity: "UNCOMMON", desc: "+15% BUG BOUNTY за выигранный breach за уровень." },
+  { id: "compiler_branch", name: "COMPILER BRANCH", rarity: "UNCOMMON", desc: "Первый атакующий exploit каждого breach получает +18% мощности за уровень." },
+  { id: "ordered_cache", name: "ORDERED CACHE", rarity: "RARE", desc: "Первое попадание каждой уникальной ячейки в правильный адрес даёт +1 BIT CHARGE за уровень." },
+  { id: "quiet_commit", name: "QUIET COMMIT", rarity: "UNCOMMON", desc: "В конце каждого stack frame дополнительно стирает 3 TRACE за уровень." },
+  { id: "recovery_hook", name: "RECOVERY HOOK", rarity: "RARE", desc: "После каждого breach восстанавливает 2 INTEGRITY за уровень." },
+  { id: "entropy_lease", name: "ENTROPY LEASE", rarity: "RARE", desc: "Первые RANDOMIZE каждого breach без TRACE: по одному за уровень." },
 ];
 
 const ENEMY_DEFS = [
@@ -581,7 +611,7 @@ const TUTORIAL_STEPS = [
     screen: "floorComplete",
     target: "#nextFloorButton",
     title: "Sandbox пройден",
-    body: "Вы выполнили полный runtime: адреса → breach → loot → upgrade. Со второго stack frame появятся ветвления и сложные кластеры. Каждый третий frame заканчивается root-процессом.",
+    body: "Вы выполнили полный runtime: адреса → breach → loot → upgrade. Со второго stack frame появятся ветвления, сложные кластеры и выбор одной из трёх <strong>Kernel Directives</strong>: это карточные daemon-правила, которые накапливаются до III уровня. Каждый третий frame заканчивается root-процессом.",
     hint: "Нажмите «Следующий stack frame», чтобы начать процедурную exploit chain.",
     completeOn: { name: "next_floor" },
     next: null,
@@ -601,13 +631,12 @@ const Game = {
     combat: null,
     currentRoom: null,
     rewards: null,
-    settings: {
-      sound: true,
-    },
+    settings: { ...DEFAULT_SETTINGS },
   },
 
   init() {
     this.loadSettings();
+    this.applyDisplaySettings();
     this.cacheDom();
     this.bindGlobalEvents();
     this.state.seedDraft = this.makeSeed();
@@ -622,6 +651,7 @@ const Game = {
     this.runHud = $("#runHud");
     this.menuButton = $("#menuButton");
     this.soundButton = $("#soundButton");
+    this.settingsButton = $("#settingsButton");
     this.inventoryButton = $("#inventoryButton");
     this.tutorialRoot = $("#tutorialRoot");
   },
@@ -630,6 +660,7 @@ const Game = {
     $("#brandButton").addEventListener("click", () => this.handleBrandClick());
     $("#helpButton").addEventListener("click", () => this.openCodex());
     this.soundButton.addEventListener("click", () => this.toggleSound());
+    this.settingsButton.addEventListener("click", () => this.openSettings());
     this.inventoryButton.addEventListener("click", () => this.openInventory());
     this.menuButton.addEventListener("click", () => this.openPauseMenu());
     document.addEventListener("keydown", (event) => this.handleKeydown(event));
@@ -711,10 +742,26 @@ const Game = {
   loadSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-      if (saved && typeof saved.sound === "boolean") this.state.settings.sound = saved.sound;
+      this.state.settings = normalizeSettings(saved);
     } catch {
-      this.state.settings.sound = true;
+      this.state.settings = { ...DEFAULT_SETTINGS };
     }
+  },
+
+  applyDisplaySettings() {
+    const settings = this.state.settings = normalizeSettings(this.state.settings);
+    document.documentElement.dataset.nullTheme = settings.theme;
+    document.documentElement.dataset.nullContrast = settings.highContrast ? "high" : "normal";
+    $("meta[name='theme-color']")?.setAttribute("content", THEME_COLORS[settings.theme]);
+  },
+
+  updateSettings(patch) {
+    this.state.settings = normalizeSettings({ ...this.state.settings, ...patch });
+    this.applyDisplaySettings();
+    this.saveSettings();
+    if (this.state.screen === "combat" && this.state.combat) this.renderCombat();
+    else this.updateChrome();
+    this.openSettings();
   },
 
   saveSettings() {
@@ -812,6 +859,8 @@ const Game = {
     const run = this.state.run;
     run.relics ||= [];
     run.abilityLevels ||= {};
+    run.directives = run.directives && typeof run.directives === "object" ? run.directives : {};
+    run.pendingDirectives = Array.isArray(run.pendingDirectives) ? run.pendingDirectives.filter((id) => KERNEL_DIRECTIVES.some((directive) => directive.id === id)).slice(0, 3) : [];
     run.path ||= [];
     run.stages ||= this.generateFloorStages(run.floor, run.roomCount || 6);
     run.nextCombatMods ||= [];
@@ -866,6 +915,7 @@ const Game = {
       combat: () => this.renderCombat(),
       event: () => this.renderEvent(),
       reward: () => this.renderReward(),
+      directive: () => this.renderDirectiveDraft(),
       floorComplete: () => this.renderFloorComplete(),
       gameover: () => this.renderGameOver(),
       victory: () => this.renderVictory(),
@@ -901,7 +951,7 @@ const Game = {
         <div class="title-copy">
           <p class="eyebrow">STACK OVERFLOW // PROGRAMMING // ZERO-DAY ROGUELIKE</p>
           <h1><span>NULL-15</span><span class="thin">ZERO-DAY STACK</span></h1>
-          <p class="title-lede">Сдвигайте ячейки памяти, компилируйте эксплойты и взламывайте stack frame за stack frame. Каждый bit-shift приближает системный вызов — думайте как программист, действуйте как pentester.</p>
+          <p class="title-lede">После гамма-всплеска городские сети превратились в автономные защитные стеки, а NULL-адрес начал отвечать. Сдвигайте ячейки памяти, компилируйте эксплойты и взламывайте stack frame за stack frame. Каждый bit-shift приближает системный вызов — думайте как программист, действуйте как pentester.</p>
           <div class="title-actions">
             <button id="newRunButton" class="primary-button" type="button">Новая exploit chain</button>
             <button id="continueButton" class="secondary-button" type="button" ${canContinue ? "" : "disabled"}>Resume process</button>
@@ -1029,6 +1079,8 @@ const Game = {
       luck: 0,
       relics: [],
       abilityLevels: {},
+      directives: {},
+      pendingDirectives: [],
       nextCombatMods: [],
       score: 0,
       kills: 0,
@@ -1157,11 +1209,13 @@ const Game = {
               <div class="relic-tags">
                 ${run.relics.length ? run.relics.map((id) => `<span class="tag">${RELICS.find((relic) => relic.id === id)?.name || id}</span>`).join("") : `<span class="tag">NO MODULES</span>`}
               </div>
+              <div class="directive-tags">${this.activeDirectives().length ? this.activeDirectives().map((directive) => `<span class="directive-tag">${directive.name} ×${this.directiveLevel(directive.id)}</span>`).join("") : `<span class="directive-tag">NO DAEMONS</span>`}</div>
             </div>
             <div class="run-list">
               <div class="run-list-item"><span>Endpoints closed</span><strong>${run.path.length}</strong></div>
               <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
               <div class="run-list-item"><span>Exploits executed</span><strong>${run.comboCount}</strong></div>
+              <div class="run-list-item"><span>Kernel directives</span><strong>${this.activeDirectives().length}</strong></div>
               <div class="run-list-item"><span>Root processes</span><strong>${run.bossesDefeated}</strong></div>
               <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
               <div class="run-list-item"><span>Seed</span><strong>${escapeHTML(run.seed)}</strong></div>
@@ -1256,6 +1310,59 @@ Object.assign(Game, {
   randomAvailableRelic() {
     const available = RELICS.filter((relic) => !this.state.run.relics.includes(relic.id));
     return this.pick(available) || null;
+  },
+
+  directiveLevel(id) {
+    return clamp(Math.floor(Number(this.state.run?.directives?.[id]) || 0), 0, 3);
+  },
+
+  activeDirectives() {
+    return KERNEL_DIRECTIVES.filter((directive) => this.directiveLevel(directive.id) > 0);
+  },
+
+  generateDirectiveOffers() {
+    const pool = KERNEL_DIRECTIVES.filter((directive) => this.directiveLevel(directive.id) < 3);
+    return this.shuffle(pool).slice(0, Math.min(3, pool.length)).map((directive) => directive.id);
+  },
+
+  renderDirectiveDraft() {
+    const run = this.state.run;
+    if (!run) return this.goToTitle();
+    if (!run.pendingDirectives?.length) run.pendingDirectives = this.generateDirectiveOffers();
+    const offers = run.pendingDirectives.map((id) => KERNEL_DIRECTIVES.find((directive) => directive.id === id)).filter(Boolean);
+    if (!offers.length) {
+      this.state.screen = "map";
+      this.saveGame();
+      this.render();
+      return;
+    }
+    this.screenEl.innerHTML = `
+      <section class="directive-screen">
+        <div class="section-heading directive-heading">
+          <div><p class="eyebrow">KERNEL HANDSHAKE // FRAME ${String(run.floor).padStart(2, "0")}</p><h2>Выберите daemon directive</h2></div>
+          <p>Как в колоде эксплойтов: один daemon остаётся до конца chain и может быть повышен до III уровня. Выберите направление билда перед открытием endpoint.</p>
+        </div>
+        <div class="directive-grid">
+          ${offers.map((directive, index) => `<button class="directive-card ${index === 0 ? "featured" : ""}" data-directive-id="${directive.id}" type="button"><span class="reward-rarity">${directive.rarity} // LEVEL ${this.directiveLevel(directive.id) + 1}</span><h3>${directive.name}</h3><p>${directive.desc}</p><span class="choice-cost">INSTALL DAEMON</span></button>`).join("")}
+        </div>
+        <p class="directive-note">Уже активны: ${this.activeDirectives().length ? this.activeDirectives().map((directive) => `${directive.name} ×${this.directiveLevel(directive.id)}`).join(" · ") : "пока нет"}.</p>
+      </section>
+    `;
+    $$('[data-directive-id]', this.screenEl).forEach((button) => button.addEventListener("click", () => this.chooseDirective(button.dataset.directiveId)));
+  },
+
+  chooseDirective(id) {
+    const run = this.state.run;
+    if (!run?.pendingDirectives?.includes(id)) return;
+    const directive = KERNEL_DIRECTIVES.find((entry) => entry.id === id);
+    if (!directive) return;
+    run.directives[id] = Math.min(3, this.directiveLevel(id) + 1);
+    run.pendingDirectives = [];
+    this.state.screen = "map";
+    this.toast(`${directive.name}: daemon level ${run.directives[id]} installed.`, "success");
+    this.saveGame();
+    this.render();
+    this.beep(740, 0.07, "triangle", 0.02);
   },
 
   renderEvent() {
@@ -1573,11 +1680,12 @@ Object.assign(Game, {
           <div class="event-icon">${actComplete ? "∞" : "↑"}</div>
           <p class="eyebrow">${actComplete ? "ROOT ACCESS GRANTED" : `STACK FRAME ${String(run.floor).padStart(2, "0")} COMPILED`}</p>
           <h2>${actComplete ? "Три root-процесса завершены" : "Указатель уходит глубже в стек"}</h2>
-          <p class="event-copy" style="margin-inline:auto">${actComplete ? "Основная exploit chain завершена. Теперь root-процессы будут возвращаться с повышенной мощностью, двойными runtime-модификаторами и более длинными frame." : "Часть INTEGRITY восстановлена, BIT CHARGE стабилизирован, TRACE немного снижен. Следующий stack frame длиннее и опаснее."}</p>
+          <p class="event-copy" style="margin-inline:auto">${actComplete ? "Основная exploit chain завершена. Теперь root-процессы будут возвращаться с повышенной мощностью, двойными runtime-модификаторами и более длинными frame." : "Часть INTEGRITY восстановлена, BIT CHARGE стабилизирован, TRACE немного снижен. Перед следующим stack frame ядро предложит три daemon directive — выберите одну карту для развития build."}</p>
           <div class="run-list" style="max-width:520px;margin:0 auto 20px;text-align:left">
             <div class="run-list-item"><span>Reputation</span><strong>${Math.floor(run.score)}</strong></div>
             <div class="run-list-item"><span>Processes terminated</span><strong>${run.kills}</strong></div>
             <div class="run-list-item"><span>Exploits executed</span><strong>${run.comboCount}</strong></div>
+            <div class="run-list-item"><span>Kernel directives</span><strong>${this.activeDirectives().length}</strong></div>
             <div class="run-list-item"><span>TRACE</span><strong>${run.heat}</strong></div>
           </div>
           <div class="button-row" style="justify-content:center">
@@ -1607,10 +1715,11 @@ Object.assign(Game, {
     run.stages = this.generateFloorStages(run.floor, run.roomCount);
     run.path = [];
     run.armor = 0;
-    run.heat = Math.max(0, run.heat - 5);
+    run.heat = Math.max(0, run.heat - 5 - this.directiveLevel("quiet_commit") * 3);
     run.hp = Math.min(run.maxHp, run.hp + Math.ceil(run.maxHp * 0.12));
     run.energy = Math.max(run.energy, Math.ceil(run.maxEnergy * 0.5));
-    this.state.screen = "map";
+    run.pendingDirectives = this.generateDirectiveOffers();
+    this.state.screen = run.pendingDirectives.length ? "directive" : "map";
     this.saveGame();
     this.render();
     this.beep(250, 0.08, "sawtooth", 0.015);
@@ -1739,6 +1848,8 @@ Object.assign(Game, {
       blackVectorTiles: [],
       zeroTraceMoves: 0,
       rerolledThisCycle: false,
+      directiveCorrectTiles: [],
+      entropyLeaseUses: 0,
       exploitUsed: false,
       brokenD6Used: false,
       comboActivations: 0,
@@ -1753,6 +1864,8 @@ Object.assign(Game, {
     if (this.hasRelic("static_ward")) run.armor += 10;
     if (this.hasRelic("dead_clock")) this.state.combat.freeMoves += 2;
     if (this.hasRelic("chrome_memory")) this.state.combat.corruptionShield += 1;
+    run.energy = Math.min(run.maxEnergy, run.energy + this.directiveLevel("warm_cache"));
+    run.armor += this.directiveLevel("guard_page") * 5;
 
     for (const modifier of run.nextCombatMods || []) {
       if (modifier === "overcharge") {
@@ -2009,7 +2122,13 @@ Object.assign(Game, {
     const combat = this.state.combat;
     if (!combat || run.energy < 1) return;
     run.energy -= 1;
-    run.heat += 1;
+    const leasedEntropy = (combat.entropyLeaseUses || 0) < this.directiveLevel("entropy_lease");
+    if (leasedEntropy) {
+      combat.entropyLeaseUses = (combat.entropyLeaseUses || 0) + 1;
+      this.log("ENTROPY LEASE оплачивает первый RANDOMIZE без TRACE.", "success");
+    } else {
+      run.heat += 1;
+    }
     this.rollDice(false, true);
     this.log(`RANDOMIZE: ZERO=${DICE[combat.dice[0]]} / ONE=${DICE[combat.dice[1]]}.`, "system");
     this.beep(640, 0.04, "square", 0.014);
@@ -2068,7 +2187,7 @@ Object.assign(Game, {
                 ${combat.flashMessage && Date.now() < combat.flashUntil ? `<div class="board-message"><span>${escapeHTML(combat.flashMessage)}</span></div>` : ""}
               </div>
               <div style="display:flex;justify-content:space-between;gap:12px;margin-top:10px;color:var(--muted);font-size:11px">
-                <span>COMPILE ${this.correctCount()} / 15</span><span>NULL TRACE ${combat.pathTiles.length}</span><span>BIT-SHIFTS ${combat.totalMoves}</span>
+                <span>COMPILE ${this.correctCount()} / 15</span><span>NULL TRACE ${combat.pathTiles.length}</span><span>${this.state.settings.controls === "pointer" ? "NULL MODE" : "TILE MODE"}</span><span>BIT-SHIFTS ${combat.totalMoves}</span>
               </div>
             </section>
 
@@ -2129,8 +2248,15 @@ Object.assign(Game, {
     this.scheduleTutorial();
   },
 
+  tileLabelHTML(value) {
+    const mode = this.state.settings.tileLabels;
+    if (mode === "decimal") return `<span class="tile-number decimal">${value}</span>`;
+    if (mode === "both") return `<span class="tile-number both">${value}<small>0b${bitAddress(value)}</small></span>`;
+    return `<span class="tile-number">${bitAddress(value)}</span>`;
+  },
+
   boardTileHTML(value, index, hintIndex) {
-    if (!value) return `<button class="tile blank" data-tile-index="${index}" data-tile-value="0" type="button" disabled aria-label="NULL pointer"></button>`;
+    if (!value) return `<button class="tile blank" data-tile-index="${index}" data-tile-value="0" type="button" disabled aria-label="NULL pointer"><span class="tile-blank-label">NULL</span></button>`;
     const combat = this.state.combat;
     const status = this.tileState(value);
     const movable = this.canMoveTile(index);
@@ -2148,9 +2274,9 @@ Object.assign(Game, {
     ].filter(Boolean).join(" ");
     const stateIcon = status.locked > 0 ? `MUTEX ${status.locked}` : status.corrupted > 0 ? `BUG ${status.corrupted}` : status.protected > 0 ? `CONST` : index === hintIndex ? "POINTER" : "";
     return `
-      <button class="${classes}" data-tile-index="${index}" data-tile-value="${value}" type="button" ${movable ? "" : "disabled"} aria-label="Ячейка ${value}, entropy ${DICE[this.faceForValue(value)]}">
+      <button class="${classes}" data-tile-index="${index}" data-tile-value="${value}" type="button" ${movable ? "" : "disabled"} aria-label="Ячейка ${value}, адрес ${bitAddress(value)}, entropy ${DICE[this.faceForValue(value)]}">
         <span class="tile-state">${stateIcon}</span>
-        <span class="tile-number">${bitAddress(value)}</span>
+        ${this.tileLabelHTML(value)}
         <span class="tile-face">${DICE[this.faceForValue(value)]}</span>
       </button>
     `;
@@ -2266,6 +2392,13 @@ Object.assign(Game, {
       this.state.run.order += 1;
       this.gainEnergy(1, false);
       this.log(`Ячейка ${value} записана по правильному адресу.`, "success");
+      const cachedTiles = combat.directiveCorrectTiles ||= [];
+      if (this.directiveLevel("ordered_cache") > 0 && !cachedTiles.includes(value)) {
+        cachedTiles.push(value);
+        const cachedEnergy = this.directiveLevel("ordered_cache");
+        this.gainEnergy(cachedEnergy, false);
+        this.log(`ORDERED CACHE возвращает ${cachedEnergy} BIT CHARGE за уникальный корректный адрес.`, "success");
+      }
     } else {
       this.gainEnergy(1, false);
     }
@@ -3004,10 +3137,12 @@ Object.assign(Game, {
     const isBoss = combat.roomType === "boss";
     if (isBoss) run.bossesDefeated += 1;
     const baseCredits = this.randomInt(12, 22) + run.floor * 3 + (combat.roomType === "elite" ? 18 : isBoss ? 35 : 0);
-    const creditMultiplier = this.hasRelic("black_coin") && run.heat >= 30 ? 1.5 : 1;
+    const creditMultiplier = (this.hasRelic("black_coin") && run.heat >= 30 ? 1.5 : 1) * (1 + this.directiveLevel("bounty_daemon") * 0.15);
     run.credits += Math.round(baseCredits * creditMultiplier);
     run.score += Math.max(0, 80 + run.floor * 25 - combat.totalMoves * 0.7);
     run.energy = Math.min(run.maxEnergy, run.energy + 2);
+    const recovery = this.directiveLevel("recovery_hook") * 2;
+    if (recovery) run.hp = Math.min(run.maxHp, run.hp + recovery);
     this.state.rewards = this.generateRewards(combat.roomType);
     this.state.screen = "reward";
     this.saveGame();
@@ -3163,6 +3298,11 @@ Object.assign(Game, {
       this.log("BRANCH PREDICTOR усиливает payload на 50%.", "success");
     }
     if (attacking && this.hasRelic("prime_skull") && evaluation.group.some((value) => PRIME_VALUES.has(value))) multiplier *= 1.2;
+    if (attacking && combat.comboActivations === 1 && this.directiveLevel("compiler_branch") > 0) {
+      const bonus = this.directiveLevel("compiler_branch") * 18;
+      multiplier *= 1 + bonus / 100;
+      this.log(`COMPILER BRANCH усиливает первый payload breach на ${bonus}%.`, "success");
+    }
 
     const basePotency = 5 + strength * 4 + Math.floor(this.state.run.floor * 0.6);
     const comboName = this.comboName();
@@ -3594,6 +3734,32 @@ Object.assign(Game, {
     this.finishRoom();
   },
 
+  openSettings() {
+    const settings = this.state.settings = normalizeSettings(this.state.settings);
+    const themeButton = (id, label) => `<button class="settings-choice ${settings.theme === id ? "selected" : ""}" data-settings-theme="${id}" type="button"><i class="theme-swatch ${id}"></i>${label}</button>`;
+    this.modalRoot.innerHTML = `
+      <div class="modal-backdrop" role="presentation">
+        <section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+          <div class="modal-header"><h2 id="settingsTitle">DISPLAY // INPUT CONFIG</h2><button class="icon-button" data-close-modal type="button">×</button></div>
+          <div class="modal-body settings-body">
+            <section class="settings-section"><h3>Color profile</h3><p>Тема меняет интерфейс, фон и подсветки — игровые данные и seed не затрагиваются.</p><div class="settings-choice-grid">${themeButton("void", "NULL VOID")}${themeButton("amber", "AMBER TERMINAL")}${themeButton("matrix", "MATRIX SIGNAL")}</div></section>
+            <section class="settings-section"><h3>Readability</h3><label class="settings-toggle"><input data-settings-contrast type="checkbox" ${settings.highContrast ? "checked" : ""}><span><strong>High contrast</strong><small>Усиливает границы, текст и состояние доступных ячеек.</small></span></label></section>
+            <section class="settings-section"><h3>Tile labels</h3><p>Пятнашки могут показывать привычные числа, бинарные адреса или оба значения.</p><div class="settings-choice-grid tile-label-choices"><button class="settings-choice ${settings.tileLabels === "binary" ? "selected" : ""}" data-settings-label="binary" type="button">BINARY<br><small>0b0001</small></button><button class="settings-choice ${settings.tileLabels === "decimal" ? "selected" : ""}" data-settings-label="decimal" type="button">DECIMAL<br><small>1–15</small></button><button class="settings-choice ${settings.tileLabels === "both" ? "selected" : ""}" data-settings-label="both" type="button">BOTH<br><small>1 · 0b0001</small></button></div></section>
+            <section class="settings-section"><h3>Keyboard control</h3><p>Кликом всегда выбирается соседняя плитка; эта настройка меняет смысл WASD и стрелок.</p><div class="settings-choice-grid control-choices"><button class="settings-choice ${settings.controls === "pointer" ? "selected" : ""}" data-settings-controls="pointer" type="button"><strong>MOVE NULL</strong><small>Направление двигает нулевую плитку / указатель.</small></button><button class="settings-choice ${settings.controls === "tile" ? "selected" : ""}" data-settings-controls="tile" type="button"><strong>MOVE TILE</strong><small>Инверсия: направление сдвигает соседнюю числовую плитку.</small></button></div></section>
+            <section class="settings-section"><h3>Audio</h3><label class="settings-toggle"><input data-settings-sound type="checkbox" ${settings.sound ? "checked" : ""}><span><strong>Terminal sound</strong><small>Короткие сигналы подтверждают bit-shift, exploit и переход между frame.</small></span></label></section>
+          </div>
+        </section>
+      </div>
+    `;
+    $$('[data-settings-theme]', this.modalRoot).forEach((button) => button.addEventListener("click", () => this.updateSettings({ theme: button.dataset.settingsTheme })));
+    $$('[data-settings-label]', this.modalRoot).forEach((button) => button.addEventListener("click", () => this.updateSettings({ tileLabels: button.dataset.settingsLabel })));
+    $$('[data-settings-controls]', this.modalRoot).forEach((button) => button.addEventListener("click", () => this.updateSettings({ controls: button.dataset.settingsControls })));
+    $("[data-settings-contrast]", this.modalRoot)?.addEventListener("change", (event) => this.updateSettings({ highContrast: event.target.checked }));
+    $("[data-settings-sound]", this.modalRoot)?.addEventListener("change", (event) => this.updateSettings({ sound: event.target.checked }));
+    this.bindModalClose();
+    requestAnimationFrame(() => $("[data-close-modal]", this.modalRoot)?.focus());
+  },
+
   openCodex(section = "overview") {
     const heroesHTML = HEROES.map((hero) => `
       <div class="codex-section">
@@ -3605,6 +3771,7 @@ Object.assign(Game, {
     const patterns = PATTERNS.map((entry) => `<li><strong>${entry.name}</strong> — ${entry.desc}</li>`).join("");
     const effects = EFFECTS.map((entry) => `<li><strong>${entry.name}</strong> — ${entry.label}</li>`).join("");
     const protocols = PROTOCOLS.map((entry) => `<li><strong>${entry.name}</strong> — ${entry.desc}</li>`).join("");
+    const directives = KERNEL_DIRECTIVES.map((entry) => `<li><strong>${entry.name}</strong> — ${entry.desc}</li>`).join("");
     this.modalRoot.innerHTML = `
       <div class="modal-backdrop" role="presentation">
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="codexTitle">
@@ -3619,7 +3786,7 @@ Object.assign(Game, {
               <div class="codex-section">
                 <h3>Input map</h3>
                 <ul>
-                  <li>WASD / стрелки — перемещать NULL pointer.</li>
+                  <li>WASD / стрелки — ${this.state.settings.controls === "pointer" ? "перемещать NULL pointer" : "сдвигать числовую плитку"}; режим можно сменить в ◐.</li>
                   <li>Клик по подсвеченной ячейке — выполнить bit-shift.</li>
                   <li>1–5 — выполнить команду operator process.</li>
                   <li>Space — запустить скомпилированный эксплойт.</li>
@@ -3627,6 +3794,16 @@ Object.assign(Game, {
                   <li>I — открыть process stack.</li>
                   <li>Esc — system menu или закрытие окна.</li>
                 </ul>
+              </div>
+              <div class="codex-section">
+                <h3>Kernel directives</h3>
+                <p>После каждого stack frame ядро предлагает три карты. Выберите одну: она становится постоянным daemon-правилом текущей exploit chain и может вырасти до III уровня. Это слой долгосрочных синергий поверх exploit-модулей и команд.</p>
+                <ul>${directives}</ul>
+              </div>
+              <div class="codex-section">
+                <h3>Архив ZERO-DAY</h3>
+                <p>После гамма-всплеска от экспериментального коллайдера городские сети стали автономными защитными стекaми. Вы не ломаете обычную программу: каждый frame — это уцелевший сегмент городской памяти, а operator processes — личности, собранные из аварийных дампов.</p>
+                <p>NULL — не пустота, а адрес, который научился отвечать. Когда pointer достигает root-server, архив пытается переписать собственное прошлое.</p>
               </div>
               <div class="codex-section">
                 <h3>Exploit compiler: 192 сборки</h3>
@@ -3753,7 +3930,8 @@ Object.assign(Game, {
     if (Object.hasOwn(directionKeys, event.key)) {
       event.preventDefault();
       const blank = this.state.combat.board.indexOf(0);
-      const target = blank + directionKeys[event.key];
+      const direction = directionKeys[event.key] * (this.state.settings.controls === "tile" ? -1 : 1);
+      const target = blank + direction;
       if (target >= 0 && target < 16) {
         const blankRow = Math.floor(blank / 4);
         const targetRow = Math.floor(target / 4);
@@ -3797,6 +3975,9 @@ Object.assign(Game, {
       if (!relic) return `<div class="inventory-slot"><strong>EMPTY MODULE SLOT</strong><p>Exploit-модуль можно получить после breach, из DATA DUMP или PACKAGE REPOSITORY.</p></div>`;
       return `<div class="inventory-slot filled"><strong>${relic.name}</strong><p>${relic.desc}</p></div>`;
     }).join("");
+    const directiveSlots = this.activeDirectives().length
+      ? this.activeDirectives().map((directive) => `<div class="inventory-slot directive"><strong>${directive.name} ×${this.directiveLevel(directive.id)}</strong><p>${directive.desc}</p></div>`).join("")
+      : `<div class="inventory-slot"><strong>NO KERNEL DIRECTIVES</strong><p>После каждого stack frame ядро предложит три daemon-карты. Одна выбранная карта остаётся в process stack.</p></div>`;
     const abilityRows = hero.abilities.map((ability, index) => {
       const level = run.abilityLevels[ability.id] || 0;
       return `
@@ -3829,6 +4010,7 @@ Object.assign(Game, {
               </section>
               <div class="inventory-content">
                 <section class="inventory-section"><h3>Exploit modules</h3><div class="inventory-slot-grid">${relicSlots}</div></section>
+                <section class="inventory-section"><h3>Kernel directives</h3><div class="inventory-slot-grid">${directiveSlots}</div></section>
                 <section class="inventory-section"><h3>Command versions</h3><div class="inventory-ability-list">${abilityRows}</div></section>
               </div>
             </div>
