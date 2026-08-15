@@ -3512,7 +3512,9 @@ button:disabled {
       health: 58,
       speed: 1.18,
       radius: 0.32,
-      height: 1.18,
+      height: 1.54,
+      headCenter: 1.3,
+      headRadius: 0.27,
       aspect: 100 / 130,
       damage: 10,
       attackDelay: 0.92,
@@ -3527,7 +3529,9 @@ button:disabled {
       health: 122,
       speed: 0.86,
       radius: 0.39,
-      height: 1.25,
+      height: 1.54,
+      headCenter: 1.3,
+      headRadius: 0.27,
       aspect: 110 / 130,
       damage: 9,
       attackDelay: 1.28,
@@ -3542,7 +3546,9 @@ button:disabled {
       health: 340,
       speed: 0.72,
       radius: 0.49,
-      height: 1.58,
+      height: 1.86,
+      headCenter: 1.51,
+      headRadius: 0.32,
       aspect: 130 / 150,
       damage: 18,
       attackDelay: 1.7,
@@ -4084,15 +4090,37 @@ button:disabled {
     for (const projectile of projectiles) if (!projectile.webglMesh) projectile.webglMesh = createWebGLProjectileMesh(projectile.kind);
   }
 
-  function addWebGLEffect(x, y, color, strong = false) {
+  function addWebGLEffect(x, y, color, strong = false, elevation = getArenaFloorHeightAt(x, y) + 0.72) {
     if (!webgl || !performanceSettings.effects) return;
     const mesh = new three.Mesh(
       new three.OctahedronGeometry(strong ? 0.27 : 0.14, 0),
       new three.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false })
     );
-    mesh.position.set(x, 0.72, y);
+    mesh.position.set(x, elevation, y);
     webgl.effectGroup.add(mesh);
     webgl.effects.push({ mesh, born: performance.now(), ttl: strong ? 250 : 150, strong });
+  }
+
+  function addWebGLTracer(angle, pitch, horizontalDistance, headshot = false) {
+    if (!webgl || !performanceSettings.effects) return;
+    const startElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
+    const directionX = Math.cos(angle);
+    const directionY = Math.sin(angle);
+    const endElevation = startElevation + Math.tan(pitch) * horizontalDistance;
+    const geometry = new three.BufferGeometry().setFromPoints([
+      new three.Vector3(player.x + directionX * 0.24, startElevation, player.y + directionY * 0.24),
+      new three.Vector3(player.x + directionX * horizontalDistance, endElevation, player.y + directionY * horizontalDistance)
+    ]);
+    const material = new three.LineBasicMaterial({
+      color: headshot ? 0xff72c7 : WORLD_COLORS.cyan,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    });
+    const tracer = new three.Line(geometry, material);
+    tracer.frustumCulled = false;
+    webgl.effectGroup.add(tracer);
+    webgl.effects.push({ mesh: tracer, born: performance.now(), ttl: 70, strong: false, tracer: true, dispose: true });
   }
 
   async function loadWebGLAssetWeaponModels() {
@@ -4210,7 +4238,7 @@ button:disabled {
     const stability = (bipodDeployed ? 0.16 : (weapon.swayScale || 1)) * lerp(1, 0.25, aimAmount);
     const bobX = Math.sin(player.bobPhase) * player.movingAmount * 0.035 * stability + lookSway * 0.0016;
     const bobY = Math.abs(Math.cos(player.bobPhase)) * player.movingAmount * 0.027 * stability + weaponKick * 0.011;
-    root.position.set(lerp(0.36, 0, aimAmount) + bobX, lerp(-0.26, -0.1, aimAmount) - bobY - reloadPose * 0.16, lerp(-0.68, -0.46, aimAmount));
+    root.position.set(lerp(0.36, 0, aimAmount) + bobX, lerp(-0.26, -0.242, aimAmount) - bobY - reloadPose * 0.16, lerp(-0.68, -0.46, aimAmount));
     root.rotation.set(reloadPose * 0.15, Math.PI / 2, lookSway * 0.0025 * stability + reloadPose * (weapon.custom ? -0.24 : 0.18));
     root.scale.setScalar(1 - reloadPose * 0.08);
     const flashStrength = muzzleTimer > 0 ? clamp(muzzleTimer * 20 * (weapon.muzzleFlashIntensity || 1), 0, 1) : 0;
@@ -4277,11 +4305,19 @@ button:disabled {
       const progress = (now - effect.born) / effect.ttl;
       if (progress >= 1) {
         effect.mesh.parent?.remove(effect.mesh);
+        if (effect.dispose) {
+          effect.mesh.geometry?.dispose();
+          effect.mesh.material?.dispose();
+        }
         webgl.effects.splice(index, 1);
         continue;
       }
-      effect.mesh.scale.setScalar(0.8 + progress * (effect.strong ? 5 : 3));
-      effect.mesh.material.opacity = 1 - progress;
+      if (effect.tracer) {
+        effect.mesh.material.opacity = (1 - progress) * 0.9;
+      } else {
+        effect.mesh.scale.setScalar(0.8 + progress * (effect.strong ? 5 : 3));
+        effect.mesh.material.opacity = 1 - progress;
+      }
     }
     if (Math.abs(webgl.weaponCamera.fov - effectiveFov) > 0.02) {
       webgl.weaponCamera.fov = effectiveFov;
@@ -5765,9 +5801,11 @@ button:disabled {
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
     const eyeElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
+    const verticalSlope = Math.tan(pitch);
     let nearestEnemy = null;
     let nearestT = maxDistance;
     let hitHead = false;
+    let impactElevation = eyeElevation + verticalSlope * maxDistance;
 
     for (const enemy of enemies) {
       if (enemy.dead) continue;
@@ -5777,24 +5815,30 @@ button:disabled {
       if (projection <= 0 || projection >= nearestT) continue;
       const perpendicularSquared = dx * dx + dy * dy - projection * projection;
       const hitRadius = enemy.radius * (enemy.kind === 'prince' ? 1.2 : 1.05);
-      const hitElevation = eyeElevation + Math.tan(pitch) * projection;
+      const hitElevation = eyeElevation + verticalSlope * projection;
       const bodyBottom = enemy.elevation;
       const bodyTop = bodyBottom + enemy.definition.height;
       if (perpendicularSquared <= hitRadius * hitRadius && hitElevation >= bodyBottom && hitElevation <= bodyTop) {
         nearestT = projection;
         nearestEnemy = enemy;
-        hitHead = hitElevation >= bodyBottom + enemy.definition.height * 0.72;
+        impactElevation = hitElevation;
+        const headElevation = bodyBottom + enemy.definition.headCenter;
+        hitHead = perpendicularSquared <= enemy.definition.headRadius * enemy.definition.headRadius &&
+          Math.abs(hitElevation - headElevation) <= enemy.definition.headRadius;
       }
     }
 
     if (!nearestEnemy) {
-      spawnImpactFx(angle, Math.min(maxDistance, 12), false);
+      const impactDistance = Math.min(maxDistance, 12);
+      addWebGLTracer(angle, pitch, impactDistance);
+      spawnImpactFx(angle, impactDistance, false, eyeElevation + verticalSlope * impactDistance);
       return false;
     }
 
     const variedDamage = damage * (0.9 + Math.random() * 0.2) * (hitHead ? 1.5 : 1);
+    addWebGLTracer(angle, pitch, nearestT, hitHead);
     damageEnemy(nearestEnemy, variedDamage);
-    spawnImpactFx(angle, nearestT, true);
+    spawnImpactFx(angle, nearestT, true, impactElevation);
     if (hitHead) showMessage('ПОПАДАНИЕ В ГОЛОВУ · ×1.5', 0.45);
     return true;
   }
@@ -6631,7 +6675,7 @@ button:disabled {
     const transformedAnchorX = pivotX + weaponScale * (anchorDx * cosRotation - anchorDy * sinRotation);
     const transformedAnchorY = pivotY + weaponScale * (anchorDx * sinRotation + anchorDy * cosRotation);
     const aimedTranslateX = HALF_W - transformedAnchorX;
-    const aimedTranslateY = HALF_H - transformedAnchorY;
+    const aimedTranslateY = Math.max(-12, HALF_H - transformedAnchorY);
     const translateX = lerp(hipSwayX, aimedTranslateX, aimAmount);
     const translateY = lerp(hipSwayY, aimedTranslateY, aimAmount);
 
@@ -6761,13 +6805,14 @@ button:disabled {
     messageBox.classList.add('visible');
   }
 
-  function spawnImpactFx(angle, distance, hitEnemy) {
+  function spawnImpactFx(angle, distance, hitEnemy, elevation) {
     if (webgl) {
       addWebGLEffect(
         player.x + Math.cos(angle) * distance,
         player.y + Math.sin(angle) * distance,
         hitEnemy ? 0xff7558 : 0xffd77a,
-        hitEnemy
+        hitEnemy,
+        elevation
       );
       return;
     }
