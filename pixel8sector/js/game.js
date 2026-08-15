@@ -1,0 +1,7152 @@
+/*
+ * Module: game.js
+ * Responsibility: game initialization, WebGL rendering, arena simulation, combat, HUD, and input.
+ */
+(() => {
+  'use strict';
+  const { hash2, mulberry32, gaussianishRandom, normalizedVector, modulo, floorDiv, normalizeAngle, clamp, lerp } = window.PixelSectorMath;
+  // Viewmodel projection revision: 14 (right-side weapon only, fixed pseudo-isometric pose).
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const VIEW_W = 960;
+  const VIEW_H = 540;
+  const HALF_W = VIEW_W / 2;
+  const HALF_H = VIEW_H / 2;
+  let viewFovDegrees = 66;
+  let FOV = viewFovDegrees * Math.PI / 180;
+  let HALF_FOV = FOV / 2;
+  let PROJECTION = HALF_W / Math.tan(HALF_FOV);
+  const MAX_RAY_DISTANCE = 80;
+  const ARENA_SIZE = 50;
+  const CHUNK_SIZE = ARENA_SIZE;
+  const WEBGL_SECTOR_SIZE = CHUNK_SIZE;
+  const PLAYER_RADIUS = 0.25;
+  const PLAYER_EYE_HEIGHT = 0.78;
+  const PLAYER_JUMP_SPEED = 4.9;
+  const PLAYER_GRAVITY = 17.5;
+  const PLAYER_STEP_HEIGHT = 0.52;
+  const PLAYER_MOVE_SUBSTEP = 0.1;
+  const FLOW_RADIUS = ARENA_SIZE;
+  const FLOW_SIZE = FLOW_RADIUS * 2 + 1;
+  const FLOW_MAX = 32767;
+  const ACTIVE_CHUNK_RADIUS = 1;
+  const ENTITY_DESPAWN_DISTANCE = CHUNK_SIZE * 2.5;
+  const MAX_ACTIVE_ENEMIES = 56;
+  const MAX_ACTIVE_ORBS = 90;
+  const WORLD_SEED = 0x4d4f4f44;
+
+  const GRAPHICS_QUALITY_STORAGE_KEY = 'pixel-sector-graphics-quality-v1';
+
+  function getGraphicsQualityPreference() {
+    try {
+      const value = localStorage.getItem(GRAPHICS_QUALITY_STORAGE_KEY);
+      return value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+    } catch {
+      return 'auto';
+    }
+  }
+
+  function detectPerformanceProfile() {
+    const forced = new URLSearchParams(window.location.search).get('quality');
+    if (forced === 'low' || forced === 'medium' || forced === 'high') return forced;
+    const preference = getGraphicsQualityPreference();
+    if (preference !== 'auto') return preference;
+
+    const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || VIEW_W);
+    const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || VIEW_H);
+    const cssPixels = viewportWidth * viewportHeight;
+    const devicePixelRatio = Math.max(1, Math.min(2.5, Number(window.devicePixelRatio) || 1));
+    const physicalPixels = cssPixels * devicePixelRatio * devicePixelRatio;
+    const aspect = viewportWidth / viewportHeight;
+    const compactFourThree = aspect >= 1.18 && aspect <= 1.42;
+    const cores = Number.isFinite(navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 8;
+    const memory = Number.isFinite(navigator.deviceMemory) ? navigator.deviceMemory : 8;
+    const saveData = Boolean(navigator.connection?.saveData);
+
+    if (saveData || cores <= 4 || memory <= 4 || cssPixels <= 800 * 600) return 'low';
+    if (compactFourThree || cores <= 6 || memory <= 6 || cssPixels <= 1280 * 800 || physicalPixels <= 1_500_000) return 'medium';
+    return 'high';
+  }
+
+  const PERFORMANCE_SETTINGS_BY_PROFILE = Object.freeze({
+    low: Object.freeze({ maxRays: 160, targetColumnPixels: 6, maxFps: 60, idleFps: 8, wallStrokes: false, geometryDecimals: 0, gpuPixelRatio: 0.68, webglSectorRadius: 1, effects: false }),
+    medium: Object.freeze({ maxRays: 192, targetColumnPixels: 5, maxFps: 75, idleFps: 10, wallStrokes: true, geometryDecimals: 1, gpuPixelRatio: 1, webglSectorRadius: 2, effects: true }),
+    high: Object.freeze({ maxRays: 224, targetColumnPixels: 4, maxFps: 120, idleFps: 15, wallStrokes: true, geometryDecimals: 2, gpuPixelRatio: 1.32, webglSectorRadius: 2, effects: true })
+  });
+  let performanceProfile = detectPerformanceProfile();
+  let performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[performanceProfile];
+  let activeFrameInterval = 1000 / performanceSettings.maxFps;
+  let idleFrameInterval = 1000 / performanceSettings.idleFps;
+  const BASE_VIEW_ASPECT = VIEW_W / VIEW_H;
+
+  document.documentElement.dataset.performanceProfile = performanceProfile;
+
+  let renderViewX = 0;
+  let renderViewY = 0;
+  let renderViewWidth = VIEW_W;
+  let renderViewHeight = VIEW_H;
+  let RAY_COUNT = performanceSettings.maxRays;
+  let COLUMN_WIDTH = VIEW_W / RAY_COUNT;
+  let resizeRenderTimer = 0;
+
+  const app = document.getElementById('app');
+  const webglCanvas = document.getElementById('webglCanvas');
+  const gameView = document.getElementById('gameView');
+  const wallLayer = document.getElementById('wallLayer');
+  const spriteLayer = document.getElementById('spriteLayer');
+  const worldFxLayer = document.getElementById('worldFxLayer');
+  const weaponLayer = document.getElementById('weaponLayer');
+  const weaponUse = document.getElementById('weaponUse');
+  const weaponAmbientShadow = document.getElementById('weaponAmbientShadow');
+  const weaponHeatGlow = document.getElementById('weaponHeatGlow');
+  const muzzleFlash = document.getElementById('muzzleFlash');
+  const crosshair = document.getElementById('crosshair');
+  const crosshairPath = document.getElementById('crosshairPath');
+  const crosshairCore = document.getElementById('crosshairCore');
+  const scopeVignetteLayer = document.getElementById('scopeVignetteLayer');
+  const scopeReticle = document.getElementById('scopeReticle');
+  const scopeReticleOuterGlow = document.getElementById('scopeReticleOuterGlow');
+  const scopeReticleOuter = document.getElementById('scopeReticleOuter');
+  const scopeReticleInnerGlow = document.getElementById('scopeReticleInnerGlow');
+  const scopeReticleInner = document.getElementById('scopeReticleInner');
+  const scopeReticleGlowPath = document.getElementById('scopeReticleGlowPath');
+  const scopeReticlePath = document.getElementById('scopeReticlePath');
+  const scopeReticleCoreGlow = document.getElementById('scopeReticleCoreGlow');
+  const scopeReticleCore = document.getElementById('scopeReticleCore');
+  const scopeReticleLabel = document.getElementById('scopeReticleLabel');
+  const hitMarker = document.getElementById('hitMarker');
+  const damageFlash = document.getElementById('damageFlash');
+  const messageBox = document.getElementById('message');
+
+  const scoreValue = document.getElementById('scoreValue');
+  const highScoreValue = document.getElementById('highScoreValue');
+  const healthValue = document.getElementById('healthValue');
+  const healthBar = document.getElementById('healthBar');
+  const weaponName = document.getElementById('weaponName');
+  const ammoStatus = document.getElementById('ammoStatus');
+  const ammoValue = document.getElementById('ammoValue');
+  const reloadBar = document.getElementById('reloadBar');
+  const reloadTrack = reloadBar.parentElement;
+  const weaponSystemState = document.getElementById('weaponSystemState');
+  const weaponMassValue = document.getElementById('weaponMassValue');
+  const heatTrack = document.getElementById('heatTrack');
+  const heatBar = document.getElementById('heatBar');
+  const sectorValue = document.getElementById('sectorValue');
+  const dangerValue = document.getElementById('dangerValue');
+  const multiplierLegend = document.getElementById('multiplierLegend');
+  const waveValue = document.getElementById('waveValue');
+  const waveScoreValue = document.getElementById('waveScoreValue');
+  const wavePhaseValue = document.getElementById('wavePhaseValue');
+  const audioToggle = document.getElementById('audioToggle');
+  const musicStatus = document.getElementById('musicStatus');
+
+  const minimap = document.getElementById('minimap');
+  const minimapWalls = document.getElementById('minimapWalls');
+  const minimapDoors = document.getElementById('minimapDoors');
+  const minimapItems = document.getElementById('minimapItems');
+  const minimapPlayer = document.getElementById('minimapPlayer');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const pauseOverlay = document.getElementById('pauseOverlay');
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const deathOverlay = document.getElementById('deathOverlay');
+  const craftOverlay = document.getElementById('craftOverlay');
+  const startButton = document.getElementById('startButton');
+  const guncraftMenuButton = document.getElementById('guncraftMenuButton');
+  const settingsMenuButton = document.getElementById('settingsMenuButton');
+  const resumeButton = document.getElementById('resumeButton');
+  const pauseMenuButton = document.getElementById('pauseMenuButton');
+  const pauseSettingsButton = document.getElementById('pauseSettingsButton');
+  const settingsBackButton = document.getElementById('settingsBackButton');
+  const restartButton = document.getElementById('restartButton');
+  const deathMenuButton = document.getElementById('deathMenuButton');
+  const deathScore = document.getElementById('deathScore');
+  const deathHighScore = document.getElementById('deathHighScore');
+  const deathModeLabel = document.getElementById('deathModeLabel');
+  const deathEarnedRow = document.getElementById('deathEarnedRow');
+  const deathEarnedPoints = document.getElementById('deathEarnedPoints');
+
+  const menuModPoints = document.getElementById('menuModPoints');
+  const menuUnlockedClasses = document.getElementById('menuUnlockedClasses');
+  const menuUnlockedSlots = document.getElementById('menuUnlockedSlots');
+  const menuClassicRecord = document.getElementById('menuClassicRecord');
+  const menuGunCraftRecord = document.getElementById('menuGunCraftRecord');
+  const menuLimitBreakRecord = document.getElementById('menuLimitBreakRecord');
+  const limitBreakToggle = document.getElementById('limitBreakToggle');
+  const guncraftModeCard = document.getElementById('guncraftModeCard');
+  const settingsTabs = document.getElementById('settingsTabs');
+  const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')];
+  const viewFov = document.getElementById('viewFov');
+  const viewFovValue = document.getElementById('viewFovValue');
+  const graphicsQuality = document.getElementById('graphicsQuality');
+  const graphicsQualityStatus = document.getElementById('graphicsQualityStatus');
+  const settingsMusicVolume = document.getElementById('settingsMusicVolume');
+  const settingsMusicVolumeValue = document.getElementById('settingsMusicVolumeValue');
+  const settingsMusicMuteButton = document.getElementById('settingsMusicMuteButton');
+  const settingsEffectsVolume = document.getElementById('settingsEffectsVolume');
+  const settingsEffectsVolumeValue = document.getElementById('settingsEffectsVolumeValue');
+  const settingsEffectsMuteButton = document.getElementById('settingsEffectsMuteButton');
+  const mouseSensitivityInput = document.getElementById('mouseSensitivity');
+  const mouseSensitivityValue = document.getElementById('mouseSensitivityValue');
+  const settingsKeybindGrid = document.getElementById('settingsKeybindGrid');
+  const keybindCaptureStatus = document.getElementById('keybindCaptureStatus');
+  const resetKeybindsButton = document.getElementById('resetKeybindsButton');
+  const hintMoveKeys = document.getElementById('hintMoveKeys');
+  const hintFireKey = document.getElementById('hintFireKey');
+  const hintJumpKey = document.getElementById('hintJumpKey');
+  const hintWeaponKeys = document.getElementById('hintWeaponKeys');
+  const hintSprintKey = document.getElementById('hintSprintKey');
+  const hintReloadKey = document.getElementById('hintReloadKey');
+  const hintMapKey = document.getElementById('hintMapKey');
+  const hintMusicKey = document.getElementById('hintMusicKey');
+
+  const craftModPoints = document.getElementById('craftModPoints');
+  const craftModeEyebrow = document.getElementById('craftModeEyebrow');
+  const craftModeTitle = document.getElementById('craftModeTitle');
+  const craftLimitBreakBadge = document.getElementById('craftLimitBreakBadge');
+  const craftLimitBreakBanner = document.getElementById('craftLimitBreakBanner');
+  const craftSlotTabs = document.getElementById('craftSlotTabs');
+  const craftClassList = document.getElementById('craftClassList');
+  const craftSubtype = document.getElementById('craftSubtype');
+  const craftBarrelProfile = document.getElementById('craftBarrelProfile');
+  const craftBarrelProfileCost = document.getElementById('craftBarrelProfileCost');
+  const craftBarrelProfileHint = document.getElementById('craftBarrelProfileHint');
+  const craftMuzzleType = document.getElementById('craftMuzzleType');
+  const craftMuzzleTypeCost = document.getElementById('craftMuzzleTypeCost');
+  const craftMuzzleTypeHint = document.getElementById('craftMuzzleTypeHint');
+  const craftTriggerSystem = document.getElementById('craftTriggerSystem');
+  const craftTriggerSystemCost = document.getElementById('craftTriggerSystemCost');
+  const craftTriggerSystemHint = document.getElementById('craftTriggerSystemHint');
+  const craftName = document.getElementById('craftName');
+  const craftDepth = document.getElementById('craftDepth');
+  const craftDepthLabel = document.getElementById('craftDepthLabel');
+  const craftTutorial = document.getElementById('craftTutorial');
+  const componentPalette = document.getElementById('componentPalette');
+  const craftCanvas = document.getElementById('craftCanvas');
+  const craftGridRect = document.getElementById('craftGridRect');
+  const craftProfileBorder = document.getElementById('craftProfileBorder');
+  const craftProfileLabel = document.getElementById('craftProfileLabel');
+  const craftCartridgeZone = document.getElementById('craftCartridgeZone');
+  const craftCartridgeLabel = document.getElementById('craftCartridgeLabel');
+  const craftZoneDivider = document.getElementById('craftZoneDivider');
+  const craftCanvasHint = document.getElementById('craftCanvasHint');
+  const craftShapes = document.getElementById('craftShapes');
+  const craftPreview = document.getElementById('craftPreview');
+  const limitBreakInspector = document.getElementById('limitBreakInspector');
+  const limitBreakInspectorComponent = document.getElementById('limitBreakInspectorComponent');
+  const limitBreakX = document.getElementById('limitBreakX');
+  const limitBreakY = document.getElementById('limitBreakY');
+  const limitBreakW = document.getElementById('limitBreakW');
+  const limitBreakH = document.getElementById('limitBreakH');
+  const applyLimitBreakDimensions = document.getElementById('applyLimitBreakDimensions');
+  const fitLimitBreakCanvas = document.getElementById('fitLimitBreakCanvas');
+  const craftIsoPreview = document.getElementById('craftIsoPreview');
+  const craftStats = document.getElementById('craftStats');
+  const craftValidation = document.getElementById('craftValidation');
+  const craftRulebook = document.getElementById('craftRulebook');
+  const deleteComponentButton = document.getElementById('deleteComponentButton');
+  const resetDesignButton = document.getElementById('resetDesignButton');
+  const playCraftButton = document.getElementById('playCraftButton');
+  const craftBackButton = document.getElementById('craftBackButton');
+  const craftFullscreenButton = document.getElementById('craftFullscreenButton');
+  const customWeaponGraphic = document.getElementById('customWeaponGraphic');
+
+  const wallColumns = [];
+  let rayDepth = new Float32Array(RAY_COUNT);
+  const rayScratch = { distance: MAX_RAY_DISTANCE, side: 0, tileX: 0, tileY: 0 };
+  const shotRayScratch = { distance: MAX_RAY_DISTANCE, side: 0, tileX: 0, tileY: 0 };
+  const flow = new Int16Array(FLOW_SIZE * FLOW_SIZE);
+  const flowQueue = new Int32Array(FLOW_SIZE * FLOW_SIZE);
+  const renderables = [];
+  let three = null;
+  let GLTFLoaderClass = null;
+  let webgl = null;
+  let webglLoading = false;
+
+  const DEFAULT_KEYBINDS = Object.freeze({
+    moveForward: 'KeyW',
+    moveBackward: 'KeyS',
+    moveLeft: 'KeyA',
+    moveRight: 'KeyD',
+    turnLeft: 'ArrowLeft',
+    turnRight: 'ArrowRight',
+    sprint: 'ShiftLeft',
+    jump: 'Space',
+    fire: 'KeyF',
+    reload: 'KeyR',
+    map: 'Tab',
+    music: 'KeyM',
+    weapon1: 'Digit1',
+    weapon2: 'Digit2',
+    weapon3: 'Digit3',
+    previousWeapon: 'KeyQ',
+    nextWeapon: 'KeyE'
+  });
+
+  const KEYBIND_ACTIONS = Object.freeze([
+    { id: 'moveForward', label: 'Движение вперёд' },
+    { id: 'moveBackward', label: 'Движение назад' },
+    { id: 'moveLeft', label: 'Шаг влево' },
+    { id: 'moveRight', label: 'Шаг вправо' },
+    { id: 'turnLeft', label: 'Поворот влево' },
+    { id: 'turnRight', label: 'Поворот вправо' },
+    { id: 'sprint', label: 'Бег' },
+    { id: 'jump', label: 'Прыжок / подъём' },
+    { id: 'fire', label: 'Огонь с клавиатуры' },
+    { id: 'reload', label: 'Перезарядка' },
+    { id: 'map', label: 'Мини-карта' },
+    { id: 'music', label: 'Музыка: вкл/выкл' },
+    { id: 'weapon1', label: 'Оружие 1' },
+    { id: 'weapon2', label: 'Оружие 2' },
+    { id: 'weapon3', label: 'Оружие 3' },
+    { id: 'previousWeapon', label: 'Предыдущее оружие' },
+    { id: 'nextWeapon', label: 'Следующее оружие' }
+  ]);
+
+  const KEY_CODE_LABELS = Object.freeze({
+    Space: 'ПРОБЕЛ', Tab: 'TAB', Enter: 'ENTER', Backspace: 'BACKSPACE',
+    ShiftLeft: 'ЛЕВЫЙ SHIFT', ShiftRight: 'ПРАВЫЙ SHIFT',
+    ControlLeft: 'ЛЕВЫЙ CTRL', ControlRight: 'ПРАВЫЙ CTRL',
+    AltLeft: 'ЛЕВЫЙ ALT', AltRight: 'ПРАВЫЙ ALT',
+    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+    CapsLock: 'CAPS LOCK', Delete: 'DELETE', Insert: 'INSERT', Home: 'HOME', End: 'END',
+    PageUp: 'PAGE UP', PageDown: 'PAGE DOWN', Backquote: '`', Minus: '-', Equal: '=',
+    BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'",
+    Comma: ',', Period: '.', Slash: '/'
+  });
+
+  const keys = Object.create(null);
+  let triggerHeld = false;
+  let triggerPressed = false;
+  let jumpQueued = false;
+  let aimHeld = false;
+  let aimAmount = 0;
+  const weaponPosition = 'right';
+  let renderedWeaponViewKey = '';
+  let settingsReturnTarget = 'menu';
+  let activeSettingsTab = 'view';
+  let keybindCaptureAction = null;
+  let mouseSensitivity = 1;
+  let keybinds = { ...DEFAULT_KEYBINDS };
+  let started = false;
+  let paused = true;
+  let gameOver = false;
+  let gameMode = 'classic';
+  let minimapVisible = false;
+  let lastFrameTime = performance.now();
+  let lastRenderedTime = 0;
+  let flowTimer = 0;
+  let spawnTimer = 0;
+  let minimapTimer = 0;
+  let messageTimer = 0;
+  let hitMarkerTimer = 0;
+  let muzzleTimer = 0;
+  let damageFlashTimer = 0;
+  let weaponKick = 0;
+  let lookSway = 0;
+  let cameraBob = 0;
+  let entityId = 1;
+  let flowOriginX = 0;
+  let flowOriginY = 0;
+  let weaponHeat = 0;
+  let jamTimer = 0;
+  let burstShotsRemaining = 0;
+  let burstTimer = 0;
+  let bipodDeployTimer = 0;
+  let bipodDeployed = false;
+  let pendingSectorDoor = null;
+  let lastChunkX = 0;
+  let lastChunkY = 0;
+  let systemMessageCooldown = 0;
+  let runRewardGranted = false;
+  let craftDrawState = null;
+  let currentCraftComponent = 'receiver';
+  let currentCraftStats = null;
+  let selectedCraftSlot = 0;
+  let craftLimitBreak = false;
+  let craftCanvasFitNonce = 0;
+  let audioContext = null;
+  let masterGain = null;
+  let sfxGain = null;
+  let musicGain = null;
+  let musicInput = null;
+  let noiseBuffer = null;
+  let musicSchedulerTimer = null;
+  let musicNextStepTime = 0;
+  let musicStep = 0;
+  let musicVolume = 0.7;
+  let effectsVolume = 0.85;
+  let musicMuted = false;
+  let effectsMuted = false;
+
+  let arena = null;
+  const waveState = {
+    wave: 0,
+    phase: 'countdown',
+    timer: 3,
+    pendingSpawns: 0,
+    spawnTimer: 0,
+    targetEnemies: 0,
+    arenaIndex: 1,
+    revision: 0
+  };
+
+  const enemies = [];
+  const orbs = [];
+  const projectiles = [];
+  const chunkStates = new Map();
+  const closedDoorTiles = new Map();
+
+  const CLASSIC_WEAPONS = [
+    {
+      name: 'ПИКСЕЛЬНЫЙ ПИСТОЛЕТ',
+      symbol: '#weapon-custom',
+      cooldown: 0.28,
+      damage: 34,
+      pellets: 1,
+      spread: 0.009,
+      automatic: false,
+      fireMode: 'semi',
+      magazine: 9,
+      reloadTime: 1,
+      kick: 17,
+      crosshair: 10,
+      weight: 1.15,
+      movementMultiplier: 1,
+      hasSight: true,
+      sightMagnification: 1.5,
+      aimSpreadMultiplier: 0.48,
+      aimFovMultiplier: 1 / 1.5,
+      heatPerShot: 0,
+      coolRate: 100,
+      reliability: 100,
+      x: 290,
+      y: 290,
+      width: 380,
+      height: 253,
+      muzzleX: 480,
+      muzzleY: 313,
+      views: {
+        center: { symbol: '#weapon-custom', x: 290, y: 290, width: 380, height: 253, aimAnchorX: 480, aimAnchorY: 313, muzzleX: 480, muzzleY: 313 },
+        left: { symbol: '#weapon-pistol-left', x: 70, y: 270, width: 500, height: 291.67, aimAnchorX: 449.17, aimAnchorY: 332.5, muzzleX: 503.33, muzzleY: 303.33 },
+        right: { symbol: '#weapon-pistol-right', x: 390, y: 270, width: 500, height: 291.67, aimAnchorX: 510.83, aimAnchorY: 332.5, muzzleX: 456.67, muzzleY: 303.33 }
+      }
+    },
+    {
+      name: 'ПИКСЕЛЬНЫЙ ДРОБОВИК',
+      symbol: '#weapon-custom',
+      cooldown: 0.78,
+      damage: 15,
+      pellets: 8,
+      spread: 0.095,
+      automatic: false,
+      fireMode: 'semi',
+      magazine: 6,
+      reloadTime: 4,
+      kick: 31,
+      crosshair: 17,
+      weight: 3.4,
+      movementMultiplier: 0.94,
+      hasSight: true,
+      sightMagnification: 1,
+      aimSpreadMultiplier: 0.62,
+      aimFovMultiplier: 1,
+      heatPerShot: 0,
+      coolRate: 100,
+      reliability: 100,
+      x: 245,
+      y: 270,
+      width: 470,
+      height: 271,
+      muzzleX: 480,
+      muzzleY: 279,
+      views: {
+        center: { symbol: '#weapon-custom', x: 245, y: 270, width: 470, height: 271, aimAnchorX: 480, aimAnchorY: 279, muzzleX: 480, muzzleY: 279 },
+        left: { symbol: '#weapon-shotgun-left', x: 45, y: 250, width: 550, height: 320.83, aimAnchorX: 457.5, aimAnchorY: 314.17, muzzleX: 521.67, muzzleY: 286.67 },
+        right: { symbol: '#weapon-shotgun-right', x: 365, y: 250, width: 550, height: 320.83, aimAnchorX: 502.5, aimAnchorY: 314.17, muzzleX: 438.33, muzzleY: 286.67 }
+      }
+    },
+    {
+      name: 'ПИКСЕЛЬНЫЙ ПУЛЕМЁТ',
+      symbol: '#weapon-custom',
+      cooldown: 0.075,
+      damage: 12,
+      pellets: 1,
+      spread: 0.027,
+      automatic: true,
+      fireMode: 'auto',
+      magazine: 100,
+      reloadTime: 8,
+      kick: 9,
+      crosshair: 13,
+      weight: 8.2,
+      movementMultiplier: 0.78,
+      hasSight: true,
+      sightMagnification: 2,
+      aimSpreadMultiplier: 0.55,
+      aimFovMultiplier: 0.5,
+      heatPerShot: 0,
+      coolRate: 100,
+      reliability: 100,
+      x: 235,
+      y: 270,
+      width: 490,
+      height: 283,
+      muzzleX: 480,
+      muzzleY: 279,
+      views: {
+        center: { symbol: '#weapon-custom', x: 235, y: 270, width: 490, height: 283, aimAnchorX: 480, aimAnchorY: 279, muzzleX: 480, muzzleY: 279 },
+        left: { symbol: '#weapon-machinegun-left', x: 25, y: 240, width: 580, height: 338.33, aimAnchorX: 455.17, aimAnchorY: 307.67, muzzleX: 527.67, muzzleY: 278.67 },
+        right: { symbol: '#weapon-machinegun-right', x: 355, y: 240, width: 580, height: 338.33, aimAnchorX: 504.83, aimAnchorY: 307.67, muzzleX: 432.33, muzzleY: 278.67 }
+      }
+    }
+  ];
+
+  const WEAPON_MODEL_VIEW_W = 120;
+  const WEAPON_MODEL_VIEW_H = 70;
+  const WEAPON_MODEL_ASPECT = WEAPON_MODEL_VIEW_W / WEAPON_MODEL_VIEW_H;
+  const WEAPON_HIP_LAYOUT_HEIGHT_FRACTION = 0.245;
+  const WEAPON_HIP_HARD_LIMIT = 0.25;
+  const WEAPON_AIM_TARGET_HEIGHT_FRACTION = 0.325;
+  const WEAPON_AIM_HARD_LIMIT = 1 / 3;
+  const WEAPON_RIGHT_HORIZONTAL_CENTER = 0.72;
+  const WEAPON_GAME_CAMERA_PRESET = Object.freeze({
+    eye: Object.freeze([-1.6, 0.45, -0.55]),
+    fov: 29,
+    distance: 2.62,
+    padding: Object.freeze([5, 4, 5, 1.5]),
+    alignY: 'bottom',
+    targetOffset: Object.freeze([0, 0, 0])
+  });
+  const WEAPON_CAMERA_PRESETS = Object.freeze({
+    game: WEAPON_GAME_CAMERA_PRESET,
+    center: WEAPON_GAME_CAMERA_PRESET,
+    left: WEAPON_GAME_CAMERA_PRESET,
+    right: WEAPON_GAME_CAMERA_PRESET,
+    preview: Object.freeze({ eye: Object.freeze([-1.1, 0.68, -0.95]), fov: 35, distance: 2.55, padding: Object.freeze([5, 5, 5, 4]), alignY: 'center', targetOffset: Object.freeze([0, 0, 0]) })
+  });
+  const WEAPON_BOX_FACES = Object.freeze([
+    Object.freeze([0, 3, 2, 1]),
+    Object.freeze([4, 5, 6, 7]),
+    Object.freeze([0, 4, 7, 3]),
+    Object.freeze([1, 2, 6, 5]),
+    Object.freeze([0, 1, 5, 4]),
+    Object.freeze([3, 7, 6, 2])
+  ]);
+  let weaponProjectionLayoutRevision = 0;
+
+  let WEAPONS = CLASSIC_WEAPONS;
+
+  const STORAGE_KEY = 'pixel-sector-guncraft-save-v3';
+  const STARTING_MOD_POINTS = 42;
+
+  const WEAPON_CLASSES = {
+    pistol: {
+      label: 'ПИСТОЛЕТ',
+      unlockCost: 0,
+      baseDamage: 29,
+      baseMass: 0.34,
+      targetBarrel: 16,
+      nominalCartridgeArea: 8,
+      minReceiver: [12, 6],
+      barrelRange: [7, 24],
+      lengthRange: [22, 56],
+      capacityMultiplier: 1,
+      color: '#45e6ff',
+      subtypes: {
+        semi: { label: 'ПОЛУАВТОМАТ', mode: 'semi', rpm: 270, damage: 1, reliability: 2 },
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 650, damage: 0.82, reliability: -7 },
+        single: { label: 'ОДНОЗАРЯДНИК', mode: 'single', rpm: 48, damage: 1.42, reliability: 5 }
+      }
+    },
+    sniper: {
+      label: 'СНАЙПЕРСКАЯ ВИНТОВКА',
+      unlockCost: 80,
+      baseDamage: 74,
+      baseMass: 1.15,
+      targetBarrel: 34,
+      nominalCartridgeArea: 17,
+      minReceiver: [18, 8],
+      barrelRange: [24, 48],
+      lengthRange: [54, 94],
+      capacityMultiplier: 0.85,
+      color: '#9d78ff',
+      subtypes: {
+        semi: { label: 'ПОЛУАВТОМАТ', mode: 'semi', rpm: 155, damage: 0.92, reliability: -3 },
+        bolt: { label: 'БОЛТОВАЯ', mode: 'bolt', rpm: 48, damage: 1.22, reliability: 7 }
+      }
+    },
+    smg: {
+      label: 'ПИСТОЛЕТ-ПУЛЕМЁТ',
+      unlockCost: 60,
+      baseDamage: 22,
+      baseMass: 0.72,
+      targetBarrel: 18,
+      nominalCartridgeArea: 7,
+      minReceiver: [16, 7],
+      barrelRange: [10, 28],
+      lengthRange: [32, 68],
+      capacityMultiplier: 1.45,
+      color: '#47ff9a',
+      subtypes: {
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 820, damage: 0.78, reliability: -6 },
+        burst: { label: 'ОЧЕРЕДЯМИ ПО 3', mode: 'burst', rpm: 930, damage: 0.82, reliability: -4 }
+      }
+    },
+    carbine: {
+      label: 'КАРАБИН',
+      unlockCost: 105,
+      baseDamage: 37,
+      baseMass: 1.18,
+      targetBarrel: 27,
+      nominalCartridgeArea: 11,
+      minReceiver: [18, 8],
+      barrelRange: [18, 42],
+      lengthRange: [42, 80],
+      capacityMultiplier: 1.2,
+      color: '#6fe6d4',
+      subtypes: {
+        semi: { label: 'ПОЛУАВТОМАТ', mode: 'semi', rpm: 330, damage: 1.08, reliability: 3 },
+        burst: { label: 'ОЧЕРЕДЯМИ ПО 3', mode: 'burst', rpm: 760, damage: 0.95, reliability: 0 },
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 650, damage: 0.88, reliability: -4 }
+      }
+    },
+    revolver: {
+      label: 'РЕВОЛЬВЕР',
+      unlockCost: 118,
+      baseDamage: 43,
+      baseMass: 0.86,
+      targetBarrel: 15,
+      nominalCartridgeArea: 9,
+      minReceiver: [14, 7],
+      barrelRange: [7, 23],
+      lengthRange: [24, 55],
+      capacityMultiplier: 1,
+      color: '#f0a6ff',
+      subtypes: {
+        double: { label: 'ДВОЙНОЕ ДЕЙСТВИЕ', mode: 'revolver', rpm: 240, damage: 0.94, reliability: 6 },
+        single: { label: 'ОДИНАРНОЕ ДЕЙСТВИЕ', mode: 'single', rpm: 150, damage: 1.12, reliability: 8 }
+      }
+    },
+    machinegun: {
+      label: 'ПУЛЕМЁТ',
+      unlockCost: 140,
+      baseDamage: 31,
+      baseMass: 2.35,
+      targetBarrel: 31,
+      nominalCartridgeArea: 14,
+      minReceiver: [22, 10],
+      barrelRange: [22, 46],
+      lengthRange: [50, 96],
+      capacityMultiplier: 2.5,
+      color: '#ffbc45',
+      subtypes: {
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 690, damage: 0.9, reliability: -5 }
+      }
+    },
+    shotgun: {
+      label: 'ДРОБОВИК',
+      unlockCost: 180,
+      baseDamage: 12.5,
+      baseMass: 1.55,
+      targetBarrel: 22,
+      nominalCartridgeArea: 20,
+      minReceiver: [18, 8],
+      barrelRange: [14, 34],
+      lengthRange: [30, 84],
+      capacityMultiplier: 0.62,
+      color: '#ff7d59',
+      subtypes: {
+        pump: { label: 'ПОМПОВОЕ · PUMP-ACTION', mode: 'pump', rpm: 82, damage: 1.08, reliability: 6 },
+        break: { label: 'ПЕРЕЛОМНОЕ · BREAK-ACTION', mode: 'break', rpm: 56, damage: 1.26, reliability: 9 },
+        semi: { label: 'ПОЛУАВТОМАТ', mode: 'semi', rpm: 185, damage: 0.96, reliability: -2 },
+        auto: { label: 'АВТОМАТ', mode: 'auto', rpm: 275, damage: 0.86, reliability: -9 },
+        revolver: { label: 'РЕВОЛЬВЕРНОЕ / РОТОРНОЕ', mode: 'revolver', rpm: 120, damage: 1.02, reliability: 3 }
+      }
+    }
+  };
+
+  const BARREL_PROFILES = {
+    standard: {
+      label: 'СТАНДАРТНЫЙ',
+      cost: 0,
+      description: 'Универсальный профиль без специальных бонусов и штрафов.',
+      massMultiplier: 1,
+      heatMultiplier: 1,
+      coolMultiplier: 1,
+      recoilMultiplier: 1,
+      accuracyBonus: 0,
+      ergonomicsBonus: 0,
+      reliabilityBonus: 0,
+      strengthMultiplier: 1
+    },
+    tapered: {
+      label: 'КОНИЧЕСКИЙ · TAPERED',
+      cost: 10,
+      description: 'Сужается к дульной части: легче и удобнее, но быстрее набирает тепло и немного сильнее отдаёт.',
+      massMultiplier: 0.82,
+      heatMultiplier: 1.08,
+      coolMultiplier: 1.08,
+      recoilMultiplier: 1.04,
+      accuracyBonus: 1,
+      ergonomicsBonus: 5,
+      reliabilityBonus: 0,
+      strengthMultiplier: 0.95
+    },
+    fluted: {
+      label: 'С КАНАВКАМИ · FLUTED',
+      cost: 18,
+      description: 'Продольные канавки снижают массу и ускоряют охлаждение, сохраняя хорошую жёсткость.',
+      massMultiplier: 0.86,
+      heatMultiplier: 0.92,
+      coolMultiplier: 1.25,
+      recoilMultiplier: 1.02,
+      accuracyBonus: 3,
+      ergonomicsBonus: 3,
+      reliabilityBonus: 1,
+      strengthMultiplier: 1.02
+    },
+    heavy: {
+      label: 'ТЯЖЁЛЫЙ · BULL',
+      cost: 26,
+      description: 'Толстый жёсткий профиль: меньше отдача и нагрев, выше точность, но заметно больше масса.',
+      massMultiplier: 1.45,
+      heatMultiplier: 0.72,
+      coolMultiplier: 0.92,
+      recoilMultiplier: 0.82,
+      accuracyBonus: 6,
+      ergonomicsBonus: -7,
+      reliabilityBonus: 3,
+      strengthMultiplier: 1.25
+    },
+    radiator: {
+      label: 'ВСТРОЕННЫЙ РАДИАТОР · FINNED',
+      cost: 36,
+      description: 'Наружные рёбра интенсивно отводят тепло; профиль дорогой, тяжёлый и громоздкий.',
+      massMultiplier: 1.25,
+      heatMultiplier: 0.65,
+      coolMultiplier: 1.7,
+      recoilMultiplier: 0.9,
+      accuracyBonus: 2,
+      ergonomicsBonus: -5,
+      reliabilityBonus: 1,
+      strengthMultiplier: 1.12
+    },
+    polygonal: {
+      label: 'ПОЛИГОНАЛЬНЫЙ · HEX',
+      cost: 24,
+      description: 'Жёсткий многогранный профиль: точнее и устойчивее стандартного, но требует немного больше массы.',
+      massMultiplier: 1.08,
+      heatMultiplier: 0.9,
+      coolMultiplier: 1.12,
+      recoilMultiplier: 0.94,
+      accuracyBonus: 5,
+      ergonomicsBonus: -1,
+      reliabilityBonus: 2,
+      strengthMultiplier: 1.1
+    },
+    carbonSleeve: {
+      label: 'КАРБОНОВЫЙ КОЖУХ · CARBON',
+      cost: 44,
+      description: 'Лёгкая композитная оболочка повышает эргономику и охлаждение, но плохо переносит перегрев.',
+      massMultiplier: 0.68,
+      heatMultiplier: 1.24,
+      coolMultiplier: 1.38,
+      recoilMultiplier: 1.08,
+      accuracyBonus: 2,
+      ergonomicsBonus: 7,
+      reliabilityBonus: -2,
+      strengthMultiplier: 0.87
+    },
+    cryo: {
+      label: 'КРИО-РЁБРА · CRYO',
+      cost: 58,
+      description: 'Секторные теплоотводящие рёбра резко снижают нагрев и оставляют оружие стабильным в длинных очередях.',
+      massMultiplier: 1.16,
+      heatMultiplier: 0.48,
+      coolMultiplier: 1.5,
+      recoilMultiplier: 0.93,
+      accuracyBonus: 4,
+      ergonomicsBonus: -3,
+      reliabilityBonus: 4,
+      strengthMultiplier: 1.16
+    }
+  };
+
+  const MUZZLE_DEVICE_TYPES = {
+    flashHider: {
+      label: 'ПЛАМЕГАСИТЕЛЬ',
+      cost: 18,
+      description: 'Сильно уменьшает вспышку выстрела, почти не меняя остальные характеристики.',
+      fixedMass: 0.18,
+      damageMultiplier: 1,
+      recoilMultiplier: 0.96,
+      accuracyBonus: 1,
+      ergonomicsBonus: -1,
+      reliabilityBonus: 0,
+      heatMultiplier: 1,
+      coolMultiplier: 1,
+      flashMultiplier: 0.28,
+      soundMultiplier: 0.95
+    },
+    suppressor: {
+      label: 'ГЛУШИТЕЛЬ',
+      cost: 42,
+      description: 'Сильно снижает звук и вспышку, уменьшает отдачу, но добавляет массу, нагрев и длину.',
+      fixedMass: 0.62,
+      damageMultiplier: 0.96,
+      recoilMultiplier: 0.88,
+      accuracyBonus: 2,
+      ergonomicsBonus: -7,
+      reliabilityBonus: -2,
+      heatMultiplier: 1.22,
+      coolMultiplier: 0.82,
+      flashMultiplier: 0.08,
+      soundMultiplier: 0.35
+    },
+    compensator: {
+      label: 'КОМПЕНСАТОР',
+      cost: 28,
+      description: 'Перенаправляет газы и резко снижает подброс, но делает выстрел громче и ярче.',
+      fixedMass: 0.28,
+      damageMultiplier: 1,
+      recoilMultiplier: 0.72,
+      accuracyBonus: 4,
+      ergonomicsBonus: -3,
+      reliabilityBonus: 0,
+      heatMultiplier: 1.03,
+      coolMultiplier: 1,
+      flashMultiplier: 1.35,
+      soundMultiplier: 1.2
+    },
+    linearComp: {
+      label: 'ЛИНЕЙНЫЙ КОМПЕНСАТОР',
+      cost: 24,
+      description: 'Отводит импульс вперёд: уменьшает отдачу и засветку в кадре, но добавляет громкости и длины.',
+      fixedMass: 0.34,
+      damageMultiplier: 1,
+      recoilMultiplier: 0.86,
+      accuracyBonus: 2,
+      ergonomicsBonus: -4,
+      reliabilityBonus: 1,
+      heatMultiplier: 1.04,
+      coolMultiplier: 1,
+      flashMultiplier: 0.72,
+      soundMultiplier: 1.28,
+      spreadMultiplier: 1
+    },
+    breacher: {
+      label: 'ЗУБЧАТЫЙ БРЕЙЧЕР',
+      cost: 34,
+      description: 'Агрессивный короткий надульник: повышает урон вблизи, но увеличивает вспышку, шум и подброс.',
+      fixedMass: 0.38,
+      damageMultiplier: 1.04,
+      recoilMultiplier: 1.06,
+      accuracyBonus: -1,
+      ergonomicsBonus: -2,
+      reliabilityBonus: 1,
+      heatMultiplier: 1.08,
+      coolMultiplier: 1,
+      flashMultiplier: 1.3,
+      soundMultiplier: 1.18,
+      spreadMultiplier: 1.04
+    },
+    choke: {
+      label: 'ДУЛЬНОЕ СУЖЕНИЕ · CHOKE',
+      cost: 30,
+      description: 'Собирает дробовую осыпь. На не-дробовом оружии даёт только небольшой бонус к точности.',
+      fixedMass: 0.22,
+      damageMultiplier: 1,
+      recoilMultiplier: 1.01,
+      accuracyBonus: 5,
+      ergonomicsBonus: -1,
+      reliabilityBonus: 1,
+      heatMultiplier: 1,
+      coolMultiplier: 1,
+      flashMultiplier: 0.92,
+      soundMultiplier: 1,
+      spreadMultiplier: 0.72
+    }
+  };
+
+  const TRIGGER_SYSTEMS = {
+    standard: {
+      label: 'СТАНДАРТНЫЙ',
+      cost: 0,
+      description: 'Надёжный базовый спуск без специальных эффектов.',
+      rpmMultiplier: 1,
+      accuracyBonus: 0,
+      recoilMultiplier: 1,
+      reliabilityBonus: 0,
+      modeOverride: null,
+      burstCount: 3
+    },
+    match: {
+      label: 'СПОРТИВНЫЙ · MATCH',
+      cost: 16,
+      description: 'Короткий предсказуемый ход: повышает точность и надёжность, но немного ограничивает темп.',
+      rpmMultiplier: 0.93,
+      accuracyBonus: 7,
+      recoilMultiplier: 0.95,
+      reliabilityBonus: 3,
+      modeOverride: null,
+      burstCount: 3
+    },
+    rapid: {
+      label: 'БЫСТРЫЙ · RAPID',
+      cost: 28,
+      description: 'Ускоряет цикл, но требует точного контроля и сильнее нагружает автоматику.',
+      rpmMultiplier: 1.2,
+      accuracyBonus: -3,
+      recoilMultiplier: 1.05,
+      reliabilityBonus: -4,
+      modeOverride: null,
+      burstCount: 3
+    },
+    burstCam: {
+      label: 'КУЛАЧОК ОЧЕРЕДИ · 3-RD',
+      cost: 36,
+      description: 'Механический отсекатель превращает совместимую автоматику в контролируемую очередь по три выстрела.',
+      rpmMultiplier: 0.96,
+      accuracyBonus: 2,
+      recoilMultiplier: 0.96,
+      reliabilityBonus: 0,
+      modeOverride: 'burst',
+      burstCount: 3
+    },
+    electronic: {
+      label: 'ЭЛЕКТРОННЫЙ СЕЛЕКТОР',
+      cost: 52,
+      description: 'Открывает автоматический огонь у совместимых полуавтоматических схем, но заметно снижает надёжность.',
+      rpmMultiplier: 1.08,
+      accuracyBonus: 1,
+      recoilMultiplier: 0.98,
+      reliabilityBonus: -7,
+      modeOverride: 'auto',
+      burstCount: 3
+    }
+  };
+
+  const COMPONENT_DEFINITIONS = {
+    receiver: { label: 'КОРОБКА', color: '#536b78', light: '#8faab5', baseCost: 7, areaCost: 0.055 },
+    barrel: { label: 'СТВОЛ', color: '#384951', light: '#89a3ad', baseCost: 5, areaCost: 0.048 },
+    muzzle: { label: 'НАДУЛЬНИК', color: '#202d33', light: '#8ca4ad', baseCost: 10, areaCost: 0.075 },
+    trigger: { label: 'СПУСК', color: '#6a3658', light: '#ff98dd', baseCost: 6, areaCost: 0.05 },
+    stock: { label: 'ПРИКЛАД', color: '#6d4933', light: '#b57d53', baseCost: 4, areaCost: 0.034 },
+    sight: { label: 'ПРИЦЕЛ', color: '#425b69', light: '#67d9ff', baseCost: 4, areaCost: 0.055 },
+    grip: { label: 'РУКОЯТЬ', color: '#26343a', light: '#627883', baseCost: 4, areaCost: 0.041 },
+    foregrip: { label: 'ПЕРЕДНЯЯ РУКОЯТЬ', color: '#30434a', light: '#6c8992', baseCost: 4, areaCost: 0.041 },
+    bipod: { label: 'СОШКИ', color: '#314047', light: '#7e949d', baseCost: 6, areaCost: 0.058 },
+    magazine: { label: 'МАГАЗИН', color: '#263239', light: '#596b73', baseCost: 4, areaCost: 0.045 },
+    cartridge: { label: 'ПАТРОН', color: '#d79d36', light: '#fff099', baseCost: 3, areaCost: 0.085 }
+  };
+  const COMPONENT_ORDER = ['stock', 'receiver', 'barrel', 'muzzle', 'magazine', 'grip', 'trigger', 'foregrip', 'bipod', 'sight', 'cartridge'];
+
+  const GUNCRAFT_RULES = [
+    'Коробка обязана вмещать патронник: её высота не меньше 135% диаметра патрона, а длина — не меньше 165% длины патрона.',
+    'Диаметр патрона не может превышать 92% толщины ствола.',
+    'Длина патрона не может превышать 60% длины коробки.',
+    'Длина патрона должна помещаться в магазин: не более 90% его ширины.',
+    'Ствол всегда пристыковывается к передней грани коробки; слишком короткий ствол снижает урон и точность, слишком длинный ухудшает эргономику.',
+    'Магазин обязателен для многозарядных схем, кроме болтовой снайперской винтовки и переломного дробовика; его площадь и геометрия определяют реальную ёмкость.',
+    'Рукоять обязательна и должна находиться под коробкой; далёкий от центра масс хват резко увеличивает раскачку.',
+    'Приклад обязателен для снайперских винтовок и пулемётов, а также для оружия с высокой отдачей.',
+    'Передняя рукоять обязательна при сильном переднем дисбалансе или массе свыше 6 кг; она уменьшает отдачу, но добавляет вес.',
+    'Сошки обязательны при массе свыше 10 кг. Для выстрела игрок должен полностью остановиться и дождаться развёртывания.',
+    'Автоматический пистолет требует увеличенной коробки и магазина минимум на 6 патронов, иначе автоматика ненадёжна.',
+    'Болтовая снайперская винтовка заряжается по одному патрону, не требует магазина, но требует приклада и длинного ствола; взамен получает более высокий урон и надёжность.',
+    'Пулемётный ствол должен иметь достаточную площадь для отвода тепла; тонкий ствол быстро перегревается.',
+    'Дробовик открыт после пулемёта и предлагает пять схем: помповую, переломную, полуавтоматическую, автоматическую и револьверную / роторную.',
+    'У дробовика переломная схема не использует магазин и вмещает два патрона; остальные схемы используют магазин или трубчатую подачу, которую задаёт геометрия магазина.',
+    'Крупный патрон повышает урон и отдачу, увеличивает массу боекомплекта и замедляет перезарядку.',
+    'Большой магазин увеличивает ёмкость, но ухудшает скорость перемещения, баланс и время перезарядки.',
+    'Прицел должен стоять сверху коробки или ствола и иметь свободную линию визирования; для снайперской винтовки он обязателен.',
+    'Мощность патрона должна соответствовать объёму коробки и толщине ствола; недостаточная прочность уменьшает надёжность и может блокировать чертёж.',
+    'Темп огня ограничивается массой затвора, объёмом коробки, мощностью патрона и теплоёмкостью ствола.',
+    'Центр масс рассчитывается по всем деталям и загруженному магазину; передний перевес снижает точность при движении.',
+    'Профили стволов задают индивидуальную механику: tapered легче, fluted быстрее охлаждается, bull устойчивее, polygonal точнее, carbon легче, а cryo лучше всего отводит тепло.',
+    'Надульник крепится строго к переднему торцу ствола. Его геометрия добавляет длину, массу и передний перевес.',
+    'Пламегаситель уменьшает вспышку; глушитель снижает звук и вспышку ценой нагрева и массы; компенсаторы меняют импульс, брейчер усиливает ближний урон, а choke собирает дробовую осыпь.',
+    'Добавьте спуск под коробкой и выберите его механику: match стабилизирует выстрел, rapid ускоряет цикл, кулачок делает очередь по три, электронный селектор открывает автоматический огонь у совместимых схем.',
+    'Толщина по оси Z является только художественной настройкой и не участвует в физических расчётах.'
+  ];
+
+  const metaProgress = loadMetaProgress();
+  craftLimitBreak = Boolean(metaProgress.limitBreakEnabled);
+  selectedCraftSlot = clamp(Math.round(craftLimitBreak ? metaProgress.selectedLimitBreakSlot : metaProgress.selectedSlot || 0), 0, 2);
+
+  // Полностью оригинальная 64-шаговая композиция: индустриальный синт-бас,
+  // арпеджио и драм-машина. Она передает энергетику ретро-FPS, не копируя
+  // мелодии или аудиозаписи DOOM.
+  const MUSIC_BPM = 138;
+  const MUSIC_STEP_SECONDS = 60 / MUSIC_BPM / 4;
+  const MUSIC_BASS_PATTERN = [
+    38, null, 38, 41, null, 36, 38, null,
+    39, null, 38, 33, 36, null, 41, 39,
+    38, null, 45, 43, null, 41, 39, null,
+    36, 38, null, 33, 39, null, 36, 41
+  ];
+  const MUSIC_ARP_PATTERN = [62, 65, 69, 75, 69, 65, 72, 69, 63, 67, 70, 74, 70, 67, 65, 62];
+  const MUSIC_PAD_CHORDS = [
+    [50, 53, 57],
+    [51, 55, 58],
+    [48, 51, 55],
+    [45, 50, 53]
+  ];
+
+  const ENEMY_TYPES = {
+    demon: {
+      name: 'ДЕМОН',
+      symbol: '#enemy-demon',
+      score: 1,
+      health: 58,
+      speed: 1.18,
+      radius: 0.32,
+      height: 1.54,
+      headCenter: 1.3,
+      headRadius: 0.27,
+      aspect: 100 / 130,
+      damage: 10,
+      attackDelay: 0.92,
+      ranged: false,
+      preferredRange: 0.62,
+      projectileSpeed: 0
+    },
+    mech: {
+      name: 'МЕХАНИЧЕСКИЙ ДЕМОН',
+      symbol: '#enemy-mech',
+      score: 2,
+      health: 122,
+      speed: 0.86,
+      radius: 0.39,
+      height: 1.54,
+      headCenter: 1.3,
+      headRadius: 0.27,
+      aspect: 110 / 130,
+      damage: 9,
+      attackDelay: 1.28,
+      ranged: true,
+      preferredRange: 5.1,
+      projectileSpeed: 5.2
+    },
+    prince: {
+      name: 'ПРИНЦ ДЕМОНОВ',
+      symbol: '#enemy-prince',
+      score: 5,
+      health: 340,
+      speed: 0.72,
+      radius: 0.49,
+      height: 1.86,
+      headCenter: 1.51,
+      headRadius: 0.32,
+      aspect: 130 / 150,
+      damage: 18,
+      attackDelay: 1.7,
+      ranged: true,
+      preferredRange: 6.4,
+      projectileSpeed: 3.25
+    }
+  };
+
+  const player = {
+    x: 5.5,
+    y: 5.5,
+    angle: 0,
+    pitch: 0,
+    elevation: 0,
+    viewElevation: 0,
+    verticalVelocity: 0,
+    grounded: true,
+    health: 100,
+    score: 0,
+    highScore: getModeHighScore(),
+    weapon: 0,
+    fireTimer: 0,
+    ammo: WEAPONS.map((weapon) => weapon.magazine),
+    reloadTimers: WEAPONS.map(() => 0),
+    reloadTotals: WEAPONS.map((weapon) => weapon.reloadTime),
+    invulnerableTimer: 0,
+    bobPhase: 0,
+    movingAmount: 0,
+    kills: 0,
+    spheres: 0
+  };
+
+  const WORLD_COLORS = Object.freeze({
+    void: 0x050914,
+    floor: 0x0a1a28,
+    ceiling: 0x040914,
+    gridPrimary: 0x2aa4c2,
+    gridSecondary: 0x102c41,
+    cyan: 0x38e2ff,
+    magenta: 0xff4d93,
+    amber: 0xffb74d,
+    mint: 0x65e5af
+  });
+  const baseWallColors = [
+    [33, 102, 132],
+    [76, 44, 116],
+    [126, 42, 73],
+    [139, 76, 37],
+    [38, 109, 78]
+  ];
+  const wallPalette = buildWallPalette();
+  const neonWallColors = ['#45dcff', '#c96bff', '#ff5b93', '#ffbb5c', '#70efa8'];
+
+  prepareClassicWeaponModels();
+  applyViewSettings(false);
+  applyAudioSettings(false);
+  applyControlSettings(false);
+  refreshRenderViewport(true);
+  bindEvents();
+  populateRulebook();
+  updateMusicButton();
+  updateMainMenu();
+  resetGame();
+  void bootstrapWebGLRenderer();
+  requestAnimationFrame(frame);
+
+  async function bootstrapWebGLRenderer() {
+    if (webglLoading || webgl) return;
+    webglLoading = true;
+    try {
+      three = window.THREE;
+      GLTFLoaderClass = window.THREE?.GLTFLoader || null;
+      if (!three) throw new Error('Local Three.js bundle is unavailable');
+      initializeWebGLRenderer();
+    } catch (error) {
+      document.documentElement.dataset.renderer = 'svg';
+      document.documentElement.dataset.rendererError = error instanceof Error ? error.message : 'WebGL bootstrap failed';
+    } finally {
+      webglLoading = false;
+    }
+  }
+
+  function getLinearWebGLColor(value) {
+    const color = new three.Color(value);
+    return typeof color.convertSRGBToLinear === 'function' ? color.convertSRGBToLinear() : color;
+  }
+
+  function initializeWebGLRenderer() {
+    if (!three || !webglCanvas || webgl) return;
+
+    const renderer = new three.WebGLRenderer({
+      canvas: webglCanvas,
+      antialias: performanceProfile === 'high',
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
+    if ('outputColorSpace' in renderer && three.SRGBColorSpace) {
+      renderer.outputColorSpace = three.SRGBColorSpace;
+    } else if (three.sRGBEncoding) {
+      renderer.outputEncoding = three.sRGBEncoding;
+    }
+    renderer.toneMapping = three.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.82;
+    renderer.setClearColor(getLinearWebGLColor(WORLD_COLORS.void), 1);
+
+    const scene = new three.Scene();
+    scene.background = getLinearWebGLColor(WORLD_COLORS.void);
+    scene.fog = new three.FogExp2(getLinearWebGLColor(WORLD_COLORS.void), performanceProfile === 'low' ? 0.052 : 0.034);
+
+    const camera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.04, MAX_RAY_DISTANCE + 8);
+    const weaponScene = new three.Scene();
+    const weaponCamera = new three.PerspectiveCamera(viewFovDegrees, 16 / 9, 0.01, 10);
+    const mapGroup = new three.Group();
+    const entityGroup = new three.Group();
+    const effectGroup = new three.Group();
+    const environmentGroup = new three.Group();
+    const weaponMount = new three.Group();
+    const floorMaterial = new three.MeshStandardMaterial({ color: getLinearWebGLColor(WORLD_COLORS.floor), roughness: 0.88, metalness: 0.2 });
+    const ceilingMaterial = new three.MeshStandardMaterial({ color: getLinearWebGLColor(WORLD_COLORS.ceiling), roughness: 1, metalness: 0.06, side: three.BackSide });
+    const floor = new three.Mesh(new three.PlaneGeometry(54, 54), floorMaterial);
+    const ceiling = new three.Mesh(new three.PlaneGeometry(54, 54), ceilingMaterial);
+    const grid = new three.GridHelper(52, 52, WORLD_COLORS.gridPrimary, WORLD_COLORS.gridSecondary);
+    floor.rotation.x = -Math.PI / 2;
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 2.42;
+    grid.position.y = 0.012;
+    grid.material.transparent = true;
+    grid.material.opacity = performanceProfile === 'low' ? 0.1 : 0.24;
+    environmentGroup.add(floor, ceiling, grid);
+
+    const hemisphere = new three.HemisphereLight(getLinearWebGLColor(0x4da6d4), getLinearWebGLColor(0x100614), 0.92);
+    const keyLight = new three.DirectionalLight(getLinearWebGLColor(0xff6da3), 0.66);
+    const playerLight = new three.PointLight(getLinearWebGLColor(WORLD_COLORS.cyan), 5.4, 12, 2);
+    keyLight.position.set(-8, 11, 5);
+    scene.add(environmentGroup, mapGroup, entityGroup, effectGroup, hemisphere, keyLight, playerLight, camera);
+    weaponScene.add(weaponMount);
+
+    const wallMaterials = baseWallColors.map(([red, green, blue]) => {
+      const color = getLinearWebGLColor((red << 16) | (green << 8) | blue);
+      return new three.MeshStandardMaterial({
+        color,
+        emissive: color.clone(),
+        emissiveIntensity: performanceProfile === 'low' ? 0.035 : 0.09,
+        roughness: 0.78,
+        metalness: 0.32,
+        flatShading: true
+      });
+    });
+    const doorMaterial = new three.MeshStandardMaterial({
+      color: getLinearWebGLColor(0x0c3650),
+      emissive: getLinearWebGLColor(WORLD_COLORS.cyan),
+      emissiveIntensity: 0.98,
+      roughness: 0.38,
+      metalness: 0.74,
+      flatShading: true
+    });
+
+    webgl = {
+      renderer,
+      scene,
+      camera,
+      weaponScene,
+      weaponCamera,
+      mapGroup,
+      entityGroup,
+      effectGroup,
+      environmentGroup,
+      floor,
+      ceiling,
+      grid,
+      playerLight,
+      weaponMount,
+      wallGeometry: new three.BoxGeometry(1, 2.4, 1),
+      platformGeometry: new three.BoxGeometry(1, 1, 1),
+      wallMaterials,
+      doorMaterial,
+      mapKey: '',
+      activeSectors: new Map(),
+      sectorMatrix: new three.Matrix4(),
+      lastMapBuild: -Infinity,
+      weaponKey: '',
+      weaponRoot: null,
+      weaponFlash: null,
+      weaponGlowMaterials: [],
+      assetWeaponTemplates: new Map(),
+      effects: [],
+      lastCameraFov: 0
+    };
+    document.documentElement.dataset.renderer = 'webgl';
+    refreshRenderViewport(true);
+    rebuildWebGLMap(true);
+    syncWebGLEntities();
+    updateWebGLWeaponModel(true);
+    void loadWebGLAssetWeaponModels();
+  }
+
+  function getWebGLPixelRatio() {
+    const nativeRatio = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+    return Math.max(0.55, nativeRatio * (performanceSettings.gpuPixelRatio || 1));
+  }
+
+  function resizeWebGLRenderer(cssWidth, cssHeight) {
+    if (!webgl) return;
+    webgl.renderer.setPixelRatio(getWebGLPixelRatio());
+    webgl.renderer.setSize(cssWidth, cssHeight, false);
+    webgl.camera.aspect = cssWidth / Math.max(1, cssHeight);
+    webgl.camera.updateProjectionMatrix();
+    webgl.weaponCamera.aspect = webgl.camera.aspect;
+    webgl.weaponCamera.updateProjectionMatrix();
+  }
+
+  function createArenaLayout(index) {
+    const rng = mulberry32(hash2(index, 0x51, WORLD_SEED));
+    const tiles = Array.from({ length: ARENA_SIZE }, () => Array.from({ length: ARENA_SIZE }, () => ({ height: 0 })));
+    const pillars = new Set();
+    const spawnTile = Math.floor(ARENA_SIZE / 2);
+    const spawn = { x: spawnTile + 0.5, y: spawnTile + 0.5 };
+    const safeRadius = 4;
+
+    const isNearSpawn = (tileX, tileY, padding = 0) => (
+      Math.abs(tileX - spawnTile) <= safeRadius + padding && Math.abs(tileY - spawnTile) <= safeRadius + padding
+    );
+    const paintPlatform = (originX, originY, width, depth) => {
+      for (let tileY = originY; tileY < originY + depth; tileY += 1) {
+        for (let tileX = originX; tileX < originX + width; tileX += 1) {
+          tiles[tileY][tileX].height = Math.max(tiles[tileY][tileX].height, 0.42);
+        }
+      }
+      if (width < 4 || depth < 4 || rng() >= 0.7) return;
+      for (let tileY = originY + 1; tileY < originY + depth - 1; tileY += 1) {
+        for (let tileX = originX + 1; tileX < originX + width - 1; tileX += 1) {
+          tiles[tileY][tileX].height = 0.84;
+        }
+      }
+    };
+
+    const platformCount = 12 + Math.min(12, index);
+    for (let attempt = 0, placed = 0; placed < platformCount && attempt < platformCount * 12; attempt += 1) {
+      const width = 3 + Math.floor(rng() * 5);
+      const depth = 3 + Math.floor(rng() * 5);
+      const tileX = 2 + Math.floor(rng() * (ARENA_SIZE - width - 4));
+      const tileY = 2 + Math.floor(rng() * (ARENA_SIZE - depth - 4));
+      const nearestX = clamp(spawnTile, tileX, tileX + width - 1);
+      const nearestY = clamp(spawnTile, tileY, tileY + depth - 1);
+      if (Math.hypot(nearestX - spawnTile, nearestY - spawnTile) < safeRadius + 3) continue;
+      paintPlatform(tileX, tileY, width, depth);
+      placed += 1;
+    }
+
+    const pillarCount = 18 + Math.min(14, index * 2);
+    for (let attempt = 0; pillars.size < pillarCount && attempt < pillarCount * 18; attempt += 1) {
+      const tileX = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
+      const tileY = 2 + Math.floor(rng() * (ARENA_SIZE - 4));
+      if (isNearSpawn(tileX, tileY, 3)) continue;
+      let crowded = false;
+      for (let offsetY = -1; offsetY <= 1 && !crowded; offsetY += 1) {
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          if (pillars.has(`${tileX + offsetX},${tileY + offsetY}`)) {
+            crowded = true;
+            break;
+          }
+        }
+      }
+      if (!crowded) pillars.add(`${tileX},${tileY}`);
+    }
+
+    for (let tileY = spawnTile - safeRadius; tileY <= spawnTile + safeRadius; tileY += 1) {
+      for (let tileX = spawnTile - safeRadius; tileX <= spawnTile + safeRadius; tileX += 1) {
+        tiles[tileY][tileX].height = 0;
+        pillars.delete(`${tileX},${tileY}`);
+      }
+    }
+
+    return { index, revision: waveState.revision + 1, tiles, pillars, spawn };
+  }
+
+  function resetArena(index) {
+    arena = createArenaLayout(index);
+    waveState.revision = arena.revision;
+    player.x = arena.spawn.x;
+    player.y = arena.spawn.y;
+    player.elevation = getArenaFloorHeightAt(player.x, player.y);
+    player.viewElevation = player.elevation;
+    player.verticalVelocity = 0;
+    player.grounded = true;
+    if (webgl) {
+      clearWebGLSectors();
+      rebuildWebGLMap(true);
+    }
+    rebuildFlowField();
+  }
+
+  function getArenaFloorHeightAt(x, y) {
+    if (!arena) return 0;
+    const tileX = Math.floor(x);
+    const tileY = Math.floor(y);
+    if (tileX < 0 || tileY < 0 || tileX >= ARENA_SIZE || tileY >= ARENA_SIZE) return 0;
+    return arena.tiles[tileY][tileX].height || 0;
+  }
+
+  function isArenaBlockedTile(tileX, tileY) {
+    if (!arena) return false;
+    if (tileX <= 0 || tileY <= 0 || tileX >= ARENA_SIZE - 1 || tileY >= ARENA_SIZE - 1) return true;
+    return arena.pillars.has(`${tileX},${tileY}`);
+  }
+
+  function rebuildWebGLArena(force = false) {
+    if (!webgl || !arena) return;
+    const mapKey = `arena:${arena.revision}`;
+    if (!force && webgl.mapKey === mapKey) return;
+
+    clearWebGLSectors();
+    const stage = new three.Group();
+    const wallsByMaterial = Array.from({ length: webgl.wallMaterials.length }, () => []);
+    const platformsByMaterial = Array.from({ length: webgl.wallMaterials.length }, () => []);
+    for (let tileY = 0; tileY < ARENA_SIZE; tileY += 1) {
+      for (let tileX = 0; tileX < ARENA_SIZE; tileX += 1) {
+        if (isArenaBlockedTile(tileX, tileY)) {
+          wallsByMaterial[wallMaterial(tileX, tileY)].push([tileX, tileY]);
+          continue;
+        }
+        const height = getArenaFloorHeightAt(tileX + 0.5, tileY + 0.5);
+        if (height <= 0) continue;
+        platformsByMaterial[(tileX + tileY + 1) % webgl.wallMaterials.length].push([tileX, tileY, height]);
+      }
+    }
+    for (let materialIndex = 0; materialIndex < wallsByMaterial.length; materialIndex += 1) {
+      const wallTiles = wallsByMaterial[materialIndex];
+      if (wallTiles.length === 0) continue;
+      const blocks = new three.InstancedMesh(webgl.wallGeometry, webgl.wallMaterials[materialIndex], wallTiles.length);
+      blocks.frustumCulled = false;
+      for (let index = 0; index < wallTiles.length; index += 1) {
+        const [tileX, tileY] = wallTiles[index];
+        webgl.sectorMatrix.makeTranslation(tileX + 0.5, 1.2, tileY + 0.5);
+        blocks.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      blocks.instanceMatrix.needsUpdate = true;
+      stage.add(blocks);
+    }
+    for (let materialIndex = 0; materialIndex < platformsByMaterial.length; materialIndex += 1) {
+      const platformTiles = platformsByMaterial[materialIndex];
+      if (platformTiles.length === 0) continue;
+      const platforms = new three.InstancedMesh(webgl.platformGeometry, webgl.wallMaterials[materialIndex], platformTiles.length);
+      platforms.frustumCulled = false;
+      for (let index = 0; index < platformTiles.length; index += 1) {
+        const [tileX, tileY, height] = platformTiles[index];
+        webgl.sectorMatrix.makeScale(1, height, 1);
+        webgl.sectorMatrix.setPosition(tileX + 0.5, height * 0.5, tileY + 0.5);
+        platforms.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      platforms.instanceMatrix.needsUpdate = true;
+      stage.add(platforms);
+    }
+    webgl.mapGroup.add(stage);
+    webgl.activeSectors.set('arena', stage);
+    webgl.mapKey = mapKey;
+  }
+
+  function rebuildWebGLMap(force = false) {
+    if (!webgl) return;
+    if (arena) {
+      rebuildWebGLArena(force);
+      return;
+    }
+    const centerSectorX = floorDiv(Math.floor(player.x), WEBGL_SECTOR_SIZE);
+    const centerSectorY = floorDiv(Math.floor(player.y), WEBGL_SECTOR_SIZE);
+    const radius = performanceSettings.webglSectorRadius || 1;
+    const mapKey = `${centerSectorX}:${centerSectorY}:${radius}:${performanceProfile}`;
+    if (!force && webgl.mapKey === mapKey) return;
+
+    const required = new Set();
+    for (let sectorY = centerSectorY - radius; sectorY <= centerSectorY + radius; sectorY += 1) {
+      for (let sectorX = centerSectorX - radius; sectorX <= centerSectorX + radius; sectorX += 1) {
+        const key = getWebGLSectorKey(sectorX, sectorY);
+        required.add(key);
+        if (webgl.activeSectors.has(key)) continue;
+        const sector = createWebGLSector(sectorX, sectorY);
+        webgl.activeSectors.set(key, sector);
+        webgl.mapGroup.add(sector);
+      }
+    }
+
+    for (const [key, sector] of webgl.activeSectors) {
+      if (required.has(key)) continue;
+      unloadWebGLSector(key, sector);
+    }
+    webgl.mapKey = mapKey;
+  }
+
+  function getWebGLSectorKey(sectorX, sectorY) {
+    return `${sectorX}:${sectorY}`;
+  }
+
+  function createWebGLSector(sectorX, sectorY) {
+    const sector = new three.Group();
+    const wallsByMaterial = Array.from({ length: webgl.wallMaterials.length + 1 }, () => []);
+    const startX = sectorX * WEBGL_SECTOR_SIZE;
+    const startY = sectorY * WEBGL_SECTOR_SIZE;
+
+    for (let localY = 0; localY < WEBGL_SECTOR_SIZE; localY += 1) {
+      for (let localX = 0; localX < WEBGL_SECTOR_SIZE; localX += 1) {
+        const tileX = startX + localX;
+        const tileY = startY + localY;
+        if (!isWallTile(tileX, tileY)) continue;
+        const materialIndex = isClosedDoorTile(tileX, tileY) ? webgl.wallMaterials.length : wallMaterial(tileX, tileY);
+        wallsByMaterial[materialIndex].push([tileX, tileY]);
+      }
+    }
+
+    for (let materialIndex = 0; materialIndex < wallsByMaterial.length; materialIndex += 1) {
+      const wallTiles = wallsByMaterial[materialIndex];
+      if (wallTiles.length === 0) continue;
+      const material = materialIndex === webgl.wallMaterials.length ? webgl.doorMaterial : webgl.wallMaterials[materialIndex];
+      const blocks = new three.InstancedMesh(webgl.wallGeometry, material, wallTiles.length);
+      blocks.frustumCulled = false;
+      for (let index = 0; index < wallTiles.length; index += 1) {
+        const [tileX, tileY] = wallTiles[index];
+        webgl.sectorMatrix.makeTranslation(tileX + 0.5, 1.2, tileY + 0.5);
+        blocks.setMatrixAt(index, webgl.sectorMatrix);
+      }
+      blocks.instanceMatrix.needsUpdate = true;
+      sector.add(blocks);
+    }
+
+    sector.userData.sectorKey = getWebGLSectorKey(sectorX, sectorY);
+    return sector;
+  }
+
+  function unloadWebGLSector(key, sector) {
+    sector.parent?.remove(sector);
+    webgl.activeSectors.delete(key);
+  }
+
+  function clearWebGLSectors() {
+    if (!webgl) return;
+    for (const [key, sector] of webgl.activeSectors) unloadWebGLSector(key, sector);
+    webgl.mapKey = '';
+  }
+
+  function invalidateWebGLSectors(tiles) {
+    if (!webgl) return;
+    const invalidated = new Set();
+    for (const [tileX, tileY] of tiles) {
+      const key = getWebGLSectorKey(
+        floorDiv(tileX, WEBGL_SECTOR_SIZE),
+        floorDiv(tileY, WEBGL_SECTOR_SIZE)
+      );
+      if (invalidated.has(key)) continue;
+      invalidated.add(key);
+      const sector = webgl.activeSectors.get(key);
+      if (sector) unloadWebGLSector(key, sector);
+    }
+    webgl.mapKey = '';
+  }
+
+  function addWebGLVoxel(group, size, position, color, glow = 0) {
+    const material = new three.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: glow,
+      roughness: 0.58,
+      metalness: 0.38,
+      flatShading: true
+    });
+    const mesh = new three.Mesh(new three.BoxGeometry(size[0], size[1], size[2]), material);
+    mesh.position.set(position[0], position[1], position[2]);
+    group.add(mesh);
+    return material;
+  }
+
+  function createWebGLEnemyMesh(kind) {
+    if (!webgl) return null;
+    const group = new three.Group();
+    const glowMaterials = [];
+    const palette = kind === 'prince'
+      ? { shell: 0x42104e, plate: 0x9e2f91, glow: 0xff7bc8 }
+      : kind === 'mech'
+        ? { shell: 0x283447, plate: 0x547494, glow: WORLD_COLORS.amber }
+        : { shell: 0x3b1835, plate: 0xa52e5d, glow: WORLD_COLORS.magenta };
+    addWebGLVoxel(group, [0.62, 0.64, 0.4], [0, 0.78, 0], palette.plate);
+    addWebGLVoxel(group, [0.52, 0.44, 0.46], [0, 1.3, 0], palette.shell);
+    addWebGLVoxel(group, [0.22, 0.12, 0.06], [-0.14, 1.32, -0.25], palette.glow, 1.45);
+    glowMaterials.push(group.children.at(-1).material);
+    addWebGLVoxel(group, [0.22, 0.12, 0.06], [0.14, 1.32, -0.25], palette.glow, 1.45);
+    glowMaterials.push(group.children.at(-1).material);
+    addWebGLVoxel(group, [0.17, 0.48, 0.22], [-0.36, 0.72, 0], palette.shell);
+    addWebGLVoxel(group, [0.17, 0.48, 0.22], [0.36, 0.72, 0], palette.shell);
+    addWebGLVoxel(group, [0.21, 0.38, 0.27], [-0.18, 0.22, 0], palette.shell);
+    addWebGLVoxel(group, [0.21, 0.38, 0.27], [0.18, 0.22, 0], palette.shell);
+    if (kind === 'prince') {
+      addWebGLVoxel(group, [0.13, 0.42, 0.18], [-0.33, 1.6, 0], palette.plate);
+      addWebGLVoxel(group, [0.13, 0.42, 0.18], [0.33, 1.6, 0], palette.plate);
+      group.scale.setScalar(1.16);
+    }
+    const fadeMaterials = [];
+    group.traverse((node) => {
+      if (!node.isMesh) return;
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      for (const material of materials) fadeMaterials.push(material);
+    });
+    group.userData.glowMaterials = glowMaterials;
+    group.userData.fadeMaterials = fadeMaterials;
+    webgl.entityGroup.add(group);
+    return group;
+  }
+
+  function createWebGLOrbMesh() {
+    if (!webgl) return null;
+    const group = new three.Group();
+    const core = new three.Mesh(
+      new three.OctahedronGeometry(0.18, 0),
+      new three.MeshStandardMaterial({ color: 0xb7f8ff, emissive: WORLD_COLORS.cyan, emissiveIntensity: 1.7, roughness: 0.2, metalness: 0.7, flatShading: true })
+    );
+    const ring = new three.Mesh(
+      new three.TorusGeometry(0.26, 0.025, 4, 8),
+      new three.MeshBasicMaterial({ color: 0x6eeaff, transparent: true, opacity: 0.72 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    group.add(core, ring);
+    webgl.entityGroup.add(group);
+    return group;
+  }
+
+  function createWebGLProjectileMesh(kind) {
+    if (!webgl) return null;
+    const color = kind === 'prince' ? WORLD_COLORS.magenta : WORLD_COLORS.amber;
+    const mesh = new three.Mesh(
+      new three.BoxGeometry(kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17, kind === 'prince' ? 0.24 : 0.17),
+      new three.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.4, roughness: 0.32, metalness: 0.45, flatShading: true })
+    );
+    webgl.entityGroup.add(mesh);
+    return mesh;
+  }
+
+  function removeWebGLEntityMesh(entity) {
+    if (!entity?.webglMesh) return;
+    entity.webglMesh.parent?.remove(entity.webglMesh);
+    entity.webglMesh = null;
+  }
+
+  function syncWebGLEntities() {
+    if (!webgl) return;
+    for (const enemy of enemies) if (!enemy.webglMesh) enemy.webglMesh = createWebGLEnemyMesh(enemy.kind);
+    for (const orb of orbs) if (!orb.webglMesh) orb.webglMesh = createWebGLOrbMesh();
+    for (const projectile of projectiles) if (!projectile.webglMesh) projectile.webglMesh = createWebGLProjectileMesh(projectile.kind);
+  }
+
+  function addWebGLEffect(x, y, color, strong = false, elevation = getArenaFloorHeightAt(x, y) + 0.72) {
+    if (!webgl || !performanceSettings.effects) return;
+    const mesh = new three.Mesh(
+      new three.OctahedronGeometry(strong ? 0.27 : 0.14, 0),
+      new three.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false })
+    );
+    mesh.position.set(x, elevation, y);
+    webgl.effectGroup.add(mesh);
+    webgl.effects.push({ mesh, born: performance.now(), ttl: strong ? 250 : 150, strong });
+  }
+
+  function addWebGLTracer(angle, pitch, horizontalDistance, headshot = false) {
+    if (!webgl || !performanceSettings.effects) return;
+    const startElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
+    const directionX = Math.cos(angle);
+    const directionY = Math.sin(angle);
+    const endElevation = startElevation + Math.tan(pitch) * horizontalDistance;
+    const geometry = new three.BufferGeometry().setFromPoints([
+      new three.Vector3(player.x + directionX * 0.24, startElevation, player.y + directionY * 0.24),
+      new three.Vector3(player.x + directionX * horizontalDistance, endElevation, player.y + directionY * horizontalDistance)
+    ]);
+    const material = new three.LineBasicMaterial({
+      color: headshot ? 0xff72c7 : WORLD_COLORS.cyan,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    });
+    const tracer = new three.Line(geometry, material);
+    tracer.frustumCulled = false;
+    webgl.effectGroup.add(tracer);
+    webgl.effects.push({ mesh: tracer, born: performance.now(), ttl: 70, strong: false, tracer: true, dispose: true });
+  }
+
+  async function loadWebGLAssetWeaponModels() {
+    if (!webgl || !GLTFLoaderClass) return;
+    const loader = new GLTFLoaderClass();
+    const models = [
+      { index: 0, file: 'blaster-e.glb' },
+      { index: 1, file: 'blaster-j.glb' },
+      { index: 2, file: 'blaster-p.glb' }
+    ];
+    for (const model of models) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          loader.load(`./assets/models/kenney-blaster/${model.file}`, resolve, undefined, reject);
+        });
+        const template = result.scene;
+        const bounds = new three.Box3().setFromObject(template);
+        const size = bounds.getSize(new three.Vector3());
+        const center = bounds.getCenter(new three.Vector3());
+        template.position.sub(center);
+        const length = Math.max(size.x, size.z, 0.001);
+        template.scale.setScalar(1.05 / length);
+        if (size.z > size.x) template.rotation.y = Math.PI / 2;
+        template.traverse((node) => {
+          if (!node.isMesh) return;
+          node.castShadow = false;
+          node.receiveShadow = false;
+          const materials = Array.isArray(node.material) ? node.material : [node.material];
+          for (const material of materials) {
+            material.flatShading = true;
+            material.metalness = Math.max(0.18, material.metalness || 0);
+            material.roughness = Math.min(0.7, material.roughness || 0.55);
+            if (material.map) {
+              material.map.magFilter = three.NearestFilter;
+              material.map.minFilter = three.NearestMipmapNearestFilter;
+              material.map.needsUpdate = true;
+            }
+            material.needsUpdate = true;
+          }
+        });
+        webgl.assetWeaponTemplates.set(model.index, template);
+        if (player.weapon === model.index && !WEAPONS[player.weapon].custom) updateWebGLWeaponModel(true);
+      } catch {
+        // The procedural voxel model remains the local fallback for an unavailable asset.
+      }
+    }
+  }
+
+  function updateWebGLWeaponModel(force = false) {
+    if (!webgl) return;
+    const weapon = WEAPONS[player.weapon];
+    if (!weapon) return;
+    const key = `${player.weapon}:${weapon.model3d?.revision || weapon.viewRevision || weapon.name}`;
+    if (!force && webgl.weaponKey === key) return;
+
+    webgl.weaponMount.clear();
+    const root = new three.Group();
+    const model = weapon.model3d || buildClassicWeapon3DModel(player.weapon);
+    const scale = weapon.custom ? 0.024 : 0.021;
+    const glowMaterials = [];
+    const assetTemplate = weapon.custom ? null : webgl.assetWeaponTemplates.get(player.weapon);
+    if (assetTemplate) {
+      root.add(assetTemplate.clone(true));
+    } else {
+      for (const box of model.boxes || []) {
+        const material = addWebGLVoxel(
+          root,
+          [box.size.x * scale, box.size.y * scale, box.size.z * scale],
+          [box.center.x * scale, box.center.y * scale, box.center.z * scale],
+          box.light || box.color,
+          box.id.includes('sight') || box.id.includes('cryo') ? 0.35 : 0.04
+        );
+        glowMaterials.push(material);
+      }
+    }
+    root.rotation.y = Math.PI / 2;
+    const muzzle = model.anchors?.muzzle || vec3(18, 2, 0);
+    const flash = new three.PointLight(WORLD_COLORS.amber, 0, 4.6, 2);
+    flash.position.set(muzzle.x * scale, muzzle.y * scale, muzzle.z * scale);
+    const flashCore = new three.Mesh(new three.OctahedronGeometry(0.09, 0), new three.MeshBasicMaterial({ color: 0xffd37a }));
+    flashCore.position.copy(flash.position);
+    flashCore.visible = false;
+    root.add(flash, flashCore);
+    root.traverse((node) => {
+      if (!node.isMesh) return;
+      node.renderOrder = 20;
+      node.frustumCulled = false;
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      const viewmodelMaterials = materials.map((material) => new three.MeshBasicMaterial({
+        color: material.color,
+        transparent: material.transparent,
+        opacity: material.opacity,
+        depthTest: false,
+        depthWrite: false
+      }));
+      node.material = Array.isArray(node.material) ? viewmodelMaterials : viewmodelMaterials[0];
+    });
+    webgl.weaponMount.add(root);
+    webgl.weaponRoot = root;
+    webgl.weaponFlash = { light: flash, core: flashCore };
+    webgl.weaponGlowMaterials = glowMaterials;
+    webgl.weaponKey = key;
+  }
+
+  function renderWebGLWeapon() {
+    if (!webgl) return;
+    updateWebGLWeaponModel(false);
+    const root = webgl.weaponRoot;
+    const weapon = WEAPONS[player.weapon];
+    if (!root || !weapon) return;
+    const reloadRemaining = player.reloadTimers[player.weapon];
+    const reloadTotal = Math.max(0.001, player.reloadTotals[player.weapon]);
+    const reloadProgress = reloadRemaining > 0 ? clamp(1 - reloadRemaining / reloadTotal, 0, 1) : 0;
+    const reloadPose = reloadRemaining > 0 ? Math.pow(Math.sin(reloadProgress * Math.PI), 0.52) : 0;
+    const stability = (bipodDeployed ? 0.16 : (weapon.swayScale || 1)) * lerp(1, 0.25, aimAmount);
+    const bobX = Math.sin(player.bobPhase) * player.movingAmount * 0.035 * stability + lookSway * 0.0016;
+    const bobY = Math.abs(Math.cos(player.bobPhase)) * player.movingAmount * 0.027 * stability + weaponKick * 0.011;
+    root.position.set(lerp(0.36, 0, aimAmount) + bobX, lerp(-0.26, -0.242, aimAmount) - bobY - reloadPose * 0.16, lerp(-0.68, -0.46, aimAmount));
+    root.rotation.set(reloadPose * 0.15, Math.PI / 2, lookSway * 0.0025 * stability + reloadPose * (weapon.custom ? -0.24 : 0.18));
+    root.scale.setScalar(1 - reloadPose * 0.08);
+    const flashStrength = muzzleTimer > 0 ? clamp(muzzleTimer * 20 * (weapon.muzzleFlashIntensity || 1), 0, 1) : 0;
+    if (webgl.weaponFlash) {
+      webgl.weaponFlash.light.intensity = flashStrength * 3.8;
+      webgl.weaponFlash.core.visible = flashStrength > 0.02;
+      webgl.weaponFlash.core.scale.setScalar(0.6 + flashStrength * 2.5);
+    }
+    const heat = weapon.custom ? clamp(weaponHeat / 100, 0, 1) : 0;
+    for (const material of webgl.weaponGlowMaterials) material.emissiveIntensity = 0.035 + heat * 0.16;
+  }
+
+  function renderWebGLScene(now) {
+    if (!webgl) return;
+    syncWebGLEntities();
+    if (now - webgl.lastMapBuild > 180) {
+      rebuildWebGLMap();
+      webgl.lastMapBuild = now;
+    }
+    webgl.floor.position.set(player.x, -0.015, player.y);
+    webgl.ceiling.position.set(player.x, 5.6, player.y);
+    webgl.grid.position.set(player.x, 0.012, player.y);
+    const eyeY = player.viewElevation + PLAYER_EYE_HEIGHT + cameraBob * 0.0035;
+    const pitchCos = Math.cos(player.pitch);
+    webgl.playerLight.position.set(player.x, eyeY + 0.32, player.y);
+    webgl.camera.position.set(player.x, eyeY, player.y);
+    const effectiveFov = FOV * 180 / Math.PI;
+    if (Math.abs(webgl.lastCameraFov - effectiveFov) > 0.02) {
+      webgl.camera.fov = effectiveFov;
+      webgl.camera.updateProjectionMatrix();
+      webgl.lastCameraFov = effectiveFov;
+    }
+    webgl.camera.lookAt(
+      player.x + Math.cos(player.angle) * pitchCos,
+      eyeY + Math.sin(player.pitch),
+      player.y + Math.sin(player.angle) * pitchCos
+    );
+    for (const enemy of enemies) {
+      const mesh = enemy.webglMesh;
+      if (!mesh) continue;
+      const deathProgress = enemy.dead ? clamp(enemy.deathTimer / 0.58, 0, 1) : 1;
+      const opacity = deathProgress * deathProgress * (3 - 2 * deathProgress);
+      mesh.visible = opacity > 0.01;
+      mesh.position.set(enemy.x, enemy.elevation + Math.sin(now * 0.004 + enemy.phase) * 0.035, enemy.y);
+      mesh.rotation.y = Math.atan2(player.x - enemy.x, player.y - enemy.y);
+      mesh.scale.setScalar((enemy.kind === 'prince' ? 1.16 : 1) * (enemy.dead ? 0.6 + deathProgress * 0.4 : 1 + enemy.hitFlash * 0.9));
+      for (const material of mesh.userData.fadeMaterials || []) {
+        material.transparent = opacity < 0.999;
+        material.opacity = opacity;
+        material.depthWrite = opacity > 0.08;
+      }
+      for (const material of mesh.userData.glowMaterials || []) material.emissiveIntensity = 0.72 + enemy.hitFlash * 2.1;
+    }
+    for (const orb of orbs) {
+      const mesh = orb.webglMesh;
+      if (!mesh) continue;
+      const pulse = 1 + Math.sin(now * 0.006 + orb.phase) * 0.15;
+      mesh.position.set(orb.x, orb.elevation + 0.43 + Math.sin(now * 0.004 + orb.phase) * 0.07, orb.y);
+      mesh.rotation.y = now * 0.002;
+      mesh.scale.setScalar(pulse);
+    }
+    for (const projectile of projectiles) {
+      const mesh = projectile.webglMesh;
+      if (!mesh) continue;
+      mesh.position.set(projectile.x, projectile.elevation + Math.sin(now * 0.014 + projectile.phase) * 0.025, projectile.y);
+      mesh.rotation.set(now * 0.01, now * 0.013, now * 0.008);
+    }
+    for (let index = webgl.effects.length - 1; index >= 0; index -= 1) {
+      const effect = webgl.effects[index];
+      const progress = (now - effect.born) / effect.ttl;
+      if (progress >= 1) {
+        effect.mesh.parent?.remove(effect.mesh);
+        if (effect.dispose) {
+          effect.mesh.geometry?.dispose();
+          effect.mesh.material?.dispose();
+        }
+        webgl.effects.splice(index, 1);
+        continue;
+      }
+      if (effect.tracer) {
+        effect.mesh.material.opacity = (1 - progress) * 0.9;
+      } else {
+        effect.mesh.scale.setScalar(0.8 + progress * (effect.strong ? 5 : 3));
+        effect.mesh.material.opacity = 1 - progress;
+      }
+    }
+    if (Math.abs(webgl.weaponCamera.fov - effectiveFov) > 0.02) {
+      webgl.weaponCamera.fov = effectiveFov;
+      webgl.weaponCamera.updateProjectionMatrix();
+    }
+    webgl.renderer.autoClear = false;
+    webgl.renderer.clear();
+    webgl.renderer.render(webgl.scene, webgl.camera);
+    webgl.renderer.clearDepth();
+    webgl.renderer.render(webgl.weaponScene, webgl.weaponCamera);
+  }
+
+  function svgElement(name) {
+    return document.createElementNS(SVG_NS, name);
+  }
+
+  function setSvgAttributeCached(element, name, value) {
+    const stringValue = String(value);
+    const cache = element.__pixelSectorAttributeCache || (element.__pixelSectorAttributeCache = Object.create(null));
+    if (cache[name] === stringValue) return;
+    cache[name] = stringValue;
+    element.setAttribute(name, stringValue);
+  }
+
+  function getTargetRayCount(cssWidth) {
+    const visibleWidthRatio = renderViewWidth / VIEW_W;
+    const qualityLimit = Math.round(performanceSettings.maxRays * visibleWidthRatio);
+    const pixelLimit = Math.round(cssWidth / performanceSettings.targetColumnPixels);
+    return Math.max(64, Math.min(performanceSettings.maxRays, qualityLimit, pixelLimit));
+  }
+
+  function refreshRenderViewport(force = false) {
+    const cssWidth = Math.max(1, app.clientWidth || window.innerWidth || VIEW_W);
+    const cssHeight = Math.max(1, app.clientHeight || window.innerHeight || VIEW_H);
+    const aspect = cssWidth / cssHeight;
+
+    let nextX = 0;
+    let nextY = 0;
+    let nextWidth = VIEW_W;
+    let nextHeight = VIEW_H;
+
+    // Reproduce the old xMidYMid slice crop explicitly. This lets the raycaster
+    // avoid calculating columns that a 4:3/5:4 monitor would crop away anyway.
+    if (aspect < BASE_VIEW_ASPECT) {
+      nextWidth = VIEW_H * aspect;
+      nextX = (VIEW_W - nextWidth) * 0.5;
+    } else if (aspect > BASE_VIEW_ASPECT) {
+      nextHeight = VIEW_W / aspect;
+      nextY = (VIEW_H - nextHeight) * 0.5;
+    }
+
+    const geometryChanged = Math.abs(nextX - renderViewX) > 0.05 ||
+      Math.abs(nextY - renderViewY) > 0.05 ||
+      Math.abs(nextWidth - renderViewWidth) > 0.05 ||
+      Math.abs(nextHeight - renderViewHeight) > 0.05;
+
+    renderViewX = nextX;
+    renderViewY = nextY;
+    renderViewWidth = nextWidth;
+    renderViewHeight = nextHeight;
+
+    gameView.setAttribute('viewBox', `${renderViewX.toFixed(3)} ${renderViewY.toFixed(3)} ${renderViewWidth.toFixed(3)} ${renderViewHeight.toFixed(3)}`);
+    gameView.setAttribute('preserveAspectRatio', 'none');
+
+    if (webgl) {
+      wallLayer.replaceChildren();
+      wallColumns.length = 0;
+      resizeWebGLRenderer(cssWidth, cssHeight);
+    } else {
+      const nextRayCount = getTargetRayCount(cssWidth);
+      if (force || geometryChanged || nextRayCount !== RAY_COUNT) {
+        RAY_COUNT = nextRayCount;
+        COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
+        initializeWallColumns();
+      } else {
+        COLUMN_WIDTH = renderViewWidth / RAY_COUNT;
+      }
+    }
+    updateProjection();
+    if (force || geometryChanged) {
+      refreshWeaponProjectionLayouts();
+      if (webgl) rebuildWebGLMap(true);
+    }
+  }
+
+  function initializeWallColumns() {
+    wallLayer.replaceChildren();
+    wallColumns.length = 0;
+    rayDepth = new Float32Array(RAY_COUNT);
+
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < RAY_COUNT; i += 1) {
+      const rect = svgElement('rect');
+      rect.setAttribute('x', (renderViewX + i * COLUMN_WIDTH).toFixed(2));
+      rect.setAttribute('width', (COLUMN_WIDTH + 0.72).toFixed(2));
+      rect.setAttribute('y', '0');
+      rect.setAttribute('height', String(VIEW_H));
+      rect.setAttribute('fill', '#20171a');
+      rect.setAttribute('stroke', performanceSettings.wallStrokes ? '#37efff' : 'none');
+      rect.setAttribute('stroke-width', performanceSettings.wallStrokes ? '0.6' : '0');
+      rect.setAttribute('stroke-opacity', performanceSettings.wallStrokes ? '0.2' : '0');
+      if (performanceSettings.wallStrokes) rect.setAttribute('paint-order', 'stroke fill');
+      fragment.appendChild(rect);
+      wallColumns.push(rect);
+    }
+    wallLayer.appendChild(fragment);
+  }
+
+  function bindEvents() {
+    startButton.addEventListener('click', () => startGameMode('classic'));
+    guncraftMenuButton.addEventListener('click', () => openCraftEditor(Boolean(limitBreakToggle.checked)));
+    limitBreakToggle.addEventListener('change', () => setLimitBreakMenuMode(limitBreakToggle.checked, true));
+    settingsMenuButton.addEventListener('click', () => openViewSettings('menu'));
+    resumeButton.addEventListener('click', resumeGame);
+    pauseMenuButton.addEventListener('click', returnToMainMenu);
+    pauseSettingsButton.addEventListener('click', () => openViewSettings('pause'));
+    settingsBackButton.addEventListener('click', closeViewSettings);
+    deathMenuButton.addEventListener('click', returnToMainMenu);
+    craftBackButton.addEventListener('click', returnToMainMenu);
+
+    restartButton.addEventListener('click', () => startGameMode(gameMode));
+    playCraftButton.addEventListener('click', commitCraftAndPlay);
+
+    craftSlotTabs.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-slot]');
+      if (!button || button.disabled) return;
+      selectCraftSlot(Number.parseInt(button.dataset.slot, 10));
+    });
+
+    craftClassList.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-class]');
+      if (!button) return;
+      chooseCraftClass(button.dataset.class);
+    });
+
+    componentPalette.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-component]');
+      if (!button) return;
+      currentCraftComponent = button.dataset.component;
+      refreshCraftEditor();
+    });
+
+    craftSubtype.addEventListener('change', () => {
+      const design = getCurrentDesign();
+      if (!design) return;
+      design.subtype = craftSubtype.value;
+      persistCraftProgress();
+      refreshCraftEditor();
+    });
+
+    craftBarrelProfile.addEventListener('change', () => {
+      changeCraftUpgradeOption('barrelProfile', craftBarrelProfile.value, BARREL_PROFILES);
+    });
+
+    craftMuzzleType.addEventListener('change', () => {
+      changeCraftUpgradeOption('muzzleType', craftMuzzleType.value, MUZZLE_DEVICE_TYPES);
+    });
+
+    craftTriggerSystem.addEventListener('change', () => {
+      changeCraftUpgradeOption('triggerSystem', craftTriggerSystem.value, TRIGGER_SYSTEMS);
+    });
+
+    craftName.addEventListener('input', () => {
+      const design = getCurrentDesign();
+      if (!design) return;
+      design.name = sanitizeWeaponName(craftName.value);
+      persistCraftProgress();
+    });
+
+    craftDepth.addEventListener('input', () => {
+      const design = getCurrentDesign();
+      if (!design) return;
+      design.depthRatio = clamp(Number.parseInt(craftDepth.value, 10) || 6, 1, 15);
+      persistCraftProgress();
+      refreshCraftEditor();
+    });
+
+    viewFov.addEventListener('input', () => {
+      setViewFov(Number.parseInt(viewFov.value, 10));
+    });
+    graphicsQuality.addEventListener('change', () => {
+      setGraphicsQuality(graphicsQuality.value);
+    });
+
+    settingsTabs.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-settings-tab]');
+      if (!button) return;
+      setSettingsTab(button.dataset.settingsTab);
+    });
+
+    settingsMusicVolume.addEventListener('input', () => {
+      setMusicVolume(Number.parseInt(settingsMusicVolume.value, 10));
+    });
+    settingsMusicMuteButton.addEventListener('click', () => {
+      initAudio();
+      toggleMusic();
+    });
+    settingsEffectsVolume.addEventListener('input', () => {
+      setEffectsVolume(Number.parseInt(settingsEffectsVolume.value, 10));
+    });
+    settingsEffectsMuteButton.addEventListener('click', () => {
+      initAudio();
+      toggleEffects();
+    });
+    mouseSensitivityInput.addEventListener('input', () => {
+      setMouseSensitivity(Number.parseFloat(mouseSensitivityInput.value));
+    });
+    settingsKeybindGrid.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-keybind-action]');
+      if (!button) return;
+      beginKeybindCapture(button.dataset.keybindAction);
+    });
+    resetKeybindsButton.addEventListener('click', resetKeybinds);
+
+    craftFullscreenButton.addEventListener('click', toggleCraftFullscreen);
+    document.addEventListener('fullscreenchange', syncCraftFullscreenState);
+    applyLimitBreakDimensions.addEventListener('click', applyLimitBreakDimensionEditor);
+    fitLimitBreakCanvas.addEventListener('click', () => {
+      craftCanvasFitNonce += 1;
+      updateCraftCanvasViewport(getCurrentDesign(), true);
+    });
+    for (const input of [limitBreakX, limitBreakY, limitBreakW, limitBreakH]) {
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') applyLimitBreakDimensionEditor();
+      });
+    }
+
+    craftCanvas.addEventListener('pointerdown', beginCraftDraw);
+    craftCanvas.addEventListener('pointermove', updateCraftDraw);
+    craftCanvas.addEventListener('pointerup', finishCraftDraw);
+    craftCanvas.addEventListener('pointercancel', cancelCraftDraw);
+
+    deleteComponentButton.addEventListener('click', deleteSelectedComponent);
+    resetDesignButton.addEventListener('click', () => {
+      const design = getCurrentDesign();
+      if (!design || design.invested <= 0) return;
+      if (!window.confirm('Сбросить чертёж и вернуть вложенные очки модификации?')) return;
+      refundAndResetDesign(design);
+      refreshCraftEditor();
+    });
+
+    audioToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      initAudio();
+      toggleMusic();
+    });
+
+    app.addEventListener('click', (event) => {
+      if (event.target.closest('button, input, select, summary')) return;
+      if (startOverlay.classList.contains('visible') || settingsOverlay.classList.contains('visible') || craftOverlay.classList.contains('visible')) return;
+      if (started && !gameOver && paused) resumeGame();
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      const locked = document.pointerLockElement === app || document.pointerLockElement === gameView;
+      if (locked && started && !gameOver) {
+        paused = false;
+        pauseOverlay.classList.remove('visible');
+      } else if (started && !gameOver && !document.hidden && !startOverlay.classList.contains('visible') && !settingsOverlay.classList.contains('visible') && !craftOverlay.classList.contains('visible')) {
+        paused = true;
+        clearInput();
+        pauseOverlay.classList.add('visible');
+      }
+    });
+
+    document.addEventListener('mousemove', (event) => {
+      if (paused || gameOver || document.pointerLockElement === null) return;
+      const turn = event.movementX * 0.00215 * mouseSensitivity;
+      player.angle = normalizeAngle(player.angle + turn);
+      player.pitch = clamp(player.pitch - event.movementY * 0.0018 * mouseSensitivity, -0.72, 0.72);
+      lookSway = clamp(lookSway + event.movementX * 0.12 * clamp(mouseSensitivity, 0.45, 2.2), -22, 22);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (settingsOverlay.classList.contains('visible')) {
+        if (keybindCaptureAction) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.repeat) return;
+          if (event.code === 'Escape') cancelKeybindCapture();
+          else assignKeybind(keybindCaptureAction, event.code);
+          return;
+        }
+        if (event.code === 'Escape') closeViewSettings();
+        return;
+      }
+      if (craftOverlay.classList.contains('visible')) {
+        if (event.code === 'Escape') {
+          if (craftOverlay.classList.contains('fullscreen-editor') || document.fullscreenElement) exitCraftFullscreen();
+          else returnToMainMenu();
+        }
+        return;
+      }
+      if (startOverlay.classList.contains('visible')) return;
+
+      if (isBoundCode(event.code) || ['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+        event.preventDefault();
+      }
+
+      if (isActionCode('map', event.code) && !event.repeat) {
+        minimapVisible = !minimapVisible;
+        minimap.classList.toggle('visible', minimapVisible);
+        if (minimapVisible) renderMinimap();
+        return;
+      }
+
+      if (isActionCode('music', event.code) && !event.repeat) {
+        initAudio();
+        toggleMusic();
+        return;
+      }
+
+      if (isActionCode('reload', event.code) && !event.repeat) requestReload();
+      if (gameMode === 'classic' && !event.repeat) {
+        if (isActionCode('weapon1', event.code)) selectWeapon(0);
+        if (isActionCode('weapon2', event.code)) selectWeapon(1);
+        if (isActionCode('weapon3', event.code)) selectWeapon(2);
+        if (isActionCode('previousWeapon', event.code)) cycleWeapon(-1);
+        if (isActionCode('nextWeapon', event.code)) cycleWeapon(1);
+      }
+      if (event.code === 'Enter' && gameOver && !event.repeat) restartButton.click();
+
+      if (isActionCode('fire', event.code) && !keys[event.code]) {
+        triggerPressed = true;
+        triggerHeld = true;
+      }
+      if (isActionCode('jump', event.code) && !keys[event.code]) jumpQueued = true;
+      keys[event.code] = true;
+    });
+
+    document.addEventListener('keyup', (event) => {
+      keys[event.code] = false;
+      if (isActionCode('fire', event.code)) triggerHeld = false;
+    });
+
+    document.addEventListener('mousedown', (event) => {
+      if (event.target.closest('.overlay')) return;
+      if (event.button === 0 && !paused && !gameOver) {
+        triggerPressed = true;
+        triggerHeld = true;
+      } else if (event.button === 2 && !paused && !gameOver) {
+        const weapon = WEAPONS[player.weapon];
+        if (weapon?.hasSight) {
+          aimHeld = true;
+          event.preventDefault();
+        } else {
+          showSystemMessage('НА ОРУЖИИ НЕТ ПРИЦЕЛА');
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', (event) => {
+      if (event.button === 0) triggerHeld = false;
+      if (event.button === 2) aimHeld = false;
+    });
+
+    app.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      if (!paused && !gameOver && gameMode === 'classic') cycleWeapon(event.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
+
+    app.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    window.addEventListener('blur', clearInput);
+    window.addEventListener('resize', () => {
+      window.clearTimeout(resizeRenderTimer);
+      resizeRenderTimer = window.setTimeout(() => refreshRenderViewport(false), 120);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && started && !gameOver) {
+        paused = true;
+        clearInput();
+        pauseOverlay.classList.add('visible');
+      }
+    });
+  }
+
+  function setLimitBreakMenuMode(enabled, persist = false) {
+    const next = Boolean(enabled);
+    metaProgress.limitBreakEnabled = next;
+    limitBreakToggle.checked = next;
+    guncraftModeCard.classList.toggle('limit-break-active', next);
+    guncraftMenuButton.textContent = next ? 'ОТКРЫТЬ СРЫВ ЛИМИТОВ' : 'ОТКРЫТЬ КОНСТРУКТОР';
+    guncraftMenuButton.classList.toggle('danger-button', next);
+    if (persist) persistCraftProgress();
+  }
+
+  function normalizeSettingsTab(value) {
+    return value === 'audio' || value === 'controls' ? value : 'view';
+  }
+
+  function setSettingsTab(value) {
+    activeSettingsTab = normalizeSettingsTab(value);
+    for (const button of settingsTabs.querySelectorAll('[data-settings-tab]')) {
+      const selected = button.dataset.settingsTab === activeSettingsTab;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    }
+    for (const panel of settingsPanels) panel.hidden = panel.dataset.settingsPanel !== activeSettingsTab;
+    if (activeSettingsTab !== 'controls') cancelKeybindCapture(false);
+  }
+
+  function formatKeyCode(code) {
+    if (KEY_CODE_LABELS[code]) return KEY_CODE_LABELS[code];
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return `NUM ${code.slice(6)}`;
+    if (/^F(?:[1-9]|1[0-2])$/.test(code)) return code;
+    return String(code || 'НЕ НАЗНАЧЕНО').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
+  }
+
+  function getKeybindLabel(actionId) {
+    return KEYBIND_ACTIONS.find((item) => item.id === actionId)?.label || actionId;
+  }
+
+  function renderKeybindSettings() {
+    settingsKeybindGrid.innerHTML = KEYBIND_ACTIONS.map((action) => {
+      const listening = keybindCaptureAction === action.id;
+      return `<div class="keybind-row"><span>${escapeHtml(action.label)}</span><button type="button" class="keybind-button${listening ? ' listening' : ''}" data-keybind-action="${action.id}">${listening ? 'НАЖМИТЕ КЛАВИШУ' : escapeHtml(formatKeyCode(keybinds[action.id]))}</button></div>`;
+    }).join('');
+  }
+
+  function beginKeybindCapture(actionId) {
+    if (!DEFAULT_KEYBINDS[actionId]) return;
+    keybindCaptureAction = actionId;
+    keybindCaptureStatus.classList.add('listening');
+    keybindCaptureStatus.textContent = `Команда «${getKeybindLabel(actionId)}»: нажмите новую клавишу. Esc — отмена.`;
+    renderKeybindSettings();
+  }
+
+  function cancelKeybindCapture(resetText = true) {
+    keybindCaptureAction = null;
+    keybindCaptureStatus.classList.remove('listening');
+    if (resetText) keybindCaptureStatus.textContent = 'Нажмите на кнопку команды, затем нажмите новую клавишу. При конфликте команды обменяются назначениями.';
+    renderKeybindSettings();
+  }
+
+  function isForbiddenKeybind(code) {
+    return ['Escape', 'F5', 'F11', 'F12'].includes(code);
+  }
+
+  function assignKeybind(actionId, code) {
+    if (!DEFAULT_KEYBINDS[actionId]) return;
+    if (isForbiddenKeybind(code)) {
+      keybindCaptureStatus.textContent = `Клавиша ${formatKeyCode(code)} зарезервирована браузером или игрой. Выберите другую.`;
+      return;
+    }
+    const previousCode = keybinds[actionId];
+    const conflictAction = Object.keys(keybinds).find((id) => id !== actionId && keybinds[id] === code);
+    if (conflictAction) keybinds[conflictAction] = previousCode;
+    keybinds[actionId] = code;
+    metaProgress.controlSettings.keybinds = { ...keybinds };
+    keybindCaptureAction = null;
+    keybindCaptureStatus.classList.remove('listening');
+    keybindCaptureStatus.textContent = conflictAction
+      ? `Назначено: ${getKeybindLabel(actionId)} — ${formatKeyCode(code)}. Команда «${getKeybindLabel(conflictAction)}» получила ${formatKeyCode(previousCode)}.`
+      : `Назначено: ${getKeybindLabel(actionId)} — ${formatKeyCode(code)}.`;
+    persistCraftProgress();
+    renderKeybindSettings();
+    renderControlHints();
+  }
+
+  function resetKeybinds() {
+    keybinds = { ...DEFAULT_KEYBINDS };
+    metaProgress.controlSettings.keybinds = { ...keybinds };
+    cancelKeybindCapture(false);
+    keybindCaptureStatus.textContent = 'Клавиши восстановлены по умолчанию.';
+    persistCraftProgress();
+    renderKeybindSettings();
+    renderControlHints();
+  }
+
+  function isActionCode(actionId, code) {
+    return keybinds[actionId] === code;
+  }
+
+  function isActionDown(actionId) {
+    const code = keybinds[actionId];
+    return Boolean(code && keys[code]);
+  }
+
+  function isBoundCode(code) {
+    return Object.values(keybinds).includes(code);
+  }
+
+  function renderControlHints() {
+    hintMoveKeys.textContent = [keybinds.moveForward, keybinds.moveLeft, keybinds.moveBackward, keybinds.moveRight].map(formatKeyCode).join(' ');
+    hintFireKey.textContent = `ЛКМ / ${formatKeyCode(keybinds.fire)}`;
+    hintJumpKey.textContent = formatKeyCode(keybinds.jump);
+    hintWeaponKeys.textContent = [keybinds.weapon1, keybinds.weapon2, keybinds.weapon3].map(formatKeyCode).join(' ');
+    hintSprintKey.textContent = formatKeyCode(keybinds.sprint);
+    hintReloadKey.textContent = formatKeyCode(keybinds.reload);
+    hintMapKey.textContent = formatKeyCode(keybinds.map);
+    hintMusicKey.textContent = formatKeyCode(keybinds.music);
+    updateMusicButton();
+  }
+
+  function normalizeKeybinds(value) {
+    const result = {};
+    const used = new Set();
+    for (const action of KEYBIND_ACTIONS) {
+      const candidate = typeof value?.[action.id] === 'string' && value[action.id].length <= 32 ? value[action.id] : DEFAULT_KEYBINDS[action.id];
+      if (used.has(candidate)) return { ...DEFAULT_KEYBINDS };
+      result[action.id] = candidate;
+      used.add(candidate);
+    }
+    return result;
+  }
+
+  function normalizeControlSettings(value) {
+    const sensitivity = Number(value?.mouseSensitivity);
+    return {
+      mouseSensitivity: clamp(Number.isFinite(sensitivity) ? sensitivity : 1, 0.2, 3),
+      keybinds: normalizeKeybinds(value?.keybinds)
+    };
+  }
+
+  function applyControlSettings(persist = false) {
+    metaProgress.controlSettings = normalizeControlSettings(metaProgress.controlSettings);
+    mouseSensitivity = metaProgress.controlSettings.mouseSensitivity;
+    keybinds = { ...metaProgress.controlSettings.keybinds };
+    mouseSensitivityInput.value = mouseSensitivity.toFixed(2);
+    mouseSensitivityValue.textContent = `×${mouseSensitivity.toFixed(2)}`;
+    renderKeybindSettings();
+    renderControlHints();
+    if (persist) persistCraftProgress();
+  }
+
+  function setMouseSensitivity(value) {
+    mouseSensitivity = clamp(Number(value) || 1, 0.2, 3);
+    metaProgress.controlSettings.mouseSensitivity = mouseSensitivity;
+    mouseSensitivityValue.textContent = `×${mouseSensitivity.toFixed(2)}`;
+    persistCraftProgress();
+  }
+
+  function normalizeAudioSettings(value) {
+    const musicValue = Number(value?.musicVolume);
+    const effectsValue = Number(value?.effectsVolume);
+    return {
+      musicVolume: clamp(Number.isFinite(musicValue) ? Math.round(musicValue) : 70, 0, 100),
+      effectsVolume: clamp(Number.isFinite(effectsValue) ? Math.round(effectsValue) : 85, 0, 100),
+      musicMuted: typeof value?.musicMuted === 'boolean' ? value.musicMuted : loadMusicMuted(),
+      effectsMuted: Boolean(value?.effectsMuted)
+    };
+  }
+
+  function applyAudioSettings(persist = false) {
+    metaProgress.audioSettings = normalizeAudioSettings(metaProgress.audioSettings);
+    musicVolume = metaProgress.audioSettings.musicVolume / 100;
+    effectsVolume = metaProgress.audioSettings.effectsVolume / 100;
+    musicMuted = metaProgress.audioSettings.musicMuted;
+    effectsMuted = metaProgress.audioSettings.effectsMuted;
+    syncAudioSettingsUi();
+    applyEffectsGain();
+    applyMusicGain();
+    if (persist) persistCraftProgress();
+  }
+
+  function syncAudioSettingsUi() {
+    settingsMusicVolume.value = String(Math.round(musicVolume * 100));
+    settingsMusicVolumeValue.textContent = `${Math.round(musicVolume * 100)}%`;
+    settingsMusicMuteButton.textContent = musicMuted ? 'МУЗЫКА ВЫКЛ' : 'МУЗЫКА ВКЛ';
+    settingsMusicMuteButton.classList.toggle('muted', musicMuted);
+    settingsMusicMuteButton.setAttribute('aria-pressed', String(!musicMuted));
+    settingsEffectsVolume.value = String(Math.round(effectsVolume * 100));
+    settingsEffectsVolumeValue.textContent = `${Math.round(effectsVolume * 100)}%`;
+    settingsEffectsMuteButton.textContent = effectsMuted ? 'ЭФФЕКТЫ ВЫКЛ' : 'ЭФФЕКТЫ ВКЛ';
+    settingsEffectsMuteButton.classList.toggle('muted', effectsMuted);
+    settingsEffectsMuteButton.setAttribute('aria-pressed', String(!effectsMuted));
+    updateMusicButton();
+  }
+
+  function setMusicVolume(value) {
+    musicVolume = clamp((Number(value) || 0) / 100, 0, 1);
+    metaProgress.audioSettings.musicVolume = Math.round(musicVolume * 100);
+    settingsMusicVolumeValue.textContent = `${Math.round(musicVolume * 100)}%`;
+    initAudio();
+    applyMusicGain();
+    updateMusicButton();
+    persistCraftProgress();
+  }
+
+  function setEffectsVolume(value) {
+    effectsVolume = clamp((Number(value) || 0) / 100, 0, 1);
+    metaProgress.audioSettings.effectsVolume = Math.round(effectsVolume * 100);
+    settingsEffectsVolumeValue.textContent = `${Math.round(effectsVolume * 100)}%`;
+    initAudio();
+    applyEffectsGain();
+    persistCraftProgress();
+  }
+
+  function toggleEffects() {
+    effectsMuted = !effectsMuted;
+    metaProgress.audioSettings.effectsMuted = effectsMuted;
+    syncAudioSettingsUi();
+    applyEffectsGain();
+    persistCraftProgress();
+    if (!effectsMuted) playTone(520, 0.07, 'square', 0.035, 760);
+  }
+
+  function applyEffectsGain() {
+    if (!audioContext || !sfxGain) return;
+    const target = effectsMuted ? 0.0001 : Math.max(0.0001, 0.9 * effectsVolume);
+    const now = audioContext.currentTime;
+    sfxGain.gain.cancelScheduledValues(now);
+    sfxGain.gain.setValueAtTime(Math.max(0.0001, sfxGain.gain.value), now);
+    sfxGain.gain.exponentialRampToValueAtTime(target, now + 0.08);
+  }
+
+  function normalizeWeaponPosition() {
+    return 'right';
+  }
+
+  function getWeaponView(weapon, position = weaponPosition) {
+    if (!weapon) return null;
+    const normalized = normalizeWeaponPosition(position);
+    if (weapon.views?.[normalized]) return weapon.views[normalized];
+    if (weapon.views?.center) return weapon.views.center;
+    return {
+      symbol: weapon.symbol,
+      x: weapon.x || 0,
+      y: weapon.y || 0,
+      width: weapon.width || 1,
+      height: weapon.height || 1,
+      aimAnchorX: weapon.aimAnchorX || weapon.muzzleX || HALF_W,
+      aimAnchorY: weapon.aimAnchorY || weapon.muzzleY || HALF_H,
+      muzzleX: weapon.muzzleX || HALF_W,
+      muzzleY: weapon.muzzleY || HALF_H
+    };
+  }
+
+  function applyViewSettings(persist = false) {
+    if (!metaProgress.viewSettings || typeof metaProgress.viewSettings !== 'object') {
+      metaProgress.viewSettings = { weaponPosition: 'right', fov: 66 };
+    }
+    viewFovDegrees = clamp(Math.round(Number(metaProgress.viewSettings.fov) || 66), 45, 120);
+    metaProgress.viewSettings.weaponPosition = 'right';
+    metaProgress.viewSettings.fov = viewFovDegrees;
+    syncViewSettingsUi();
+    updateProjection();
+    if (persist) persistCraftProgress();
+  }
+
+  function syncViewSettingsUi() {
+    viewFov.value = String(viewFovDegrees);
+    viewFovValue.textContent = `${viewFovDegrees}°`;
+    const preference = getGraphicsQualityPreference();
+    graphicsQuality.value = preference;
+    const labels = { low: 'НИЗКОЕ', medium: 'СРЕДНЕЕ', high: 'ВЫСОКОЕ' };
+    graphicsQualityStatus.textContent = preference === 'auto'
+      ? `АВТО · ${labels[performanceProfile]}`
+      : labels[performanceProfile];
+  }
+
+  function applyPerformanceProfile(profile) {
+    const nextProfile = PERFORMANCE_SETTINGS_BY_PROFILE[profile] ? profile : 'medium';
+    performanceProfile = nextProfile;
+    performanceSettings = PERFORMANCE_SETTINGS_BY_PROFILE[nextProfile];
+    activeFrameInterval = 1000 / performanceSettings.maxFps;
+    idleFrameInterval = 1000 / performanceSettings.idleFps;
+    document.documentElement.dataset.performanceProfile = nextProfile;
+    if (webgl) {
+      webgl.scene.fog.density = nextProfile === 'low' ? 0.075 : 0.058;
+      webgl.grid.material.opacity = nextProfile === 'low' ? 0.12 : 0.29;
+      rebuildWebGLMap(true);
+    }
+    lastRenderedTime = 0;
+    refreshRenderViewport(true);
+  }
+
+  function setGraphicsQuality(value) {
+    const preference = value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+    try {
+      if (preference === 'auto') localStorage.removeItem(GRAPHICS_QUALITY_STORAGE_KEY);
+      else localStorage.setItem(GRAPHICS_QUALITY_STORAGE_KEY, preference);
+    } catch {
+      // Настройка остаётся активной до закрытия вкладки, если хранилище недоступно.
+    }
+    const nextProfile = preference === 'auto' ? detectPerformanceProfile() : preference;
+    applyPerformanceProfile(nextProfile);
+    syncViewSettingsUi();
+    showMessage(`ГРАФИКА · ${graphicsQualityStatus.textContent}`, 0.9);
+  }
+
+  function setViewFov(value) {
+    const next = clamp(Math.round(Number(value) || 66), 45, 120);
+    if (viewFovDegrees === next) return;
+    viewFovDegrees = next;
+    metaProgress.viewSettings.fov = next;
+    syncViewSettingsUi();
+    updateProjection();
+    persistCraftProgress();
+  }
+
+  function openViewSettings(source = 'menu') {
+    settingsReturnTarget = source === 'pause' ? 'pause' : 'menu';
+    clearInput();
+    cancelKeybindCapture(false);
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    startOverlay.classList.remove('visible');
+    pauseOverlay.classList.remove('visible');
+    settingsOverlay.classList.add('visible');
+    syncViewSettingsUi();
+    syncAudioSettingsUi();
+    applyControlSettings(false);
+    setSettingsTab(activeSettingsTab);
+  }
+
+  function closeViewSettings() {
+    cancelKeybindCapture(false);
+    settingsOverlay.classList.remove('visible');
+    if (settingsReturnTarget === 'pause' && started && !gameOver) pauseOverlay.classList.add('visible');
+    else startOverlay.classList.add('visible');
+  }
+
+  function toggleCraftFullscreen() {
+    if (craftOverlay.classList.contains('fullscreen-editor')) {
+      exitCraftFullscreen();
+      return;
+    }
+    craftOverlay.classList.add('fullscreen-editor');
+    craftFullscreenButton.setAttribute('aria-pressed', 'true');
+    craftFullscreenButton.textContent = 'ВЫЙТИ ИЗ ПОЛНОГО ЭКРАНА';
+    const request = craftOverlay.requestFullscreen?.({ navigationUI: 'hide' });
+    if (request && typeof request.catch === 'function') request.catch(() => {});
+  }
+
+  function exitCraftFullscreen() {
+    craftOverlay.classList.remove('fullscreen-editor');
+    craftFullscreenButton.setAttribute('aria-pressed', 'false');
+    craftFullscreenButton.textContent = 'НА ВЕСЬ ЭКРАН';
+    if (document.fullscreenElement) {
+      const exit = document.exitFullscreen?.();
+      if (exit && typeof exit.catch === 'function') exit.catch(() => {});
+    }
+  }
+
+  function syncCraftFullscreenState() {
+    if (!document.fullscreenElement && craftOverlay.classList.contains('fullscreen-editor')) {
+      craftOverlay.classList.remove('fullscreen-editor');
+      craftFullscreenButton.setAttribute('aria-pressed', 'false');
+      craftFullscreenButton.textContent = 'НА ВЕСЬ ЭКРАН';
+    }
+  }
+
+  function updateProjection() {
+    const weapon = WEAPONS?.[player?.weapon || 0];
+    const zoomMultiplier = weapon?.hasSight ? (weapon.aimFovMultiplier || 0.9) : 1;
+    const effectiveFov = clamp(viewFovDegrees * lerp(1, zoomMultiplier, aimAmount), 8, 120);
+    FOV = effectiveFov * Math.PI / 180;
+    HALF_FOV = FOV / 2;
+    PROJECTION = (renderViewWidth * 0.5) / Math.tan(HALF_FOV);
+  }
+
+  function requestPointerLock() {
+    const promise = app.requestPointerLock?.();
+    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+  }
+
+  function resumeGame() {
+    if (!started || gameOver) return;
+    initAudio();
+    paused = false;
+    pauseOverlay.classList.remove('visible');
+    requestPointerLock();
+  }
+
+  function clearInput() {
+    for (const key of Object.keys(keys)) keys[key] = false;
+    triggerHeld = false;
+    triggerPressed = false;
+    jumpQueued = false;
+    aimHeld = false;
+  }
+
+  function startGameMode(mode) {
+    initAudio();
+    gameMode = mode === 'limitbreak' ? 'limitbreak' : mode === 'guncraft' ? 'guncraft' : 'classic';
+
+    if (gameMode === 'guncraft' || gameMode === 'limitbreak') {
+      craftLimitBreak = gameMode === 'limitbreak';
+      selectedCraftSlot = clamp(Math.round(craftLimitBreak ? metaProgress.selectedLimitBreakSlot : metaProgress.selectedSlot || 0), 0, 2);
+      const design = getCurrentDesign();
+      const stats = design ? calculateWeaponStats(design) : null;
+      const validation = design && stats ? validateWeaponDesign(design, stats) : { errors: ['Сначала создайте оружие.'] };
+      if (!design || !stats || validation.errors.length > 0) {
+        openCraftEditor(craftLimitBreak);
+        showMessage('ЧЕРТЁЖ НЕ ГОТОВ', 1.2);
+        return;
+      }
+      currentCraftStats = stats;
+      WEAPONS = [buildRuntimeWeapon(design, stats)];
+      rebuildCustomWeaponGraphic(design, weaponPosition, WEAPONS[0]);
+    } else {
+      WEAPONS = CLASSIC_WEAPONS;
+    }
+
+    exitCraftFullscreen();
+    resetGame();
+    started = true;
+    gameOver = false;
+    paused = false;
+    startOverlay.classList.remove('visible');
+    settingsOverlay.classList.remove('visible');
+    craftOverlay.classList.remove('visible');
+    pauseOverlay.classList.remove('visible');
+    deathOverlay.classList.remove('visible');
+    requestPointerLock();
+    const startMessages = {
+      classic: 'БЕЗОПАСНЫЙ СПАВН · ВОЛНА ЧЕРЕЗ 3',
+      guncraft: 'GUNCRAFT · БЕЗОПАСНЫЙ СПАВН',
+      limitbreak: 'СРЫВ ЛИМИТОВ · БЕЗОПАСНЫЙ СПАВН'
+    };
+    showMessage(startMessages[gameMode], 1.45);
+  }
+
+  function openCraftEditor(limitBreak = Boolean(metaProgress.limitBreakEnabled)) {
+    started = false;
+    paused = true;
+    gameOver = false;
+    clearInput();
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    startOverlay.classList.remove('visible');
+    settingsOverlay.classList.remove('visible');
+    pauseOverlay.classList.remove('visible');
+    deathOverlay.classList.remove('visible');
+    craftOverlay.classList.add('visible');
+
+    craftLimitBreak = Boolean(limitBreak);
+    metaProgress.limitBreakEnabled = craftLimitBreak;
+    craftOverlay.classList.toggle('limit-break-editor', craftLimitBreak);
+    selectedCraftSlot = clamp(Math.round(craftLimitBreak ? metaProgress.selectedLimitBreakSlot : metaProgress.selectedSlot || 0), 0, 2);
+    const unlockedSlots = getUnlockedSlotCount();
+    if (selectedCraftSlot >= unlockedSlots) selectedCraftSlot = 0;
+    ensureCraftSlot(selectedCraftSlot);
+    if (craftLimitBreak) metaProgress.selectedLimitBreakSlot = selectedCraftSlot;
+    else metaProgress.selectedSlot = selectedCraftSlot;
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function returnToMainMenu() {
+    if (started && (gameMode === 'guncraft' || gameMode === 'limitbreak')) grantGunCraftRunReward();
+    started = false;
+    paused = true;
+    gameOver = false;
+    clearInput();
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    exitCraftFullscreen();
+    pauseOverlay.classList.remove('visible');
+    settingsOverlay.classList.remove('visible');
+    deathOverlay.classList.remove('visible');
+    craftOverlay.classList.remove('visible');
+    startOverlay.classList.add('visible');
+    minimapVisible = false;
+    minimap.classList.remove('visible');
+    WEAPONS = CLASSIC_WEAPONS;
+    gameMode = 'classic';
+    craftLimitBreak = Boolean(metaProgress.limitBreakEnabled);
+    resetGame();
+    updateMainMenu();
+  }
+
+  function commitCraftAndPlay() {
+    const design = getCurrentDesign();
+    if (!design) return;
+    const stats = calculateWeaponStats(design);
+    const validation = validateWeaponDesign(design, stats);
+    if (validation.errors.length > 0) {
+      currentCraftStats = stats;
+      refreshCraftEditor();
+      showMessage('ИСПРАВЬТЕ ОШИБКИ ЧЕРТЕЖА', 1.2);
+      return;
+    }
+    design.name = sanitizeWeaponName(craftName.value) || `${WEAPON_CLASSES[design.classId].label} ${selectedCraftSlot + 1}`;
+    design.statsSnapshot = summarizeStatsForSave(stats);
+    metaProgress.tutorialDone = true;
+    persistCraftProgress();
+    startGameMode(craftLimitBreak ? 'limitbreak' : 'guncraft');
+  }
+
+  function updateMainMenu() {
+    const classCount = metaProgress.unlockedClasses.length;
+    menuModPoints.textContent = String(metaProgress.modPoints);
+    menuUnlockedClasses.textContent = `${classCount} / 4`;
+    menuUnlockedSlots.textContent = `${getUnlockedSlotCount()} / 3`;
+    menuClassicRecord.textContent = String(metaProgress.records.classic || 0);
+    menuGunCraftRecord.textContent = String(metaProgress.records.guncraft || 0);
+    menuLimitBreakRecord.textContent = String(metaProgress.records.limitbreak || 0);
+    setLimitBreakMenuMode(Boolean(metaProgress.limitBreakEnabled), false);
+  }
+
+  function resetGame() {
+    clearAllEntities();
+    chunkStates.clear();
+    closedDoorTiles.clear();
+    pendingSectorDoor = null;
+    player.angle = 0;
+    player.pitch = 0;
+    player.elevation = 0;
+    player.verticalVelocity = 0;
+    player.grounded = true;
+    player.health = 100;
+    player.score = 0;
+    player.highScore = getModeHighScore();
+    player.weapon = 0;
+    player.fireTimer = 0;
+    player.ammo = WEAPONS.map((weapon) => weapon.magazine);
+    player.reloadTimers = WEAPONS.map(() => 0);
+    player.reloadTotals = WEAPONS.map((weapon) => weapon.reloadTime);
+    player.invulnerableTimer = 0;
+    player.bobPhase = 0;
+    player.movingAmount = 0;
+    player.kills = 0;
+    player.spheres = 0;
+    flowTimer = 0;
+    spawnTimer = 0;
+    minimapTimer = 0;
+    hitMarkerTimer = 0;
+    muzzleTimer = 0;
+    damageFlashTimer = 0;
+    weaponKick = 0;
+    aimHeld = false;
+    aimAmount = 0;
+    weaponHeat = 0;
+    jamTimer = 0;
+    burstShotsRemaining = 0;
+    burstTimer = 0;
+    bipodDeployTimer = 0;
+    bipodDeployed = false;
+    systemMessageCooldown = 0;
+    runRewardGranted = false;
+    cameraBob = 0;
+    waveState.wave = 0;
+    waveState.phase = 'countdown';
+    waveState.timer = 3;
+    waveState.pendingSpawns = 0;
+    waveState.spawnTimer = 0;
+    waveState.targetEnemies = 0;
+    waveState.arenaIndex = 1;
+    waveState.revision = 0;
+    resetArena(waveState.arenaIndex);
+    lastChunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
+    lastChunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
+    updateWeaponVisual(true);
+    updateHud(true);
+    renderScene(performance.now());
+  }
+
+  function clearAllEntities() {
+    for (const enemy of enemies) {
+      enemy.group.remove();
+      removeWebGLEntityMesh(enemy);
+    }
+    for (const orb of orbs) {
+      orb.group.remove();
+      removeWebGLEntityMesh(orb);
+    }
+    for (const projectile of projectiles) {
+      projectile.group.remove();
+      removeWebGLEntityMesh(projectile);
+    }
+    enemies.length = 0;
+    orbs.length = 0;
+    projectiles.length = 0;
+    worldFxLayer.replaceChildren();
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+
+    const active = !paused && !gameOver;
+    const frameInterval = active ? activeFrameInterval : idleFrameInterval;
+    if (lastRenderedTime === 0) lastRenderedTime = now - frameInterval;
+    const sinceLastRender = now - lastRenderedTime;
+    if (sinceLastRender + 0.25 < frameInterval) return;
+
+    // Preserve elapsed time while skipping surplus refresh callbacks (75/85/120/144 Hz).
+    lastRenderedTime = now - (sinceLastRender % frameInterval);
+    const rawDelta = (now - lastFrameTime) / 1000;
+    const dt = Math.min(0.05, Math.max(0, rawDelta));
+    lastFrameTime = now;
+
+    if (active) update(dt, now);
+    updateVisualTimers(dt);
+    renderScene(now);
+  }
+
+  function update(dt, now) {
+    updatePlayer(dt);
+    updateWeaponSystems(dt);
+
+    player.fireTimer = Math.max(0, player.fireTimer - dt);
+    player.invulnerableTimer = Math.max(0, player.invulnerableTimer - dt);
+    updateReloads(dt);
+
+    const weapon = WEAPONS[player.weapon];
+    if (triggerPressed && weapon.fireMode === 'burst' && burstShotsRemaining <= 0) {
+      burstShotsRemaining = Math.min(weapon.burstCount || 3, player.ammo[player.weapon]);
+      burstTimer = 0;
+    } else if (triggerPressed) {
+      shootWeapon(false);
+    }
+
+    if (triggerHeld && weapon.automatic) shootWeapon(false);
+
+    if (burstShotsRemaining > 0) {
+      burstTimer -= dt;
+      if (burstTimer <= 0) {
+        const fired = shootWeapon(true);
+        if (fired) {
+          burstShotsRemaining -= 1;
+          burstTimer = weapon.burstInterval || weapon.cooldown;
+          if (burstShotsRemaining <= 0) player.fireTimer = Math.max(player.fireTimer, weapon.burstPause || 0.16);
+        } else if (player.ammo[player.weapon] <= 0 || jamTimer > 0 || weaponHeat >= 99) {
+          burstShotsRemaining = 0;
+        }
+      }
+    }
+    triggerPressed = false;
+
+    flowTimer -= dt;
+    if (flowTimer <= 0) {
+      rebuildFlowField();
+      flowTimer = 0.32;
+    }
+
+    updateWaveDirector(dt);
+
+    updateEnemies(dt, now);
+    updateProjectiles(dt);
+    updateOrbs(dt, now);
+    separateEnemies(dt);
+
+    minimapTimer -= dt;
+    if (minimapVisible && minimapTimer <= 0) {
+      renderMinimap();
+      minimapTimer = 0.18;
+    }
+
+    updateHud(false);
+  }
+
+  function updateWaveDirector(dt) {
+    if (waveState.phase === 'countdown') {
+      waveState.timer -= dt;
+      if (waveState.timer <= 0) startNextWave();
+      return;
+    }
+
+    if (waveState.phase !== 'active') return;
+
+    waveState.spawnTimer -= dt;
+    if (waveState.pendingSpawns > 0 && enemies.length < MAX_ACTIVE_ENEMIES && waveState.spawnTimer <= 0) {
+      const danger = Math.max(1, waveState.wave + (waveState.arenaIndex - 1) * 2);
+      const rng = mulberry32(hash2(waveState.wave, waveState.pendingSpawns, WORLD_SEED ^ waveState.revision));
+      const position = findOpenPositionInChunk(0, 0, rng, Math.min(10, ARENA_SIZE * 0.2));
+      if (position) {
+        spawnEnemy(chooseEnemyType(rng, danger), position.x, position.y, danger, rng);
+        waveState.pendingSpawns -= 1;
+      } else {
+        waveState.pendingSpawns = Math.max(0, waveState.pendingSpawns - 1);
+      }
+      waveState.spawnTimer = Math.max(0.18, 0.48 - waveState.wave * 0.007);
+    }
+
+    if (waveState.pendingSpawns === 0 && enemies.length === 0 && projectiles.length === 0) completeWave();
+  }
+
+  function startNextWave() {
+    waveState.wave += 1;
+    waveState.phase = 'active';
+    waveState.targetEnemies = Math.min(MAX_ACTIVE_ENEMIES, 2 + Math.ceil(waveState.wave * 1.2) + Math.floor(waveState.wave / 4));
+    waveState.pendingSpawns = waveState.targetEnemies;
+    waveState.spawnTimer = 0;
+    showMessage(`ВОЛНА ${waveState.wave} · ${waveState.targetEnemies} ЦЕЛЕЙ`, 1.1);
+  }
+
+  function completeWave() {
+    const rebuilt = waveState.wave > 0 && waveState.wave % 10 === 0;
+    if (rebuilt) {
+      waveState.arenaIndex += 1;
+      for (let index = orbs.length - 1; index >= 0; index -= 1) removeOrbAt(index);
+      resetArena(waveState.arenaIndex);
+      showMessage(`АРЕНА ${waveState.arenaIndex} ПЕРЕСОБРАНА · БЕЗОПАСНЫЙ СПАВН`, 1.5);
+    } else {
+      showMessage(`ВОЛНА ${waveState.wave} ВЫЖИТА`, 0.85);
+    }
+    waveState.phase = 'countdown';
+    waveState.timer = rebuilt ? 4.5 : 3;
+    waveState.pendingSpawns = 0;
+    waveState.spawnTimer = 0;
+  }
+
+  function updatePlayer(dt) {
+    const turnDirection = (isActionDown('turnRight') ? 1 : 0) - (isActionDown('turnLeft') ? 1 : 0);
+    if (turnDirection !== 0) {
+      const turn = turnDirection * 2.25 * dt;
+      player.angle = normalizeAngle(player.angle + turn);
+      lookSway = clamp(lookSway + turnDirection * 90 * dt, -22, 22);
+    }
+
+    let forward = (isActionDown('moveForward') ? 1 : 0) - (isActionDown('moveBackward') ? 1 : 0);
+    let strafe = (isActionDown('moveRight') ? 1 : 0) - (isActionDown('moveLeft') ? 1 : 0);
+    const magnitude = Math.hypot(forward, strafe);
+    if (magnitude > 1) {
+      forward /= magnitude;
+      strafe /= magnitude;
+    }
+
+    const weapon = WEAPONS[player.weapon];
+    const hasMoveInput = Math.abs(forward) + Math.abs(strafe) > 0.001;
+    if (hasMoveInput && bipodDeployed) {
+      bipodDeployed = false;
+      bipodDeployTimer = 0;
+    }
+
+    const sprintRequested = isActionDown('sprint');
+    const sprinting = sprintRequested && (weapon.weight || 0) < 9 && !bipodDeployed;
+    const movementMultiplier = weapon.movementMultiplier || 1;
+    const speed = (sprinting ? 4.65 : 3.25) * movementMultiplier;
+    const cos = Math.cos(player.angle);
+    const sin = Math.sin(player.angle);
+    const moveX = (cos * forward - sin * strafe) * speed * dt;
+    const moveY = (sin * forward + cos * strafe) * speed * dt;
+    const moving = Math.min(1, Math.hypot(moveX, moveY) / Math.max(0.0001, speed * dt));
+
+    if (jumpQueued && player.grounded) {
+      player.verticalVelocity = PLAYER_JUMP_SPEED;
+      player.grounded = false;
+    }
+    jumpQueued = false;
+
+    if (moving > 0) {
+      movePlayerBody(moveX, moveY);
+      player.bobPhase += dt * (sprinting ? 13.5 : 9.6) * clamp(movementMultiplier, 0.65, 1.1);
+    }
+    player.movingAmount = lerp(player.movingAmount, moving, 1 - Math.exp(-dt * 12));
+    cameraBob = Math.sin(player.bobPhase * 2) * 2.8 * player.movingAmount;
+    updatePlayerElevation(dt);
+  }
+
+  function movePlayerBody(dx, dy) {
+    const stepCount = Math.max(1, Math.ceil(Math.hypot(dx, dy) / PLAYER_MOVE_SUBSTEP));
+    const stepX = dx / stepCount;
+    const stepY = dy / stepCount;
+    const tryMove = (nextX, nextY) => {
+      if (circleHitsWall(nextX, nextY, PLAYER_RADIUS)) return false;
+      const targetFloor = getArenaFloorHeightAt(nextX, nextY);
+      if (targetFloor > player.elevation + PLAYER_STEP_HEIGHT) return false;
+      if (!player.grounded && targetFloor > player.elevation + 0.02) return false;
+      player.x = nextX;
+      player.y = nextY;
+      if (player.grounded && targetFloor >= player.elevation) {
+        player.elevation = targetFloor;
+        player.verticalVelocity = 0;
+      }
+      return true;
+    };
+
+    for (let step = 0; step < stepCount; step += 1) {
+      if (!tryMove(player.x + stepX, player.y + stepY)) {
+        if (!tryMove(player.x + stepX, player.y)) tryMove(player.x, player.y + stepY);
+      }
+    }
+  }
+
+  function updatePlayerElevation(dt) {
+    let remaining = Math.min(0.05, dt);
+    while (remaining > 0) {
+      const physicsStep = Math.min(1 / 120, remaining);
+      remaining -= physicsStep;
+
+      const floor = getArenaFloorHeightAt(player.x, player.y);
+      if (player.elevation <= floor && player.verticalVelocity <= 0) {
+        player.elevation = floor;
+        player.verticalVelocity = 0;
+        player.grounded = true;
+        break;
+      }
+
+      player.verticalVelocity = Math.max(-12, player.verticalVelocity - PLAYER_GRAVITY * physicsStep);
+      player.elevation += player.verticalVelocity * physicsStep;
+      const nextFloor = getArenaFloorHeightAt(player.x, player.y);
+      if (player.elevation <= nextFloor) {
+        player.elevation = nextFloor;
+        player.verticalVelocity = 0;
+        player.grounded = true;
+        break;
+      }
+      player.grounded = false;
+    }
+    updatePlayerViewElevation(dt);
+  }
+
+  function updatePlayerViewElevation(dt) {
+    const response = player.grounded ? 15 : 22;
+    const blend = 1 - Math.exp(-response * dt);
+    player.viewElevation = lerp(player.viewElevation, player.elevation, blend);
+    if (Math.abs(player.viewElevation - player.elevation) < 0.0005) player.viewElevation = player.elevation;
+  }
+
+  function updateWeaponSystems(dt) {
+    const weapon = WEAPONS[player.weapon];
+    systemMessageCooldown = Math.max(0, systemMessageCooldown - dt);
+    jamTimer = Math.max(0, jamTimer - dt);
+    weaponHeat = Math.max(0, weaponHeat - (weapon.coolRate || 100) * dt);
+
+    if (!weapon.requiresBipod) {
+      bipodDeployTimer = 0;
+      bipodDeployed = false;
+      return;
+    }
+
+    const movementInput = isActionDown('moveForward') || isActionDown('moveBackward') || isActionDown('moveLeft') || isActionDown('moveRight');
+    const stationary = !movementInput && player.movingAmount < 0.035;
+    if (!stationary) {
+      bipodDeployTimer = 0;
+      bipodDeployed = false;
+      return;
+    }
+
+    if (!bipodDeployed) {
+      bipodDeployTimer += dt;
+      if (bipodDeployTimer >= (weapon.bipodDeployTime || 1)) {
+        bipodDeployed = true;
+        bipodDeployTimer = weapon.bipodDeployTime || 1;
+        showMessage('СОШКИ РАЗВЁРНУТЫ', 0.9);
+        playBipodSound();
+      }
+    }
+  }
+
+  function handleSectorTransition(fromCx, fromCy, toCx, toCy) {
+    const fromDanger = getDangerForChunk(fromCx, fromCy);
+    const toDanger = getDangerForChunk(toCx, toCy);
+    if (toDanger <= fromDanger) {
+      rejectSectorReturn(fromCx, fromCy, toCx, toCy);
+      return false;
+    }
+    if (pendingSectorDoor) sealSectorDoor(pendingSectorDoor);
+    pendingSectorDoor = createSectorDoor(fromCx, fromCy, toCx, toCy, toDanger);
+    sealNonAdvancingSectorGates(toCx, toCy, fromCx, fromCy);
+    const multiplier = getScoreMultiplier(toDanger);
+    showMessage(`СЕКТОР ${toCx}:${toCy} · СЛОЖНОСТЬ ${toDanger} · ×${multiplier}`, 1.15);
+    return true;
+  }
+
+  function sealNonAdvancingSectorGates(sectorX, sectorY, entryX, entryY) {
+    const danger = getDangerForChunk(sectorX, sectorY);
+    const blockedTiles = [];
+    for (const [nextX, nextY] of [[sectorX - 1, sectorY], [sectorX + 1, sectorY], [sectorX, sectorY - 1], [sectorX, sectorY + 1]]) {
+      if (nextX === entryX && nextY === entryY) continue;
+      if (getDangerForChunk(nextX, nextY) > danger) continue;
+      blockedTiles.push(...createSectorDoor(sectorX, sectorY, nextX, nextY, danger).tiles);
+    }
+    if (blockedTiles.length === 0) return;
+    closeSectorDoorTiles(blockedTiles, danger);
+    rebuildFlowField();
+  }
+
+  function rejectSectorReturn(fromCx, fromCy, toCx, toCy) {
+    if (pendingSectorDoor) sealSectorDoor(pendingSectorDoor);
+    const door = createSectorDoor(toCx, toCy, fromCx, fromCy, getDangerForChunk(fromCx, fromCy));
+    closeSectorDoorTiles(door.tiles, door.danger);
+    movePlayerBeyondDoor(fromCx, fromCy, toCx, toCy);
+    rebuildFlowField();
+    showMessage('ДВЕРЬ СЕКТОРА ЗАПЕРТА', 0.85);
+  }
+
+  function movePlayerBeyondDoor(fromCx, fromCy, toCx, toCy) {
+    const clearDistance = 1 + PLAYER_RADIUS + 0.08;
+    if (fromCx > toCx) player.x = fromCx * CHUNK_SIZE + clearDistance;
+    else if (fromCx < toCx) player.x = (fromCx + 1) * CHUNK_SIZE - clearDistance;
+    else if (fromCy > toCy) player.y = fromCy * CHUNK_SIZE + clearDistance;
+    else if (fromCy < toCy) player.y = (fromCy + 1) * CHUNK_SIZE - clearDistance;
+  }
+
+  function createSectorDoor(fromCx, fromCy, toCx, toCy, danger) {
+    const tiles = [];
+    const lockDistance = 1 + PLAYER_RADIUS + 0.08;
+    let axis = 'x';
+    let threshold = 0;
+    let sign = 1;
+
+    if (toCx > fromCx) {
+      const boundary = toCx * CHUNK_SIZE;
+      const baseY = toCy * CHUNK_SIZE;
+      for (const y of [baseY + 4, baseY + 5]) tiles.push([boundary - 1, y], [boundary, y]);
+      threshold = boundary + lockDistance;
+      sign = 1;
+      axis = 'x';
+    } else if (toCx < fromCx) {
+      const boundary = fromCx * CHUNK_SIZE;
+      const baseY = toCy * CHUNK_SIZE;
+      for (const y of [baseY + 4, baseY + 5]) tiles.push([boundary - 1, y], [boundary, y]);
+      threshold = boundary - lockDistance;
+      sign = -1;
+      axis = 'x';
+    } else if (toCy > fromCy) {
+      const boundary = toCy * CHUNK_SIZE;
+      const baseX = toCx * CHUNK_SIZE;
+      for (const x of [baseX + 4, baseX + 5]) tiles.push([x, boundary - 1], [x, boundary]);
+      threshold = boundary + lockDistance;
+      sign = 1;
+      axis = 'y';
+    } else {
+      const boundary = fromCy * CHUNK_SIZE;
+      const baseX = toCx * CHUNK_SIZE;
+      for (const x of [baseX + 4, baseX + 5]) tiles.push([x, boundary - 1], [x, boundary]);
+      threshold = boundary - lockDistance;
+      sign = -1;
+      axis = 'y';
+    }
+
+    return { tiles, axis, threshold, sign, danger, sealed: false };
+  }
+
+  function updatePendingSectorDoor() {
+    if (!pendingSectorDoor || pendingSectorDoor.sealed) return;
+    const coordinate = pendingSectorDoor.axis === 'x' ? player.x : player.y;
+    const passed = pendingSectorDoor.sign > 0 ? coordinate >= pendingSectorDoor.threshold : coordinate <= pendingSectorDoor.threshold;
+    if (passed) sealSectorDoor(pendingSectorDoor);
+  }
+
+  function sealSectorDoor(door) {
+    if (!door || door.sealed) return;
+    door.sealed = true;
+    closeSectorDoorTiles(door.tiles, door.danger);
+    pendingSectorDoor = null;
+    rebuildFlowField();
+    if (minimapVisible) renderMinimap();
+    showMessage('НЕОНОВАЯ ДВЕРЬ ЗАКРЫТА', 1.05);
+    playDoorSealSound();
+  }
+
+  function closeSectorDoorTiles(tiles, danger) {
+    for (const [tileX, tileY] of tiles) {
+      closedDoorTiles.set(`${tileX},${tileY}`, { danger });
+    }
+    invalidateWebGLSectors(tiles);
+    rebuildWebGLMap();
+  }
+
+  function updateVisualTimers(dt) {
+    if (messageTimer > 0) {
+      messageTimer -= dt;
+      if (messageTimer <= 0) messageBox.classList.remove('visible');
+    }
+
+    hitMarkerTimer = Math.max(0, hitMarkerTimer - dt);
+    muzzleTimer = Math.max(0, muzzleTimer - dt);
+    damageFlashTimer = Math.max(0, damageFlashTimer - dt);
+    const activeWeapon = WEAPONS[player.weapon];
+    const reloadActive = (player.reloadTimers[player.weapon] || 0) > 0;
+    const aimTarget = aimHeld && activeWeapon?.hasSight && !paused && !gameOver && !reloadActive ? 1 : 0;
+    const aimSpeed = aimTarget > aimAmount ? 14 : 10;
+    aimAmount = lerp(aimAmount, aimTarget, 1 - Math.exp(-dt * aimSpeed));
+    weaponKick = lerp(weaponKick, 0, 1 - Math.exp(-dt * 18));
+    lookSway = lerp(lookSway, 0, 1 - Math.exp(-dt * 9));
+
+    hitMarker.setAttribute('opacity', hitMarkerTimer > 0 ? String(clamp(hitMarkerTimer * 12, 0, 1)) : '0');
+    const flashIntensity = activeWeapon?.muzzleFlashIntensity ?? 1;
+    muzzleFlash.setAttribute('opacity', muzzleTimer > 0 ? String(clamp(muzzleTimer * 18 * flashIntensity, 0, 1)) : '0');
+    damageFlash.style.opacity = damageFlashTimer > 0 ? String(clamp(damageFlashTimer * 3.8, 0, 0.78)) : '0';
+  }
+
+  function updateReloads(dt) {
+    for (let index = 0; index < WEAPONS.length; index += 1) {
+      const remaining = player.reloadTimers[index];
+      if (remaining <= 0) continue;
+
+      const next = Math.max(0, remaining - dt);
+      player.reloadTimers[index] = next;
+      if (next > 0) continue;
+
+      player.ammo[index] = WEAPONS[index].magazine;
+      if (index === player.weapon) {
+        playReloadCompleteSound(index);
+        showMessage(`${WEAPONS[index].name} · ГОТОВО`, 0.65);
+      }
+      updateHud(true);
+    }
+  }
+
+  function requestReload() {
+    if (paused || gameOver) return;
+    startReload(player.weapon, true);
+  }
+
+  function startReload(index, announce = true) {
+    const weapon = WEAPONS[index];
+    if (!weapon || player.reloadTimers[index] > 0 || player.ammo[index] >= weapon.magazine) return false;
+
+    burstShotsRemaining = 0;
+    player.reloadTotals[index] = weapon.reloadTime;
+    player.reloadTimers[index] = weapon.reloadTime;
+    if (index === player.weapon) {
+      playReloadStartSound(index);
+      if (announce) showMessage(`ПЕРЕЗАРЯДКА · ${formatSeconds(weapon.reloadTime)}`, 1.05);
+    }
+    updateHud(true);
+    return true;
+  }
+
+  function shootWeapon(fromBurst = false) {
+    if (player.fireTimer > 0 || paused || gameOver) return false;
+
+    const index = player.weapon;
+    const weapon = WEAPONS[index];
+    if (player.reloadTimers[index] > 0) return false;
+    if (jamTimer > 0) {
+      showSystemMessage(`ЗАДЕРЖКА МЕХАНИЗМА · ${formatSeconds(jamTimer)}`);
+      return false;
+    }
+    if (weapon.requiresBipod) {
+      if (player.movingAmount > 0.04 || isActionDown('moveForward') || isActionDown('moveBackward') || isActionDown('moveLeft') || isActionDown('moveRight')) {
+        showSystemMessage('ТЯЖЁЛОЕ ОРУЖИЕ: ОСТАНОВИТЕСЬ');
+        return false;
+      }
+      if (!bipodDeployed) {
+        const progress = Math.round(clamp(bipodDeployTimer / Math.max(0.01, weapon.bipodDeployTime || 1), 0, 1) * 100);
+        showSystemMessage(`УСТАНОВКА СОШЕК · ${progress}%`);
+        return false;
+      }
+    }
+    if (weaponHeat >= 99) {
+      showSystemMessage('ПЕРЕГРЕВ · ДОЖДИТЕСЬ ОХЛАЖДЕНИЯ');
+      return false;
+    }
+    if (player.ammo[index] <= 0) {
+      startReload(index, true);
+      return false;
+    }
+
+    if (weapon.custom && Math.random() < (weapon.jamChance || 0)) {
+      jamTimer = 0.45 + (100 - (weapon.reliability || 100)) * 0.012;
+      player.fireTimer = Math.min(0.3, jamTimer);
+      showMessage('ОСЕЧКА · АВТОМАТИКА ВОССТАНАВЛИВАЕТСЯ', 0.9);
+      playJamSound();
+      return false;
+    }
+
+    player.ammo[index] -= 1;
+    player.fireTimer = weapon.cooldown;
+    weaponHeat = clamp(weaponHeat + (weapon.heatPerShot || 0), 0, 112);
+    weaponKick = Math.max(weaponKick, weapon.kick);
+    const baseMuzzleTime = weapon.custom || index === 2 ? 0.045 : 0.075;
+    muzzleTimer = baseMuzzleTime * clamp(Math.sqrt(weapon.muzzleFlashMultiplier || 1), 0.18, 1.5);
+
+    const heatSpread = weapon.custom ? weapon.spread * (weaponHeat / 100) * 0.9 : 0;
+    const movementSpread = (weapon.movementSpread || 0) * player.movingAmount;
+    const aimSpreadMultiplier = weapon.hasSight ? lerp(1, weapon.aimSpreadMultiplier || 0.5, aimAmount) : 1;
+    const effectiveSpread = (weapon.spread + heatSpread + movementSpread) * aimSpreadMultiplier;
+    let didHit = false;
+    for (let pellet = 0; pellet < weapon.pellets; pellet += 1) {
+      const randomSpread = gaussianishRandom() * effectiveSpread;
+      const verticalSpread = gaussianishRandom() * effectiveSpread * 0.56;
+      if (traceShot(player.angle + randomSpread, player.pitch + verticalSpread, weapon.damage)) didHit = true;
+    }
+
+    if (didHit) hitMarkerTimer = 0.105;
+    playWeaponSound(index);
+    if (player.ammo[index] === 0) {
+      burstShotsRemaining = 0;
+      startReload(index, true);
+    }
+    updateHud(true);
+    return true;
+  }
+
+  function showSystemMessage(text) {
+    if (systemMessageCooldown > 0) return;
+    systemMessageCooldown = 0.55;
+    showMessage(text, 0.75);
+  }
+
+  function traceShot(angle, pitch, damage) {
+    castRayInto(player.x, player.y, angle, MAX_RAY_DISTANCE, shotRayScratch);
+    const maxDistance = Math.min(shotRayScratch.distance, getArenaRayBlockDistance(angle, pitch, shotRayScratch.distance));
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const eyeElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
+    const verticalSlope = Math.tan(pitch);
+    let nearestEnemy = null;
+    let nearestT = maxDistance;
+    let hitHead = false;
+    let impactElevation = eyeElevation + verticalSlope * maxDistance;
+
+    for (const enemy of enemies) {
+      if (enemy.dead) continue;
+      const dx = enemy.x - player.x;
+      const dy = enemy.y - player.y;
+      const projection = dx * dirX + dy * dirY;
+      if (projection <= 0 || projection >= nearestT) continue;
+      const perpendicularSquared = dx * dx + dy * dy - projection * projection;
+      const hitRadius = enemy.radius * (enemy.kind === 'prince' ? 1.2 : 1.05);
+      const hitElevation = eyeElevation + verticalSlope * projection;
+      const bodyBottom = enemy.elevation;
+      const bodyTop = bodyBottom + enemy.definition.height;
+      if (perpendicularSquared <= hitRadius * hitRadius && hitElevation >= bodyBottom && hitElevation <= bodyTop) {
+        nearestT = projection;
+        nearestEnemy = enemy;
+        impactElevation = hitElevation;
+        const headElevation = bodyBottom + enemy.definition.headCenter;
+        hitHead = perpendicularSquared <= enemy.definition.headRadius * enemy.definition.headRadius &&
+          Math.abs(hitElevation - headElevation) <= enemy.definition.headRadius;
+      }
+    }
+
+    if (!nearestEnemy) {
+      const impactDistance = Math.min(maxDistance, 12);
+      addWebGLTracer(angle, pitch, impactDistance);
+      spawnImpactFx(angle, impactDistance, false, eyeElevation + verticalSlope * impactDistance);
+      return false;
+    }
+
+    const variedDamage = damage * (0.9 + Math.random() * 0.2) * (hitHead ? 1.5 : 1);
+    addWebGLTracer(angle, pitch, nearestT, hitHead);
+    damageEnemy(nearestEnemy, variedDamage);
+    spawnImpactFx(angle, nearestT, true, impactElevation);
+    if (hitHead) showMessage('ПОПАДАНИЕ В ГОЛОВУ · ×1.5', 0.45);
+    return true;
+  }
+
+  function getArenaRayBlockDistance(angle, pitch, limit) {
+    if (!arena) return limit;
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const eyeElevation = player.viewElevation + PLAYER_EYE_HEIGHT;
+    for (let distance = 0.12; distance < limit; distance += 0.08) {
+      const floor = getArenaFloorHeightAt(player.x + dirX * distance, player.y + dirY * distance);
+      const rayElevation = eyeElevation + Math.tan(pitch) * distance;
+      if (floor > rayElevation + 0.025) return distance;
+    }
+    return limit;
+  }
+
+  function damageEnemy(enemy, amount) {
+    if (enemy.dead) return;
+    enemy.health -= amount;
+    enemy.hitFlash = 0.11;
+    playHitSound();
+    if (enemy.health <= 0) killEnemy(enemy);
+  }
+
+  function killEnemy(enemy) {
+    if (enemy.dead) return;
+    enemy.dead = true;
+    enemy.deathTimer = 0.58;
+    enemy.health = 0;
+    player.kills += 1;
+    const awarded = addScore(enemy.definition.score, enemy.danger);
+    showMessage(`+${awarded} · ${enemy.definition.name} · ×${getScoreMultiplier(enemy.danger)}`, enemy.kind === 'prince' ? 1.4 : 0.75);
+    playKillSound(enemy.kind);
+  }
+
+  function addScore(amount, danger = getCurrentDanger()) {
+    const awarded = Math.max(1, Math.round(amount * getScoreMultiplier(danger)));
+    player.score += awarded;
+    if (player.score > player.highScore) {
+      player.highScore = player.score;
+      saveHighScore(player.highScore);
+    }
+    updateHud(true);
+    return awarded;
+  }
+
+  function getScoreMultiplier(danger) {
+    return Math.pow(2, Math.max(0, Math.floor(Math.max(1, danger) / 4)));
+  }
+
+  function getCurrentDanger() {
+    return Math.max(1, waveState.wave + (waveState.arenaIndex - 1) * 2);
+  }
+
+  function updateEnemies(dt, now) {
+    for (let i = enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = enemies[i];
+      enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+
+      if (enemy.dead) {
+        enemy.deathTimer -= dt;
+        if (enemy.deathTimer <= 0) removeEnemyAt(i);
+        continue;
+      }
+
+      enemy.elevation = getArenaFloorHeightAt(enemy.x, enemy.y);
+      enemy.attackTimer -= dt;
+      enemy.losTimer -= dt;
+      if (enemy.losTimer <= 0) {
+        enemy.hasLineOfSight = hasLineOfSight(enemy.x, enemy.y, player.x, player.y);
+        enemy.losTimer = 0.12 + (enemy.id % 7) * 0.014;
+      }
+
+      const dx = player.x - enemy.x;
+      const dy = player.y - enemy.y;
+      const distance = Math.max(0.001, Math.hypot(dx, dy));
+      const directionX = dx / distance;
+      const directionY = dy / distance;
+      const definition = enemy.definition;
+
+      if (distance < enemy.radius + PLAYER_RADIUS + 0.17) {
+        if (enemy.attackTimer <= 0) {
+          hurtPlayer(definition.damage * enemy.damageScale);
+          enemy.attackTimer = definition.attackDelay * (enemy.attackDelayScale || 1);
+        }
+        continue;
+      }
+
+      if (definition.ranged && enemy.hasLineOfSight && distance < 10.5) {
+        if (enemy.attackTimer <= 0) {
+          fireEnemyProjectile(enemy, directionX, directionY);
+          enemy.attackTimer = definition.attackDelay * (enemy.attackDelayScale || 1) * (0.9 + Math.random() * 0.2);
+        }
+
+        let moveX = 0;
+        let moveY = 0;
+        if (distance > definition.preferredRange + 0.7) {
+          moveX = directionX;
+          moveY = directionY;
+        } else if (distance < definition.preferredRange - 1.2) {
+          moveX = -directionX;
+          moveY = -directionY;
+        } else {
+          const strafeSign = ((enemy.id + Math.floor(now / 1400)) & 1) === 0 ? 1 : -1;
+          moveX = -directionY * strafeSign * 0.46;
+          moveY = directionX * strafeSign * 0.46;
+        }
+        moveElevatedBody(enemy, moveX * definition.speed * enemy.speedScale * dt, moveY * definition.speed * enemy.speedScale * dt, enemy.radius);
+      } else {
+        let chaseX;
+        let chaseY;
+        if (enemy.hasLineOfSight) {
+          chaseX = directionX;
+          chaseY = directionY;
+        } else {
+          const flowDirection = getFlowDirection(enemy.x, enemy.y);
+          chaseX = flowDirection.x;
+          chaseY = flowDirection.y;
+        }
+        moveElevatedBody(enemy, chaseX * definition.speed * enemy.speedScale * dt, chaseY * definition.speed * enemy.speedScale * dt, enemy.radius);
+      }
+      enemy.elevation = getArenaFloorHeightAt(enemy.x, enemy.y);
+    }
+  }
+
+  function fireEnemyProjectile(enemy, directionX, directionY) {
+    const definition = enemy.definition;
+    const angle = Math.atan2(directionY, directionX);
+    const radius = enemy.kind === 'prince' ? 0.19 : 0.13;
+    const spawnDistance = enemy.radius + 0.18;
+    const x = enemy.x + Math.cos(angle) * spawnDistance;
+    const y = enemy.y + Math.sin(angle) * spawnDistance;
+    const elevation = enemy.elevation + definition.height * 0.56;
+    const targetElevation = player.elevation + PLAYER_EYE_HEIGHT * 0.62;
+    const horizontalDistance = Math.max(0.01, Math.hypot(player.x - x, player.y - y));
+    const pitch = Math.atan2(targetElevation - elevation, horizontalDistance);
+    const horizontalSpeed = definition.projectileSpeed * Math.cos(pitch);
+    const projectile = {
+      id: entityId++,
+      kind: enemy.kind,
+      x,
+      y,
+      elevation,
+      vx: Math.cos(angle) * horizontalSpeed,
+      vy: Math.sin(angle) * horizontalSpeed,
+      vz: Math.sin(pitch) * definition.projectileSpeed,
+      radius,
+      height: enemy.kind === 'prince' ? 0.42 : 0.28,
+      damage: definition.damage * enemy.damageScale,
+      ttl: 5.5,
+      phase: Math.random() * Math.PI * 2,
+      group: null,
+      use: null
+    };
+    const sprite = createSimpleSprite(enemy.kind === 'prince' ? '#projectile-prince' : '#projectile-mech');
+    projectile.group = sprite.group;
+    projectile.use = sprite.use;
+    projectile.webglMesh = createWebGLProjectileMesh(projectile.kind);
+    projectiles.push(projectile);
+    playEnemyShotSound(enemy.kind);
+  }
+
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = projectiles[i];
+      projectile.ttl -= dt;
+      if (projectile.ttl <= 0) {
+        removeProjectileAt(i);
+        continue;
+      }
+
+      const nextX = projectile.x + projectile.vx * dt;
+      const nextY = projectile.y + projectile.vy * dt;
+      const nextElevation = projectile.elevation + projectile.vz * dt;
+      if (circleHitsWall(nextX, nextY, projectile.radius) || getArenaFloorHeightAt(nextX, nextY) > nextElevation - projectile.radius) {
+        spawnWorldBurst(projectile.x, projectile.y, projectile.kind === 'prince', projectile.elevation);
+        removeProjectileAt(i);
+        continue;
+      }
+
+      projectile.x = nextX;
+      projectile.y = nextY;
+      projectile.elevation = nextElevation;
+      const dx = player.x - projectile.x;
+      const dy = player.y - projectile.y;
+      const collisionRadius = PLAYER_RADIUS + projectile.radius;
+      const playerLowerBound = player.elevation + 0.08;
+      const playerUpperBound = player.elevation + PLAYER_EYE_HEIGHT + 0.34;
+      const hitsPlayerHeight = projectile.elevation + projectile.radius >= playerLowerBound
+        && projectile.elevation - projectile.radius <= playerUpperBound;
+      if (dx * dx + dy * dy <= collisionRadius * collisionRadius && hitsPlayerHeight) {
+        hurtPlayer(projectile.damage);
+        spawnWorldBurst(projectile.x, projectile.y, projectile.kind === 'prince', projectile.elevation);
+        removeProjectileAt(i);
+      }
+    }
+  }
+
+  function updateOrbs(dt, now) {
+    for (let i = orbs.length - 1; i >= 0; i -= 1) {
+      const orb = orbs[i];
+      orb.phase += dt * 2.2;
+      const dx = player.x - orb.x;
+      const dy = player.y - orb.y;
+      if (dx * dx + dy * dy < 0.42 * 0.42) {
+        player.spheres += 1;
+        const awarded = addScore(1, orb.danger);
+        showMessage(`+${awarded} · СФЕРА ОЧКОВ · ×${getScoreMultiplier(orb.danger)}`, 0.8);
+        playPickupSound();
+        removeOrbAt(i);
+      }
+    }
+  }
+
+  function separateEnemies(dt) {
+    const count = enemies.length;
+    for (let i = 0; i < count; i += 1) {
+      const first = enemies[i];
+      if (!first || first.dead) continue;
+      for (let j = i + 1; j < count; j += 1) {
+        const second = enemies[j];
+        if (!second || second.dead) continue;
+        const dx = second.x - first.x;
+        const dy = second.y - first.y;
+        const minDistance = (first.radius + second.radius) * 0.82;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared <= 0.0001 || distanceSquared >= minDistance * minDistance) continue;
+        const distance = Math.sqrt(distanceSquared);
+        const push = (minDistance - distance) * 0.5 * Math.min(1, dt * 16);
+        const nx = dx / distance;
+        const ny = dy / distance;
+        moveElevatedBody(first, -nx * push, -ny * push, first.radius);
+        moveElevatedBody(second, nx * push, ny * push, second.radius);
+      }
+    }
+  }
+
+  function hurtPlayer(amount) {
+    if (gameOver || paused || player.invulnerableTimer > 0) return;
+    player.health = Math.max(0, player.health - Math.round(amount));
+    player.invulnerableTimer = 0.16;
+    damageFlashTimer = 0.22;
+    weaponKick = Math.max(weaponKick, 8);
+    playDamageSound();
+    updateHud(true);
+    if (player.health <= 0) endGame();
+  }
+
+  function grantGunCraftRunReward() {
+    if ((gameMode !== 'guncraft' && gameMode !== 'limitbreak') || runRewardGranted) return 0;
+    const earned = Math.floor(Math.max(0, player.score) / 10);
+    metaProgress.modPoints += earned;
+    runRewardGranted = true;
+    persistCraftProgress();
+    return earned;
+  }
+
+  function endGame() {
+    gameOver = true;
+    paused = true;
+    clearInput();
+    if (document.pointerLockElement) document.exitPointerLock?.();
+
+    const earned = grantGunCraftRunReward();
+
+    deathModeLabel.textContent = gameMode === 'limitbreak'
+      ? 'СРЫВ ЛИМИТОВ · СИГНАЛ ПОТЕРЯН'
+      : gameMode === 'guncraft' ? 'GUNCRAFT · СИГНАЛ ПОТЕРЯН' : 'CLASSIC · СИГНАЛ ПОТЕРЯН';
+    deathScore.textContent = String(player.score);
+    deathHighScore.textContent = String(player.highScore);
+    deathEarnedRow.hidden = gameMode === 'classic';
+    deathEarnedPoints.textContent = String(earned);
+    deathOverlay.classList.add('visible');
+    pauseOverlay.classList.remove('visible');
+    updateMainMenu();
+    playDeathSound();
+  }
+
+  function selectWeapon(index) {
+    if (index < 0 || index >= WEAPONS.length || player.weapon === index) return;
+    player.weapon = index;
+    player.fireTimer = Math.min(player.fireTimer, 0.12);
+    aimHeld = false;
+    weaponKick = 8;
+    updateWeaponVisual(true);
+    updateHud(true);
+    playWeaponSwitchSound();
+  }
+
+  function cycleWeapon(direction) {
+    selectWeapon((player.weapon + direction + WEAPONS.length) % WEAPONS.length);
+  }
+
+  function updateWeaponVisual(force) {
+    const weapon = WEAPONS[player.weapon];
+    const view = getWeaponView(weapon, weaponPosition);
+    if (!weapon || !view) return;
+    const viewKey = `${player.weapon}:${weapon.custom ? 'custom' : 'classic'}:${weaponPosition}:${view.symbol || weapon.symbol}:${weapon.viewRevision || ''}`;
+    if (force || renderedWeaponViewKey !== viewKey) {
+      if (typeof view.markup === 'string') customWeaponGraphic.innerHTML = view.markup;
+      weaponUse.setAttribute('href', view.symbol || weapon.symbol);
+      weaponUse.setAttribute('x', String(view.x));
+      weaponUse.setAttribute('y', String(view.y));
+      weaponUse.setAttribute('width', String(view.width));
+      weaponUse.setAttribute('height', String(view.height));
+      muzzleFlash.setAttribute('transform', `translate(${view.muzzleX} ${view.muzzleY})`);
+      weaponName.textContent = weapon.name;
+      renderedWeaponViewKey = viewKey;
+    }
+  }
+
+  function ensureNearbyChunks(now) {
+    const playerChunkX = floorDiv(Math.floor(player.x), CHUNK_SIZE);
+    const playerChunkY = floorDiv(Math.floor(player.y), CHUNK_SIZE);
+
+    for (let cy = playerChunkY - ACTIVE_CHUNK_RADIUS; cy <= playerChunkY + ACTIVE_CHUNK_RADIUS; cy += 1) {
+      for (let cx = playerChunkX - ACTIVE_CHUNK_RADIUS; cx <= playerChunkX + ACTIVE_CHUNK_RADIUS; cx += 1) {
+        const key = chunkKey(cx, cy);
+        const existing = chunkStates.get(key);
+        if (existing) continue;
+        generateChunkEntities(cx, cy, now);
+      }
+    }
+
+    pruneChunkStates(playerChunkX, playerChunkY);
+  }
+
+  function generateChunkEntities(cx, cy, now) {
+    const key = chunkKey(cx, cy);
+    const danger = getDangerForChunk(cx, cy);
+    const rng = mulberry32(hash2(cx, cy, WORLD_SEED));
+    const isOrigin = cx === 0 && cy === 0;
+    const state = { cx, cy };
+    chunkStates.set(key, state);
+
+    const limitBreak = gameMode === 'limitbreak';
+    if ((!isOrigin || limitBreak) && enemies.length < MAX_ACTIVE_ENEMIES) {
+      const extraByDanger = Math.min(limitBreak ? 5 : 3, Math.floor(Math.max(0, danger) / (limitBreak ? 4 : 7)));
+      const baseCount = limitBreak ? 2 : 1;
+      const enemyCount = Math.min(limitBreak ? 7 : 5, baseCount + (rng() < (limitBreak ? 0.9 : 0.72) ? 1 : 0) + extraByDanger);
+      for (let i = 0; i < enemyCount && enemies.length < MAX_ACTIVE_ENEMIES; i += 1) {
+        const position = findOpenPositionInChunk(cx, cy, rng, isOrigin ? 4.8 : 3.2);
+        if (!position) continue;
+        const kind = chooseEnemyType(rng, danger);
+        spawnEnemy(kind, position.x, position.y, danger, rng);
+      }
+    }
+
+    if (isOrigin) {
+      // Первая сфера стоит по центру безопасного коридора и знакомит игрока с механикой очков.
+      spawnOrb(8.5, 5.5, rng(), danger);
+    } else {
+      const orbCount = 1 + (rng() < 0.42 ? 1 : 0);
+      for (let i = 0; i < orbCount && orbs.length < MAX_ACTIVE_ORBS; i += 1) {
+        const position = findOpenPositionInChunk(cx, cy, rng, 2.2);
+        if (position) spawnOrb(position.x, position.y, rng(), danger);
+      }
+    }
+  }
+
+  function chooseEnemyType(rng, danger) {
+    const limitBreak = gameMode === 'limitbreak';
+    const effectiveDanger = Math.max(0, danger) + (limitBreak ? 3 : 0);
+    const princeChance = clamp(0.018 + effectiveDanger * 0.008, 0.018, limitBreak ? 0.24 : 0.17);
+    const mechChance = clamp((limitBreak ? 0.34 : 0.22) + effectiveDanger * 0.013, limitBreak ? 0.34 : 0.22, limitBreak ? 0.58 : 0.48);
+    const roll = rng();
+    if ((danger >= 3 || (limitBreak && danger >= 1)) && roll < princeChance) return 'prince';
+    if (roll < princeChance + mechChance) return 'mech';
+    return 'demon';
+  }
+
+  function spawnEnemy(kind, x, y, danger, rng) {
+    const definition = ENEMY_TYPES[kind];
+    const limitBreak = gameMode === 'limitbreak';
+    const dangerSteps = Math.max(0, danger - (limitBreak ? 0 : 1));
+    const healthScale = (limitBreak ? 1.85 : 1) * (1 + Math.min(2.2, dangerSteps * (limitBreak ? 0.052 : 0.035)));
+    const damageScale = (limitBreak ? 1.5 : 1) * (1 + Math.min(1.5, dangerSteps * (limitBreak ? 0.04 : 0.028)));
+    const speedScale = (limitBreak ? 1.14 : 1) * (1 + Math.min(0.42, dangerSteps * (limitBreak ? 0.011 : 0.008)));
+    const sprite = createEnemySprite(definition.symbol);
+    const enemy = {
+      id: entityId++,
+      kind,
+      definition,
+      danger,
+      x,
+      y,
+      elevation: getArenaFloorHeightAt(x, y),
+      radius: definition.radius,
+      health: definition.health * healthScale,
+      maxHealth: definition.health * healthScale,
+      damageScale,
+      speedScale,
+      attackDelayScale: limitBreak ? 0.82 : 1,
+      attackTimer: 0.45 + rng() * definition.attackDelay * (limitBreak ? 0.82 : 1),
+      losTimer: rng() * 0.15,
+      hasLineOfSight: false,
+      phase: rng() * Math.PI * 2,
+      hitFlash: 0,
+      dead: false,
+      deathTimer: 0,
+      group: sprite.group,
+      use: sprite.use,
+      healthBack: sprite.healthBack,
+      healthFill: sprite.healthFill,
+      visibleDistance: 0
+    };
+    enemy.webglMesh = createWebGLEnemyMesh(kind);
+    enemies.push(enemy);
+  }
+
+  function spawnOrb(x, y, phaseSeed, danger = getCurrentDanger()) {
+    const sprite = createSimpleSprite('#point-orb');
+    const orb = {
+      id: entityId++,
+      x,
+      y,
+      elevation: getArenaFloorHeightAt(x, y),
+      danger,
+      radius: 0.18,
+      height: 0.44,
+      phase: phaseSeed * Math.PI * 2,
+      group: sprite.group,
+      use: sprite.use,
+      visibleDistance: 0
+    };
+    orb.webglMesh = createWebGLOrbMesh();
+    orbs.push(orb);
+  }
+
+  function createEnemySprite(symbol) {
+    const group = svgElement('g');
+    const use = svgElement('use');
+    const healthBack = svgElement('rect');
+    const healthFill = svgElement('rect');
+    use.setAttribute('href', symbol);
+    healthBack.setAttribute('rx', '2');
+    healthBack.setAttribute('fill', 'rgba(0,0,0,.72)');
+    healthBack.setAttribute('stroke', 'rgba(255,255,255,.45)');
+    healthBack.setAttribute('stroke-width', '1');
+    healthFill.setAttribute('rx', '1.5');
+    healthFill.setAttribute('fill', '#72df76');
+    group.append(use, healthBack, healthFill);
+    spriteLayer.appendChild(group);
+    return { group, use, healthBack, healthFill };
+  }
+
+  function createSimpleSprite(symbol) {
+    const group = svgElement('g');
+    const use = svgElement('use');
+    use.setAttribute('href', symbol);
+    group.appendChild(use);
+    spriteLayer.appendChild(group);
+    return { group, use };
+  }
+
+  function findOpenPositionInChunk(cx, cy, rng, minPlayerDistance) {
+    const baseX = cx * CHUNK_SIZE;
+    const baseY = cy * CHUNK_SIZE;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const tileX = baseX + 1 + Math.floor(rng() * (CHUNK_SIZE - 2));
+      const tileY = baseY + 1 + Math.floor(rng() * (CHUNK_SIZE - 2));
+      const x = tileX + 0.22 + rng() * 0.56;
+      const y = tileY + 0.22 + rng() * 0.56;
+      if (circleHitsWall(x, y, 0.27)) continue;
+      if (Math.hypot(x - player.x, y - player.y) < minPlayerDistance) continue;
+      let occupied = false;
+      for (const enemy of enemies) {
+        if (!enemy.dead && Math.hypot(enemy.x - x, enemy.y - y) < 0.9) {
+          occupied = true;
+          break;
+        }
+      }
+      if (!occupied) return { x, y };
+    }
+    return null;
+  }
+
+  function cleanupDistantEntities() {
+    const maxDistanceSquared = ENTITY_DESPAWN_DISTANCE * ENTITY_DESPAWN_DISTANCE;
+    for (let i = enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = enemies[i];
+      const dx = enemy.x - player.x;
+      const dy = enemy.y - player.y;
+      if (dx * dx + dy * dy > maxDistanceSquared) removeEnemyAt(i);
+    }
+    for (let i = orbs.length - 1; i >= 0; i -= 1) {
+      const orb = orbs[i];
+      const dx = orb.x - player.x;
+      const dy = orb.y - player.y;
+      if (dx * dx + dy * dy > maxDistanceSquared) removeOrbAt(i);
+    }
+  }
+
+  function pruneChunkStates(playerChunkX, playerChunkY) {
+    for (const [key, state] of chunkStates) {
+      if (Math.abs(state.cx - playerChunkX) <= ACTIVE_CHUNK_RADIUS + 1 && Math.abs(state.cy - playerChunkY) <= ACTIVE_CHUNK_RADIUS + 1) continue;
+      chunkStates.delete(key);
+    }
+  }
+
+  function removeEnemyAt(index) {
+    const enemy = enemies[index];
+    if (!enemy) return;
+    enemy.group.remove();
+    removeWebGLEntityMesh(enemy);
+    enemies.splice(index, 1);
+  }
+
+  function removeOrbAt(index) {
+    const orb = orbs[index];
+    if (!orb) return;
+    orb.group.remove();
+    removeWebGLEntityMesh(orb);
+    orbs.splice(index, 1);
+  }
+
+  function removeProjectileAt(index) {
+    const projectile = projectiles[index];
+    if (!projectile) return;
+    projectile.group.remove();
+    removeWebGLEntityMesh(projectile);
+    projectiles.splice(index, 1);
+  }
+
+  function rebuildFlowField() {
+    flow.fill(FLOW_MAX);
+    const playerTileX = Math.floor(player.x);
+    const playerTileY = Math.floor(player.y);
+    flowOriginX = playerTileX - FLOW_RADIUS;
+    flowOriginY = playerTileY - FLOW_RADIUS;
+    const startX = playerTileX - flowOriginX;
+    const startY = playerTileY - flowOriginY;
+    const startIndex = startY * FLOW_SIZE + startX;
+    let head = 0;
+    let tail = 0;
+    flow[startIndex] = 0;
+    flowQueue[tail++] = startIndex;
+
+    while (head < tail) {
+      const index = flowQueue[head++];
+      const x = index % FLOW_SIZE;
+      const y = Math.floor(index / FLOW_SIZE);
+      const nextDistance = flow[index] + 1;
+
+      if (x > 0) tail = visitFlowCell(x - 1, y, nextDistance, tail);
+      if (x < FLOW_SIZE - 1) tail = visitFlowCell(x + 1, y, nextDistance, tail);
+      if (y > 0) tail = visitFlowCell(x, y - 1, nextDistance, tail);
+      if (y < FLOW_SIZE - 1) tail = visitFlowCell(x, y + 1, nextDistance, tail);
+    }
+  }
+
+  function visitFlowCell(localX, localY, distance, tail) {
+    const index = localY * FLOW_SIZE + localX;
+    if (flow[index] !== FLOW_MAX) return tail;
+    const worldX = flowOriginX + localX;
+    const worldY = flowOriginY + localY;
+    if (isWallTile(worldX, worldY)) return tail;
+    flow[index] = distance;
+    flowQueue[tail] = index;
+    return tail + 1;
+  }
+
+  function getFlowDirection(worldX, worldY) {
+    const tileX = Math.floor(worldX);
+    const tileY = Math.floor(worldY);
+    const localX = tileX - flowOriginX;
+    const localY = tileY - flowOriginY;
+    if (localX < 0 || localX >= FLOW_SIZE || localY < 0 || localY >= FLOW_SIZE) {
+      return normalizedVector(player.x - worldX, player.y - worldY);
+    }
+
+    let bestX = localX;
+    let bestY = localY;
+    let bestDistance = flow[localY * FLOW_SIZE + localX];
+    const candidates = [
+      [localX - 1, localY],
+      [localX + 1, localY],
+      [localX, localY - 1],
+      [localX, localY + 1]
+    ];
+    for (const [candidateX, candidateY] of candidates) {
+      if (candidateX < 0 || candidateX >= FLOW_SIZE || candidateY < 0 || candidateY >= FLOW_SIZE) continue;
+      const distance = flow[candidateY * FLOW_SIZE + candidateX];
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestX = candidateX;
+        bestY = candidateY;
+      }
+    }
+
+    if (bestDistance === FLOW_MAX) return normalizedVector(player.x - worldX, player.y - worldY);
+    const targetX = flowOriginX + bestX + 0.5;
+    const targetY = flowOriginY + bestY + 0.5;
+    return normalizedVector(targetX - worldX, targetY - worldY);
+  }
+
+  function renderScene(now) {
+    updateProjection();
+    if (webgl) {
+      renderWeapon();
+      renderWebGLScene(now);
+      return;
+    }
+    renderWalls();
+    renderSprites(now);
+    renderWeapon();
+  }
+
+  function renderWalls() {
+    const decimals = performanceSettings.geometryDecimals;
+    for (let i = 0; i < RAY_COUNT; i += 1) {
+      const rayAngle = player.angle - HALF_FOV + ((i + 0.5) / RAY_COUNT) * FOV;
+      castRayInto(player.x, player.y, rayAngle, MAX_RAY_DISTANCE, rayScratch);
+      const correctedDistance = Math.max(0.045, rayScratch.distance * Math.cos(rayAngle - player.angle));
+      rayDepth[i] = correctedDistance;
+      const wallHeight = Math.min(VIEW_H * 4, PROJECTION / correctedDistance);
+      const y = HALF_H - wallHeight * 0.5 + cameraBob;
+      const material = wallMaterial(rayScratch.tileX, rayScratch.tileY);
+      const shade = Math.min(9, Math.floor(correctedDistance / 3.4));
+      const side = rayScratch.side === 1 ? 1 : 0;
+      const rect = wallColumns[i];
+      const door = closedDoorTiles.get(`${rayScratch.tileX},${rayScratch.tileY}`);
+
+      setSvgAttributeCached(rect, 'y', y.toFixed(decimals));
+      setSvgAttributeCached(rect, 'height', wallHeight.toFixed(decimals));
+
+      if (door) {
+        setSvgAttributeCached(rect, 'fill', side ? '#07141c' : '#0b2029');
+        setSvgAttributeCached(rect, 'stroke', door.danger % 2 === 0 ? '#37efff' : '#ff38d1');
+        setSvgAttributeCached(rect, 'stroke-width', correctedDistance < 8 ? '2.2' : '1.2');
+        setSvgAttributeCached(rect, 'stroke-opacity', clamp(1 - correctedDistance / 42, 0.3, 0.95).toFixed(2));
+      } else {
+        setSvgAttributeCached(rect, 'fill', wallPalette[material][side][shade]);
+        if (performanceSettings.wallStrokes) {
+          setSvgAttributeCached(rect, 'stroke', neonWallColors[material]);
+          setSvgAttributeCached(rect, 'stroke-width', correctedDistance < 7 ? '1.05' : '0.58');
+          setSvgAttributeCached(rect, 'stroke-opacity', clamp(0.62 - correctedDistance * 0.013, 0.13, 0.58).toFixed(2));
+        } else {
+          setSvgAttributeCached(rect, 'stroke', 'none');
+          setSvgAttributeCached(rect, 'stroke-width', '0');
+          setSvgAttributeCached(rect, 'stroke-opacity', '0');
+        }
+      }
+    }
+  }
+
+  function renderSprites(now) {
+    renderables.length = 0;
+
+    for (const enemy of enemies) {
+      projectEnemy(enemy, now);
+    }
+    for (const orb of orbs) {
+      projectOrb(orb, now);
+    }
+    for (const projectile of projectiles) {
+      projectProjectile(projectile, now);
+    }
+
+    renderables.sort((a, b) => b.visibleDistance - a.visibleDistance);
+    for (const entity of renderables) spriteLayer.appendChild(entity.group);
+  }
+
+  function projectEnemy(enemy, now) {
+    const projection = projectWorldPoint(enemy.x, enemy.y, enemy.radius);
+    if (!projection.visible) {
+      enemy.group.style.display = 'none';
+      return;
+    }
+
+    const definition = enemy.definition;
+    let height = PROJECTION * definition.height / projection.depth;
+    let width = height * definition.aspect;
+    let opacity = enemy.hitFlash > 0 ? 0.62 : 1;
+    let bob = Math.sin(now * 0.0042 + enemy.phase) * Math.min(4, 10 / projection.depth);
+
+    if (enemy.dead) {
+      const deathProgress = clamp(enemy.deathTimer / 0.58, 0, 1);
+      height *= Math.max(0.08, deathProgress);
+      width *= 1 + (1 - deathProgress) * 0.55;
+      opacity = deathProgress;
+      bob += (1 - deathProgress) * (PROJECTION * definition.height / projection.depth) * 0.76;
+    }
+
+    const bottom = HALF_H + (PROJECTION * 0.5) / projection.depth + cameraBob + bob;
+    const top = bottom - height;
+    const left = projection.screenX - width / 2;
+    enemy.use.setAttribute('x', left.toFixed(2));
+    enemy.use.setAttribute('y', top.toFixed(2));
+    enemy.use.setAttribute('width', width.toFixed(2));
+    enemy.use.setAttribute('height', height.toFixed(2));
+    enemy.group.setAttribute('opacity', String(opacity));
+    enemy.group.style.display = '';
+
+    const showHealth = !enemy.dead && (enemy.health < enemy.maxHealth || projection.depth < 4.2);
+    if (showHealth && height > 44) {
+      const barWidth = Math.max(24, width * 0.72);
+      const barHeight = Math.max(3, Math.min(6, height * 0.035));
+      const barX = projection.screenX - barWidth / 2;
+      const barY = top - barHeight - 6;
+      enemy.healthBack.style.display = '';
+      enemy.healthFill.style.display = '';
+      enemy.healthBack.setAttribute('x', barX.toFixed(2));
+      enemy.healthBack.setAttribute('y', barY.toFixed(2));
+      enemy.healthBack.setAttribute('width', barWidth.toFixed(2));
+      enemy.healthBack.setAttribute('height', barHeight.toFixed(2));
+      enemy.healthFill.setAttribute('x', (barX + 1).toFixed(2));
+      enemy.healthFill.setAttribute('y', (barY + 1).toFixed(2));
+      enemy.healthFill.setAttribute('width', Math.max(0, (barWidth - 2) * (enemy.health / enemy.maxHealth)).toFixed(2));
+      enemy.healthFill.setAttribute('height', Math.max(1, barHeight - 2).toFixed(2));
+    } else {
+      enemy.healthBack.style.display = 'none';
+      enemy.healthFill.style.display = 'none';
+    }
+
+    enemy.visibleDistance = projection.depth;
+    renderables.push(enemy);
+  }
+
+  function projectOrb(orb, now) {
+    const projection = projectWorldPoint(orb.x, orb.y, orb.radius);
+    if (!projection.visible) {
+      orb.group.style.display = 'none';
+      return;
+    }
+    const pulse = 1 + Math.sin(now * 0.005 + orb.phase) * 0.1;
+    const height = PROJECTION * orb.height * pulse / projection.depth;
+    const bottom = HALF_H + (PROJECTION * 0.42) / projection.depth + cameraBob + Math.sin(now * 0.003 + orb.phase) * 4;
+    const top = bottom - height;
+    orb.use.setAttribute('x', (projection.screenX - height / 2).toFixed(2));
+    orb.use.setAttribute('y', top.toFixed(2));
+    orb.use.setAttribute('width', height.toFixed(2));
+    orb.use.setAttribute('height', height.toFixed(2));
+    orb.group.setAttribute('opacity', String(clamp(1.35 - projection.depth / 45, 0.45, 1)));
+    orb.group.style.display = '';
+    orb.visibleDistance = projection.depth;
+    renderables.push(orb);
+  }
+
+  function projectProjectile(projectile, now) {
+    const projection = projectWorldPoint(projectile.x, projectile.y, projectile.radius);
+    if (!projection.visible) {
+      projectile.group.style.display = 'none';
+      return;
+    }
+    const pulse = 1 + Math.sin(now * 0.015 + projectile.phase) * 0.12;
+    const height = PROJECTION * projectile.height * pulse / projection.depth;
+    const bottom = HALF_H + (PROJECTION * 0.56) / projection.depth + cameraBob;
+    projectile.use.setAttribute('x', (projection.screenX - height / 2).toFixed(2));
+    projectile.use.setAttribute('y', (bottom - height).toFixed(2));
+    projectile.use.setAttribute('width', height.toFixed(2));
+    projectile.use.setAttribute('height', height.toFixed(2));
+    projectile.group.style.display = '';
+    projectile.visibleDistance = projection.depth;
+    renderables.push(projectile);
+  }
+
+  function projectWorldPoint(x, y, radius) {
+    const dx = x - player.x;
+    const dy = y - player.y;
+    const cos = Math.cos(player.angle);
+    const sin = Math.sin(player.angle);
+    const depth = dx * cos + dy * sin;
+    const side = -dx * sin + dy * cos;
+    if (depth <= 0.08 || depth > MAX_RAY_DISTANCE + 3) return { visible: false, depth: 0, screenX: 0 };
+    const screenX = HALF_W + (side / depth) * PROJECTION;
+    const projectedRadius = (PROJECTION * radius) / depth;
+    const renderViewRight = renderViewX + renderViewWidth;
+    if (screenX + projectedRadius < renderViewX - 40 || screenX - projectedRadius > renderViewRight + 40) return { visible: false, depth, screenX };
+
+    const centerColumn = clamp(Math.floor(((screenX - renderViewX) / renderViewWidth) * RAY_COUNT), 0, RAY_COUNT - 1);
+    const spreadColumns = Math.max(1, Math.floor((projectedRadius / renderViewWidth) * RAY_COUNT));
+    const leftColumn = clamp(centerColumn - spreadColumns, 0, RAY_COUNT - 1);
+    const rightColumn = clamp(centerColumn + spreadColumns, 0, RAY_COUNT - 1);
+    const visibleAtCenter = depth <= rayDepth[centerColumn] + radius;
+    const visibleAtLeft = depth <= rayDepth[leftColumn] + radius;
+    const visibleAtRight = depth <= rayDepth[rightColumn] + radius;
+    return { visible: visibleAtCenter || visibleAtLeft || visibleAtRight, depth, screenX };
+  }
+
+  function renderWeapon() {
+    if (webgl) renderWebGLWeapon();
+    updateWeaponVisual(false);
+    const weapon = WEAPONS[player.weapon];
+    const view = getWeaponView(weapon, weaponPosition);
+    if (!weapon || !view) return;
+    const renderFxScale = performanceProfile === 'low' ? 0.18 : performanceProfile === 'medium' ? 0.62 : 1;
+    const weaponHeatIntensity = weapon.custom ? clamp(weaponHeat / 100, 0, 1) : 0;
+    weaponAmbientShadow.setAttribute('cx', (view.x + view.width * 0.5).toFixed(2));
+    weaponAmbientShadow.setAttribute('cy', (view.y + view.height * 0.84).toFixed(2));
+    weaponAmbientShadow.setAttribute('rx', (view.width * 0.53).toFixed(2));
+    weaponAmbientShadow.setAttribute('ry', Math.max(4, view.height * 0.22).toFixed(2));
+    weaponAmbientShadow.setAttribute('opacity', (0.14 + renderFxScale * 0.18 + weaponHeatIntensity * 0.1).toFixed(3));
+    weaponHeatGlow.setAttribute('cx', (view.x + view.width * 0.73).toFixed(2));
+    weaponHeatGlow.setAttribute('cy', (view.y + view.height * 0.38).toFixed(2));
+    weaponHeatGlow.setAttribute('rx', (view.width * (0.1 + weaponHeatIntensity * 0.16)).toFixed(2));
+    weaponHeatGlow.setAttribute('ry', (view.height * (0.05 + weaponHeatIntensity * 0.11)).toFixed(2));
+    weaponHeatGlow.setAttribute('opacity', (weaponHeatIntensity * renderFxScale * 0.72).toFixed(3));
+    const reloadRemaining = player.reloadTimers[player.weapon];
+    const reloadTotal = Math.max(0.001, player.reloadTotals[player.weapon]);
+    const reloadProgress = reloadRemaining > 0 ? clamp(1 - reloadRemaining / reloadTotal, 0, 1) : 0;
+    const reloadPose = reloadRemaining > 0 ? Math.pow(Math.sin(reloadProgress * Math.PI), 0.52) : 0;
+    const reloadPulse = reloadRemaining > 0 ? Math.sin(reloadProgress * Math.PI * (player.weapon === 2 ? 10 : 6)) : 0;
+
+    // The mesh, camera, vertical placement and animation are identical for all
+    // position presets. Only view.x changes between left / center / right.
+    const aimAnchorX = Number.isFinite(view.aimAnchorX) ? view.aimAnchorX : (view.muzzleX || HALF_W);
+    const aimAnchorY = Number.isFinite(view.aimAnchorY) ? view.aimAnchorY : (view.muzzleY || HALF_H);
+    const aimStability = lerp(1, 0.22, aimAmount);
+    const stability = (bipodDeployed ? 0.16 : (weapon.swayScale || 1)) * aimStability;
+    const hipSwayX = (Math.sin(player.bobPhase) * 8 * player.movingAmount + lookSway) * stability + reloadPulse * 4 * reloadPose;
+    const hipSwayY = Math.abs(Math.cos(player.bobPhase)) * 7 * player.movingAmount * stability + weaponKick * lerp(1, 0.68, aimAmount) + reloadPose * (weapon.custom ? 82 : player.weapon === 2 ? 96 : 78);
+    const reloadRotation = weapon.custom ? -5 : (player.weapon === 1 ? -8 : 7);
+    const rotate = lookSway * 0.045 * stability + reloadPose * reloadRotation + reloadPulse * 1.5;
+    const reloadScale = 1 - reloadPose * 0.055;
+    const desiredAimScale = Math.max(1, (renderViewHeight * WEAPON_AIM_TARGET_HEIGHT_FRACTION) / Math.max(1, view.height));
+    let weaponScale = reloadScale * lerp(1, desiredAimScale, aimAmount);
+
+    // Hard limits are interpolated continuously during ADS and applied to every
+    // position. Rotation is included, so bob/recoil cannot push the viewmodel
+    // above 1/4 of the visible height in hip-fire or 1/3 while aiming.
+    const rotationRadians = Math.abs(rotate) * Math.PI / 180;
+    const rotationCos = Math.cos(rotationRadians);
+    const rotationSin = Math.sin(rotationRadians);
+    const rotatedHeight = Math.abs(view.height * rotationCos) + Math.abs(view.width * rotationSin);
+    const rotatedWidth = Math.abs(view.width * rotationCos) + Math.abs(view.height * rotationSin);
+    const maximumHeightFraction = lerp(WEAPON_HIP_HARD_LIMIT, WEAPON_AIM_HARD_LIMIT, aimAmount);
+    const maximumHeight = Math.max(1, renderViewHeight * maximumHeightFraction);
+    const maximumWidth = Math.max(1, renderViewWidth * 0.92);
+    weaponScale = Math.min(
+      weaponScale,
+      maximumHeight / Math.max(1, rotatedHeight),
+      maximumWidth / Math.max(1, rotatedWidth)
+    );
+
+    // Rotate and scale around the weapon's own bottom centre. This preserves the
+    // exact same pose at every horizontal position. At full ADS the sight anchor
+    // lands exactly on the crosshair after the current scale and rotation.
+    const pivotX = view.x + view.width * 0.5;
+    const pivotY = view.y + view.height;
+    const cosRotation = Math.cos(rotate * Math.PI / 180);
+    const sinRotation = Math.sin(rotate * Math.PI / 180);
+    const anchorDx = aimAnchorX - pivotX;
+    const anchorDy = aimAnchorY - pivotY;
+    const transformedAnchorX = pivotX + weaponScale * (anchorDx * cosRotation - anchorDy * sinRotation);
+    const transformedAnchorY = pivotY + weaponScale * (anchorDx * sinRotation + anchorDy * cosRotation);
+    const aimedTranslateX = HALF_W - transformedAnchorX;
+    const aimedTranslateY = Math.max(-12, HALF_H - transformedAnchorY);
+    const translateX = lerp(hipSwayX, aimedTranslateX, aimAmount);
+    const translateY = lerp(hipSwayY, aimedTranslateY, aimAmount);
+
+    weaponLayer.setAttribute(
+      'transform',
+      `translate(${translateX.toFixed(2)} ${translateY.toFixed(2)}) rotate(${rotate.toFixed(2)} ${pivotX.toFixed(2)} ${pivotY.toFixed(2)}) translate(${(pivotX * (1 - weaponScale)).toFixed(2)} ${(pivotY * (1 - weaponScale)).toFixed(2)}) scale(${weaponScale.toFixed(4)})`
+    );
+
+    const movementSpread = player.movingAmount * 4 * (weapon.swayScale || 1);
+    const fireSpread = player.fireTimer > 0 ? Math.min(9, player.fireTimer / Math.max(0.001, weapon.cooldown) * 7) : 0;
+    const heatSpread = weapon.custom ? weaponHeat * 0.055 : 0;
+    const aimCrosshairMultiplier = weapon.hasSight ? lerp(1, weapon.aimSpreadMultiplier || 0.5, aimAmount) : 1;
+    const spread = (weapon.crosshair + movementSpread + fireSpread + heatSpread) * aimCrosshairMultiplier;
+    crosshairPath.setAttribute('d', `M480 ${270 - spread - 8}v8M480 ${270 + spread}v8M${480 - spread - 8} 270h8M${480 + spread} 270h8`);
+    const sightMagnification = Math.max(1, Number(weapon.sightMagnification) || 1);
+    const scopeOpacity = weapon.hasSight ? clamp(aimAmount, 0, 1) : 0;
+    const baseCrosshairOpacity = paused || gameOver ? 0.25 : reloadRemaining > 0 ? 0.38 : 0.86;
+    const crosshairOpacity = weapon.hasSight ? baseCrosshairOpacity * (1 - scopeOpacity) : baseCrosshairOpacity;
+    crosshair.setAttribute('opacity', String(crosshairOpacity));
+    crosshairCore.setAttribute('opacity', String(Math.max(0, 1 - scopeOpacity * 1.25)));
+
+    const scopeStrength = clamp((Math.log2(sightMagnification) + 1) / 4, 0.25, 1);
+    const vignetteOpacity = paused || gameOver ? 0 : scopeOpacity * lerp(0.42, 0.92, scopeStrength);
+    scopeVignetteLayer.setAttribute('opacity', vignetteOpacity.toFixed(3));
+    scopeReticle.setAttribute('opacity', (paused || gameOver ? 0 : scopeOpacity * 0.98).toFixed(3));
+
+    const reticle = buildScopeReticleGeometry(sightMagnification);
+    for (const element of [scopeReticleOuterGlow, scopeReticleOuter]) element.setAttribute('r', reticle.outerRadius.toFixed(2));
+    for (const element of [scopeReticleInnerGlow, scopeReticleInner]) element.setAttribute('r', reticle.innerRadius.toFixed(2));
+    scopeReticleGlowPath.setAttribute('d', reticle.path);
+    scopeReticlePath.setAttribute('d', reticle.path);
+    scopeReticleLabel.setAttribute('y', reticle.labelY.toFixed(2));
+    scopeReticleLabel.textContent = formatMagnificationLabel(sightMagnification);
+  }
+
+  function renderMinimap() {
+    const radius = 8;
+    const scale = 10;
+    const center = 90;
+    const playerTileX = Math.floor(player.x);
+    const playerTileY = Math.floor(player.y);
+    let wallPath = '';
+    let doorPath = '';
+
+    for (let y = playerTileY - radius; y <= playerTileY + radius; y += 1) {
+      for (let x = playerTileX - radius; x <= playerTileX + radius; x += 1) {
+        if (!isWallTile(x, y)) continue;
+        const screenX = center + (x - player.x) * scale;
+        const screenY = center + (y - player.y) * scale;
+        const segment = `M${screenX.toFixed(1)} ${screenY.toFixed(1)}h${scale}v${scale}h-${scale}z`;
+        if (isClosedDoorTile(x, y)) doorPath += segment;
+        else wallPath += segment;
+      }
+    }
+    minimapWalls.setAttribute('d', wallPath);
+    minimapDoors.setAttribute('d', doorPath);
+
+    let itemMarkup = '';
+    for (const orb of orbs) {
+      const x = center + (orb.x - player.x) * scale;
+      const y = center + (orb.y - player.y) * scale;
+      if (x < 4 || x > 176 || y < 4 || y > 176) continue;
+      itemMarkup += `<rect x="${(x - 2).toFixed(1)}" y="${(y - 2).toFixed(1)}" width="4" height="4" fill="#47ddff"/>`;
+    }
+    for (const enemy of enemies) {
+      if (enemy.dead) continue;
+      const x = center + (enemy.x - player.x) * scale;
+      const y = center + (enemy.y - player.y) * scale;
+      if (x < 4 || x > 176 || y < 4 || y > 176) continue;
+      const color = enemy.kind === 'prince' ? '#ff2448' : enemy.kind === 'mech' ? '#f5bb41' : '#dc5548';
+      const size = enemy.kind === 'prince' ? 7 : 5;
+      itemMarkup += `<rect x="${(x - size / 2).toFixed(1)}" y="${(y - size / 2).toFixed(1)}" width="${size}" height="${size}" fill="${color}"/>`;
+    }
+    minimapItems.innerHTML = itemMarkup;
+    minimapPlayer.setAttribute('transform', `rotate(${(player.angle * 180 / Math.PI + 90).toFixed(1)} 90 90)`);
+  }
+
+  function updateHud(force) {
+    const health = Math.max(0, Math.round(player.health));
+    const danger = getCurrentDanger();
+    const multiplier = getScoreMultiplier(danger);
+    const weapon = WEAPONS[player.weapon];
+    const currentAmmo = player.ammo[player.weapon];
+    const reloadRemaining = player.reloadTimers[player.weapon];
+    const reloadTotal = Math.max(0.001, player.reloadTotals[player.weapon]);
+    const reloading = reloadRemaining > 0;
+    const reloadProgress = reloading ? clamp(1 - reloadRemaining / reloadTotal, 0, 1) : clamp(currentAmmo / weapon.magazine, 0, 1);
+
+    if (force || scoreValue.textContent !== String(player.score)) scoreValue.textContent = String(player.score);
+    if (force || highScoreValue.textContent !== String(player.highScore)) highScoreValue.textContent = String(player.highScore);
+    if (force || healthValue.textContent !== String(health)) healthValue.textContent = String(health);
+    healthBar.style.transform = `scaleX(${clamp(health / 100, 0, 1)})`;
+    healthValue.parentElement.style.color = health <= 25 ? '#ff5d53' : health <= 55 ? '#ffd25d' : '#9eff9a';
+    sectorValue.textContent = `${ARENA_SIZE} × ${ARENA_SIZE}`;
+    dangerValue.textContent = String(danger);
+    multiplierLegend.textContent = `АРЕНА ${waveState.arenaIndex} · ×${multiplier}`;
+    waveValue.textContent = String(waveState.wave);
+    waveScoreValue.textContent = String(player.score);
+    wavePhaseValue.textContent = waveState.phase === 'active'
+      ? `В БОЮ · ${waveState.pendingSpawns + enemies.filter((enemy) => !enemy.dead).length}`
+      : `СТАРТ ${Math.max(0, Math.ceil(waveState.timer))}`;
+    weaponName.textContent = weapon.name;
+    ammoValue.textContent = `${currentAmmo} / ${weapon.magazine}`;
+    ammoStatus.textContent = reloading ? `ЗАРЯДКА ${formatSeconds(reloadRemaining)}` : 'МАГАЗИН';
+    reloadTrack.classList.toggle('active', reloading);
+    reloadBar.style.transform = `scaleX(${reloadProgress})`;
+
+    let state = 'ГОТОВО';
+    if (reloading) state = 'ПЕРЕЗАРЯДКА';
+    else if (jamTimer > 0) state = 'ЗАДЕРЖКА МЕХАНИЗМА';
+    else if (weaponHeat >= 99) state = 'ПЕРЕГРЕВ';
+    else if (aimAmount > 0.55 && weapon.hasSight) state = 'ПРИЦЕЛИВАНИЕ';
+    else if (weapon.requiresBipod && !bipodDeployed) {
+      const progress = Math.round(clamp(bipodDeployTimer / Math.max(0.01, weapon.bipodDeployTime || 1), 0, 1) * 100);
+      state = player.movingAmount > 0.04 ? 'НУЖНО ОСТАНОВИТЬСЯ' : `СОШКИ ${progress}%`;
+    } else if (bipodDeployed) state = 'СОШКИ УСТАНОВЛЕНЫ';
+    else if (weapon.custom) state = `НАДЁЖНОСТЬ ${Math.round(weapon.reliability)}%`;
+    weaponSystemState.textContent = state;
+    weaponMassValue.textContent = weapon.custom ? `${weapon.weight.toFixed(2)} КГ` : '';
+    heatTrack.classList.toggle('active', Boolean(weapon.custom));
+    heatBar.style.transform = `scaleX(${clamp(weaponHeat / 100, 0, 1)})`;
+  }
+
+  function showMessage(text, duration) {
+    messageBox.textContent = text;
+    messageTimer = duration;
+    messageBox.classList.add('visible');
+  }
+
+  function spawnImpactFx(angle, distance, hitEnemy, elevation) {
+    if (webgl) {
+      addWebGLEffect(
+        player.x + Math.cos(angle) * distance,
+        player.y + Math.sin(angle) * distance,
+        hitEnemy ? 0xff7558 : 0xffd77a,
+        hitEnemy,
+        elevation
+      );
+      return;
+    }
+    const relative = normalizeAngle(angle - player.angle);
+    const screenX = HALF_W + Math.tan(relative) * PROJECTION;
+    const screenY = HALF_H + cameraBob + (hitEnemy ? gaussianishRandom() * 12 : gaussianishRandom() * 5);
+    const group = svgElement('g');
+    group.setAttribute('pointer-events', 'none');
+    const count = hitEnemy ? 5 : 3;
+    for (let i = 0; i < count; i += 1) {
+      const line = svgElement('line');
+      const theta = Math.random() * Math.PI * 2;
+      const length = 4 + Math.random() * 12;
+      line.setAttribute('x1', screenX.toFixed(1));
+      line.setAttribute('y1', screenY.toFixed(1));
+      line.setAttribute('x2', (screenX + Math.cos(theta) * length).toFixed(1));
+      line.setAttribute('y2', (screenY + Math.sin(theta) * length).toFixed(1));
+      line.setAttribute('stroke', hitEnemy ? '#ff7558' : '#ffd77a');
+      line.setAttribute('stroke-width', hitEnemy ? '3' : '2');
+      line.setAttribute('stroke-linecap', 'round');
+      group.appendChild(line);
+    }
+    worldFxLayer.appendChild(group);
+    animateAndRemove(group, 170);
+  }
+
+  function spawnWorldBurst(x, y, strong, elevation = getArenaFloorHeightAt(x, y) + 0.72) {
+    if (webgl) {
+      addWebGLEffect(x, y, strong ? 0xff5b27 : 0xffd14e, strong, elevation);
+      return;
+    }
+    const projection = projectWorldPoint(x, y, elevation);
+    if (!projection.visible) return;
+    const group = svgElement('g');
+    const circle = svgElement('circle');
+    circle.setAttribute('cx', projection.screenX.toFixed(1));
+    circle.setAttribute('cy', projection.screenY.toFixed(1));
+    circle.setAttribute('r', strong ? '18' : '11');
+    circle.setAttribute('fill', strong ? '#ff5b27' : '#ffd14e');
+    circle.setAttribute('opacity', '.8');
+    group.appendChild(circle);
+    worldFxLayer.appendChild(group);
+    animateAndRemove(group, 190);
+  }
+
+  function animateAndRemove(element, durationMs) {
+    if (typeof element.animate === 'function') {
+      const animation = element.animate([
+        { opacity: 1, transform: 'scale(0.7)' },
+        { opacity: 0, transform: 'scale(1.5)' }
+      ], { duration: durationMs, easing: 'ease-out' });
+      animation.finished.then(() => element.remove()).catch(() => element.remove());
+    } else {
+      setTimeout(() => element.remove(), durationMs);
+    }
+  }
+
+  function moveBody(body, dx, dy, radius) {
+    const targetX = body.x + dx;
+    if (!circleHitsWall(targetX, body.y, radius)) body.x = targetX;
+    const targetY = body.y + dy;
+    if (!circleHitsWall(body.x, targetY, radius)) body.y = targetY;
+  }
+
+  function circleHitsWall(x, y, radius) {
+    const minX = Math.floor(x - radius);
+    const maxX = Math.floor(x + radius);
+    const minY = Math.floor(y - radius);
+    const maxY = Math.floor(y + radius);
+
+    for (let tileY = minY; tileY <= maxY; tileY += 1) {
+      for (let tileX = minX; tileX <= maxX; tileX += 1) {
+        if (!isWallTile(tileX, tileY)) continue;
+        const nearestX = clamp(x, tileX, tileX + 1);
+        const nearestY = clamp(y, tileY, tileY + 1);
+        const dx = x - nearestX;
+        const dy = y - nearestY;
+        if (dx * dx + dy * dy < radius * radius) return true;
+      }
+    }
+    return false;
+  }
+
+  function castRayInto(originX, originY, angle, maxDistance, out) {
+    const rayDirX = Math.cos(angle);
+    const rayDirY = Math.sin(angle);
+    let mapX = Math.floor(originX);
+    let mapY = Math.floor(originY);
+    const deltaDistX = Math.abs(rayDirX) < 1e-8 ? 1e30 : Math.abs(1 / rayDirX);
+    const deltaDistY = Math.abs(rayDirY) < 1e-8 ? 1e30 : Math.abs(1 / rayDirY);
+    const stepX = rayDirX < 0 ? -1 : 1;
+    const stepY = rayDirY < 0 ? -1 : 1;
+    let sideDistX = rayDirX < 0 ? (originX - mapX) * deltaDistX : (mapX + 1 - originX) * deltaDistX;
+    let sideDistY = rayDirY < 0 ? (originY - mapY) * deltaDistY : (mapY + 1 - originY) * deltaDistY;
+    let distance = 0;
+    let side = 0;
+
+    while (distance < maxDistance) {
+      if (sideDistX < sideDistY) {
+        mapX += stepX;
+        distance = sideDistX;
+        sideDistX += deltaDistX;
+        side = 0;
+      } else {
+        mapY += stepY;
+        distance = sideDistY;
+        sideDistY += deltaDistY;
+        side = 1;
+      }
+      if (isWallTile(mapX, mapY)) {
+        out.distance = Math.max(0.001, distance);
+        out.side = side;
+        out.tileX = mapX;
+        out.tileY = mapY;
+        return out;
+      }
+    }
+
+    out.distance = maxDistance;
+    out.side = side;
+    out.tileX = mapX;
+    out.tileY = mapY;
+    return out;
+  }
+
+  function hasLineOfSight(fromX, fromY, toX, toY) {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.2) return true;
+    castRayInto(fromX, fromY, Math.atan2(dy, dx), distance, rayScratch);
+    return rayScratch.distance >= distance - 0.18;
+  }
+
+  function isClosedDoorTile(tileX, tileY) {
+    return closedDoorTiles.has(`${tileX},${tileY}`);
+  }
+
+  function isWallTile(tileX, tileY) {
+    if (arena) return isArenaBlockedTile(tileX, tileY);
+    if (isClosedDoorTile(tileX, tileY)) return true;
+    const localX = modulo(tileX, CHUNK_SIZE);
+    const localY = modulo(tileY, CHUNK_SIZE);
+    const chunkX = floorDiv(tileX, CHUNK_SIZE);
+    const chunkY = floorDiv(tileY, CHUNK_SIZE);
+    const edgeX = localX === 0 || localX === CHUNK_SIZE - 1;
+    const edgeY = localY === 0 || localY === CHUNK_SIZE - 1;
+
+    if (edgeX || edgeY) {
+      if (edgeX && (localY === 4 || localY === 5)) return false;
+      if (edgeY && (localX === 4 || localX === 5)) return false;
+      return true;
+    }
+
+    if (localX === 4 || localX === 5 || localY === 4 || localY === 5) return false;
+
+    const pattern = hash2(chunkX, chunkY, WORLD_SEED ^ 0x78ab12) % 7;
+    switch (pattern) {
+      case 1:
+        return (localX === 2 || localX === 6) && (localY === 2 || localY === 6);
+      case 2:
+        return (localY === 2 && localX >= 1 && localX <= 3) || (localY === 6 && localX >= 5 && localX <= 7);
+      case 3:
+        return (localX === 2 && localY >= 1 && localY <= 3) || (localX === 6 && localY >= 5 && localY <= 7);
+      case 4:
+        return (localX === 1 && localY >= 1 && localY <= 3) || (localY === 1 && localX >= 1 && localX <= 3) ||
+          (localX === 7 && localY >= 5 && localY <= 7) || (localY === 7 && localX >= 5 && localX <= 7);
+      case 5:
+        return (localX === 2 && localY === 3) || (localX === 3 && localY === 2) ||
+          (localX === 6 && localY === 5) || (localX === 5 && localY === 6);
+      case 6:
+        return (localY === 1 && localX >= 2 && localX <= 3) || (localY === 7 && localX >= 5 && localX <= 6) ||
+          (localX === 1 && localY >= 5 && localY <= 6) || (localX === 7 && localY >= 2 && localY <= 3);
+      default:
+        return false;
+    }
+  }
+
+  function wallMaterial(tileX, tileY) {
+    return hash2(tileX, tileY, WORLD_SEED ^ 0x0f0f0f) % baseWallColors.length;
+  }
+
+  function getDangerForChunk(cx, cy) {
+    const travelDanger = Math.abs(cx) + Math.abs(cy);
+    const limitBreak = gameMode === 'limitbreak';
+    const scoreDanger = Math.floor(player.score / (limitBreak ? 12 : 16));
+    return (limitBreak ? 0 : 1) + travelDanger + scoreDanger;
+  }
+
+
+  /* ===== GunCraft editor, progression and weapon simulation ===== */
+
+  function populateRulebook() {
+    craftRulebook.replaceChildren();
+    for (const rule of GUNCRAFT_RULES) {
+      const item = document.createElement('li');
+      item.textContent = rule;
+      craftRulebook.appendChild(item);
+    }
+  }
+
+  function defaultWeaponName(classId) {
+    const labels = {
+      pistol: 'МОЙ ПИСТОЛЕТ',
+      sniper: 'МОЯ СНАЙПЕРСКАЯ ВИНТОВКА',
+      smg: 'МОЙ ПИСТОЛЕТ-ПУЛЕМЁТ',
+      carbine: 'МОЙ КАРАБИН',
+      revolver: 'МОЙ РЕВОЛЬВЕР',
+      machinegun: 'МОЙ ПУЛЕМЁТ',
+      shotgun: 'МОЙ ДРОБОВИК'
+    };
+    return labels[classId] || 'МОЯ ПУШКА';
+  }
+
+  function getUnlockedSlotCount() {
+    const count = metaProgress.unlockedClasses.length;
+    if (count >= 4) return 3;
+    if (count >= 3) return 2;
+    return 1;
+  }
+
+  function getActiveCraftSlots() {
+    return craftLimitBreak ? metaProgress.limitBreakSlots : metaProgress.slots;
+  }
+
+  function ensureCraftSlot(index) {
+    const slots = getActiveCraftSlots();
+    if (!slots[index]) slots[index] = createBlankDesign('pistol', craftLimitBreak);
+    return slots[index];
+  }
+
+  function getCurrentDesign() {
+    return getActiveCraftSlots()[selectedCraftSlot] || null;
+  }
+
+  function createBlankDesign(classId = 'pistol', limitBreak = craftLimitBreak) {
+    const definition = WEAPON_CLASSES[classId] || WEAPON_CLASSES.pistol;
+    return {
+      version: 3,
+      name: defaultWeaponName(classId),
+      classId: WEAPON_CLASSES[classId] ? classId : 'pistol',
+      subtype: Object.keys(definition.subtypes)[0],
+      barrelProfile: 'standard',
+      muzzleType: 'flashHider',
+      triggerSystem: 'standard',
+      depthRatio: 6,
+      limitBreak: Boolean(limitBreak),
+      components: {},
+      invested: 0,
+      updatedAt: Date.now()
+    };
+  }
+
+  function selectCraftSlot(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= getUnlockedSlotCount()) return;
+    selectedCraftSlot = index;
+    if (craftLimitBreak) metaProgress.selectedLimitBreakSlot = index;
+    else metaProgress.selectedSlot = index;
+    ensureCraftSlot(index);
+    currentCraftComponent = 'receiver';
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function chooseCraftClass(classId) {
+    const classDefinition = WEAPON_CLASSES[classId];
+    if (!classDefinition) return;
+
+    const unlocked = metaProgress.unlockedClasses.includes(classId);
+    if (!unlocked) {
+      if (classId === 'shotgun' && !metaProgress.unlockedClasses.includes('machinegun')) {
+        showCraftNotice('Сначала нужно открыть класс «ПУЛЕМЁТ», и только затем становится доступен дробовик.');
+        return;
+      }
+      if (metaProgress.modPoints < classDefinition.unlockCost) {
+        showCraftNotice(`Нужно ${classDefinition.unlockCost} очков модификации для открытия класса «${classDefinition.label}».`);
+        return;
+      }
+      metaProgress.modPoints -= classDefinition.unlockCost;
+      metaProgress.unlockedClasses.push(classId);
+      metaProgress.unlockedClasses = [...new Set(metaProgress.unlockedClasses)];
+      persistCraftProgress();
+      showCraftNotice(`Класс «${classDefinition.label}» открыт. Доступно слотов: ${getUnlockedSlotCount()}.`, 'ok');
+    }
+
+    const current = ensureCraftSlot(selectedCraftSlot);
+    if (current.classId === classId) {
+      refreshCraftEditor();
+      return;
+    }
+
+    if (current.invested > 0 && !window.confirm('Смена класса сбросит текущий чертёж и вернёт вложенные очки. Продолжить?')) {
+      refreshCraftEditor();
+      return;
+    }
+
+    metaProgress.modPoints += current.invested || 0;
+    const next = createBlankDesign(classId, craftLimitBreak);
+    next.name = defaultWeaponName(classId);
+    getActiveCraftSlots()[selectedCraftSlot] = next;
+    currentCraftComponent = 'receiver';
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function refundAndResetDesign(design) {
+    metaProgress.modPoints += design.invested || 0;
+    const replacement = createBlankDesign(design.classId, craftLimitBreak);
+    replacement.name = design.name;
+    replacement.subtype = design.subtype;
+    replacement.barrelProfile = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
+    replacement.muzzleType = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    replacement.triggerSystem = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    replacement.depthRatio = design.depthRatio;
+    getActiveCraftSlots()[selectedCraftSlot] = replacement;
+    currentCraftComponent = 'receiver';
+    persistCraftProgress();
+  }
+
+  function persistCraftProgress() {
+    metaProgress.version = 8;
+    metaProgress.audioSettings = normalizeAudioSettings(metaProgress.audioSettings);
+    metaProgress.controlSettings = normalizeControlSettings(metaProgress.controlSettings);
+    if (craftLimitBreak) metaProgress.selectedLimitBreakSlot = selectedCraftSlot;
+    else metaProgress.selectedSlot = selectedCraftSlot;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(metaProgress));
+    } catch {
+      // Игра продолжает работать в памяти, если хранилище браузера заблокировано.
+    }
+    updateMainMenu();
+  }
+
+  function refreshCraftEditor() {
+    const design = ensureCraftSlot(selectedCraftSlot);
+    design.limitBreak = Boolean(craftLimitBreak);
+    const classDefinition = WEAPON_CLASSES[design.classId];
+    if (!classDefinition.subtypes[design.subtype]) design.subtype = Object.keys(classDefinition.subtypes)[0];
+
+    currentCraftStats = calculateWeaponStats(design);
+    const validation = validateWeaponDesign(design, currentCraftStats);
+
+    craftModPoints.textContent = String(metaProgress.modPoints);
+    craftName.value = design.name || defaultWeaponName(design.classId);
+    craftDepth.value = String(design.depthRatio || 6);
+    craftDepthLabel.textContent = `1 / ${design.depthRatio || 6} высоты`;
+    syncCraftModeUi(design);
+    updateCraftCanvasViewport(design);
+
+    renderCraftSlotTabs();
+    renderCraftClassList(design);
+    renderCraftSubtype(design);
+    renderCraftUpgradeSelectors(design);
+    renderComponentPalette(design);
+    renderLimitBreakInspector(design);
+    renderCraftShapes(design);
+    renderCraftIsoPreview(design);
+    renderCraftStats(currentCraftStats, design);
+    renderCraftValidation(validation);
+    renderCraftTutorial(design, validation);
+
+    deleteComponentButton.disabled = !design.components[currentCraftComponent];
+    resetDesignButton.disabled = design.invested <= 0;
+    playCraftButton.disabled = validation.errors.length > 0;
+  }
+
+  function syncCraftModeUi(design) {
+    craftOverlay.classList.toggle('limit-break-editor', craftLimitBreak);
+    craftLimitBreakBadge.hidden = !craftLimitBreak;
+    craftLimitBreakBanner.hidden = !craftLimitBreak;
+    limitBreakInspector.hidden = !craftLimitBreak;
+    craftModeEyebrow.textContent = craftLimitBreak ? 'GUNCRAFT · ЭКСТРЕМАЛЬНАЯ 3D-МОДЕЛЬ' : 'GUNCRAFT · 3D-МОДЕЛЬ ИЗ ЧЕРТЕЖА';
+    craftModeTitle.textContent = craftLimitBreak ? 'СОРВИТЕ ПРЕДЕЛЫ' : 'СОБЕРИТЕ ОРУЖИЕ';
+    playCraftButton.textContent = craftLimitBreak ? 'СОХРАНИТЬ И НАЧАТЬ СРЫВ ЛИМИТОВ' : 'СОХРАНИТЬ И НАЧАТЬ ВЫЖИВАНИЕ';
+    craftCanvasHint.textContent = craftLimitBreak
+      ? 'Рисуйте мышью или задайте X, Y, ширину и высоту числами без игрового максимума. Крепления сохраняются, а физические штрафы продолжают действовать.'
+      : 'Выберите компонент и протяните прямоугольник по сетке. Игра привяжет деталь к коробке, ограничит размеры и пересчитает стоимость.';
+    if (design) design.limitBreak = Boolean(craftLimitBreak);
+  }
+
+  function getCraftCanvasBounds(design) {
+    if (!craftLimitBreak || !design) return { x: 0, y: 0, width: 100, height: 55 };
+    const rects = Object.values(design.components || {}).filter(Boolean);
+    if (rects.length === 0) return { x: 0, y: 0, width: 100, height: 55 };
+    let minX = Math.min(...rects.map((rect) => rect.x));
+    let minY = Math.min(...rects.map((rect) => rect.y));
+    let maxX = Math.max(...rects.map((rect) => rect.x + rect.w));
+    let maxY = Math.max(...rects.map((rect) => rect.y + rect.h));
+    const span = Math.max(20, maxX - minX, maxY - minY);
+    const margin = Math.max(5, span * 0.1);
+    minX = Math.min(0, minX - margin);
+    minY = Math.min(0, minY - margin);
+    maxX = Math.max(100, maxX + margin);
+    maxY = Math.max(55, maxY + margin);
+    let width = Math.max(20, maxX - minX);
+    let height = Math.max(11, maxY - minY);
+    const targetRatio = 100 / 55;
+    if (width / height > targetRatio) {
+      const nextHeight = width / targetRatio;
+      minY -= (nextHeight - height) / 2;
+      height = nextHeight;
+    } else {
+      const nextWidth = height * targetRatio;
+      minX -= (nextWidth - width) / 2;
+      width = nextWidth;
+    }
+    return { x: minX, y: minY, width, height };
+  }
+
+  function updateCraftCanvasViewport(design, force = false) {
+    const bounds = getCraftCanvasBounds(design);
+    craftCanvas.setAttribute('viewBox', `${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`);
+    craftGridRect.setAttribute('x', String(bounds.x));
+    craftGridRect.setAttribute('y', String(bounds.y));
+    craftGridRect.setAttribute('width', String(bounds.width));
+    craftGridRect.setAttribute('height', String(bounds.height));
+    craftGridRect.setAttribute('opacity', bounds.width > 1200 ? '0.34' : bounds.width > 350 ? '0.58' : '1');
+
+    if (craftLimitBreak) {
+      const pad = Math.max(1, Math.min(bounds.width, bounds.height) * 0.014);
+      craftProfileBorder.setAttribute('x', String(bounds.x + pad));
+      craftProfileBorder.setAttribute('y', String(bounds.y + pad));
+      craftProfileBorder.setAttribute('width', String(Math.max(1, bounds.width - pad * 2)));
+      craftProfileBorder.setAttribute('height', String(Math.max(1, bounds.height - pad * 2)));
+      craftProfileBorder.setAttribute('stroke', '#ff38d1');
+      craftProfileLabel.setAttribute('x', String(bounds.x + pad * 2));
+      craftProfileLabel.setAttribute('y', String(bounds.y + pad * 3));
+      craftProfileLabel.setAttribute('font-size', String(Math.max(2.4, Math.min(18, bounds.width * 0.024))));
+      craftProfileLabel.textContent = 'СВОБОДНОЕ ПОЛЕ · АВТОМАСШТАБ';
+      craftCartridgeZone.setAttribute('visibility', 'hidden');
+      craftCartridgeLabel.setAttribute('visibility', 'hidden');
+      craftZoneDivider.setAttribute('visibility', 'hidden');
+    } else {
+      craftProfileBorder.setAttribute('x', '1');
+      craftProfileBorder.setAttribute('y', '1');
+      craftProfileBorder.setAttribute('width', '98');
+      craftProfileBorder.setAttribute('height', '37');
+      craftProfileBorder.setAttribute('stroke', '#37efff');
+      craftProfileLabel.setAttribute('x', '3');
+      craftProfileLabel.setAttribute('y', '5');
+      craftProfileLabel.setAttribute('font-size', '2.4');
+      craftProfileLabel.textContent = 'ПРОФИЛЬ ОРУЖИЯ';
+      craftCartridgeZone.setAttribute('visibility', 'visible');
+      craftCartridgeLabel.setAttribute('visibility', 'visible');
+      craftZoneDivider.setAttribute('visibility', 'visible');
+    }
+    if (force) craftCanvas.dispatchEvent(new Event('limitbreakfit'));
+  }
+
+  function renderLimitBreakInspector(design) {
+    limitBreakInspector.hidden = !craftLimitBreak;
+    if (!craftLimitBreak) return;
+    const rect = design.components[currentCraftComponent] || null;
+    const definition = COMPONENT_DEFINITIONS[currentCraftComponent];
+    limitBreakInspectorComponent.textContent = rect ? definition.label : `${definition.label} · СНАЧАЛА НАРИСУЙТЕ`;
+    const inputs = [limitBreakX, limitBreakY, limitBreakW, limitBreakH];
+    for (const input of inputs) input.disabled = !rect;
+    limitBreakX.value = rect ? String(rect.x) : '';
+    limitBreakY.value = rect ? String(rect.y) : '';
+    limitBreakW.value = rect ? String(rect.w) : '';
+    limitBreakH.value = rect ? String(rect.h) : '';
+    applyLimitBreakDimensions.disabled = !rect;
+  }
+
+  function parseLimitBreakNumber(input, fallback, minimum = -1000000) {
+    const value = Number(input.value);
+    if (!Number.isFinite(value)) return fallback;
+    return clamp(Math.round(value), minimum, 1000000);
+  }
+
+  function applyLimitBreakDimensionEditor() {
+    if (!craftLimitBreak) return;
+    const design = getCurrentDesign();
+    const current = design?.components?.[currentCraftComponent];
+    if (!design || !current) return;
+    const raw = {
+      x: parseLimitBreakNumber(limitBreakX, current.x),
+      y: parseLimitBreakNumber(limitBreakY, current.y),
+      w: parseLimitBreakNumber(limitBreakW, current.w, 1),
+      h: parseLimitBreakNumber(limitBreakH, current.h, 1)
+    };
+    commitCraftComponent(currentCraftComponent, raw);
+  }
+
+  function renderCraftSlotTabs() {
+    const unlockedSlots = getUnlockedSlotCount();
+    craftSlotTabs.replaceChildren();
+    for (let index = 0; index < 3; index += 1) {
+      const button = document.createElement('button');
+      const locked = index >= unlockedSlots;
+      const design = getActiveCraftSlots()[index];
+      button.type = 'button';
+      button.className = `slot-tab${index === selectedCraftSlot ? ' selected' : ''}${locked ? ' locked' : ''}`;
+      button.dataset.slot = String(index);
+      button.disabled = locked;
+      if (locked) {
+        const requirement = index === 1 ? 'ОТКРОЙТЕ 3 КЛАССА' : 'ОТКРОЙТЕ ВСЕ 4 КЛАССА';
+        button.innerHTML = `СЛОТ ${index + 1}<br><span>${requirement}</span>`;
+      } else {
+        const title = design?.name || 'ПУСТОЙ ЧЕРТЁЖ';
+        const classLabel = design ? WEAPON_CLASSES[design.classId]?.label || 'ПИСТОЛЕТ' : 'НОВОЕ ОРУЖИЕ';
+        button.innerHTML = `СЛОТ ${index + 1} · ${escapeHtml(title)}<br><span>${classLabel}</span>`;
+      }
+      craftSlotTabs.appendChild(button);
+    }
+  }
+
+  function renderCraftClassList(design) {
+    craftClassList.replaceChildren();
+    for (const [classId, definition] of Object.entries(WEAPON_CLASSES)) {
+      const unlocked = metaProgress.unlockedClasses.includes(classId);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.class = classId;
+      button.className = `class-card${design.classId === classId ? ' selected' : ''}${unlocked ? '' : ' locked'}`;
+      button.innerHTML = unlocked
+        ? `${definition.label}<span>${design.classId === classId ? 'ВЫБРАНО' : 'ВЫБРАТЬ'}</span>`
+        : `${definition.label}<span>ОТКРЫТЬ · ${definition.unlockCost}</span>`;
+      craftClassList.appendChild(button);
+    }
+  }
+
+  function renderCraftSubtype(design) {
+    const definition = WEAPON_CLASSES[design.classId];
+    craftSubtype.replaceChildren();
+    for (const [subtypeId, subtype] of Object.entries(definition.subtypes)) {
+      const option = document.createElement('option');
+      option.value = subtypeId;
+      option.textContent = subtype.label;
+      option.selected = subtypeId === design.subtype;
+      craftSubtype.appendChild(option);
+    }
+  }
+
+  function renderCraftUpgradeSelectors(design) {
+    const profileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
+    const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    const triggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    design.barrelProfile = profileId;
+    design.muzzleType = muzzleTypeId;
+    design.triggerSystem = triggerSystemId;
+
+    craftBarrelProfile.replaceChildren();
+    for (const [id, profile] of Object.entries(BARREL_PROFILES)) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${profile.label}${profile.cost > 0 ? ` · +${profile.cost}` : ' · БАЗОВЫЙ'}`;
+      option.selected = id === profileId;
+      craftBarrelProfile.appendChild(option);
+    }
+
+    craftMuzzleType.replaceChildren();
+    for (const [id, device] of Object.entries(MUZZLE_DEVICE_TYPES)) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${device.label} · +${device.cost}`;
+      option.selected = id === muzzleTypeId;
+      craftMuzzleType.appendChild(option);
+    }
+
+    craftTriggerSystem.replaceChildren();
+    for (const [id, system] of Object.entries(TRIGGER_SYSTEMS)) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${system.label}${system.cost > 0 ? ` · +${system.cost}` : ' · БАЗОВЫЙ'}`;
+      option.selected = id === triggerSystemId;
+      craftTriggerSystem.appendChild(option);
+    }
+
+    const profile = BARREL_PROFILES[profileId];
+    const muzzleType = MUZZLE_DEVICE_TYPES[muzzleTypeId];
+    const triggerSystem = TRIGGER_SYSTEMS[triggerSystemId];
+    const hasBarrel = Boolean(design.components.barrel);
+    const hasMuzzle = Boolean(design.components.muzzle);
+    const hasTrigger = Boolean(design.components.trigger);
+    craftBarrelProfileCost.textContent = hasBarrel ? `${profile.cost} очк.` : `после ствола · ${profile.cost}`;
+    craftBarrelProfileHint.innerHTML = `<strong>${profile.label}</strong> — ${profile.description}`;
+    craftMuzzleTypeCost.textContent = hasMuzzle ? `${muzzleType.cost} очк.` : `после надульника · ${muzzleType.cost}`;
+    craftMuzzleTypeHint.innerHTML = hasMuzzle
+      ? `<strong>${muzzleType.label}</strong> — ${muzzleType.description}`
+      : `Выбран <strong>${muzzleType.label}</strong>. Добавьте компонент «Надульник», чтобы стоимость и эффекты вступили в силу.`;
+    craftTriggerSystemCost.textContent = hasTrigger ? `${triggerSystem.cost} очк.` : `после спуска · ${triggerSystem.cost}`;
+    craftTriggerSystemHint.innerHTML = hasTrigger
+      ? `<strong>${triggerSystem.label}</strong> — ${triggerSystem.description}`
+      : `Выбран <strong>${triggerSystem.label}</strong>. Добавьте компонент «Спуск» под коробкой, чтобы стоимость и эффекты вступили в силу.`;
+  }
+
+  function moveElevatedBody(body, dx, dy, radius) {
+    const tryMove = (nextX, nextY) => {
+      if (circleHitsWall(nextX, nextY, radius)) return false;
+      const targetFloor = getArenaFloorHeightAt(nextX, nextY);
+      if (targetFloor > body.elevation + PLAYER_STEP_HEIGHT) return false;
+      body.x = nextX;
+      body.y = nextY;
+      body.elevation = targetFloor;
+      return true;
+    };
+    if (!tryMove(body.x + dx, body.y + dy)) {
+      if (!tryMove(body.x + dx, body.y)) tryMove(body.x, body.y + dy);
+    }
+  }
+
+  function changeCraftUpgradeOption(field, value, definitions) {
+    const design = getCurrentDesign();
+    if (!design || !definitions[value]) return;
+    const previousValue = design[field];
+    const previousComponents = cloneComponents(design.components);
+    const previousInvested = design.invested;
+    design[field] = value;
+    design.components = normalizeAllComponents(design);
+    const nextInvested = calculateDesignInvested(design.components, design);
+    const delta = nextInvested - previousInvested;
+    if (delta > metaProgress.modPoints) {
+      design[field] = previousValue;
+      design.components = previousComponents;
+      showCraftNotice(`Недостаточно очков модификации: нужно ещё ${delta - metaProgress.modPoints}.`);
+      refreshCraftEditor();
+      return;
+    }
+    metaProgress.modPoints -= delta;
+    design.invested = nextInvested;
+    design.updatedAt = Date.now();
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function renderComponentPalette(design) {
+    const recommended = getTutorialComponent(design);
+    componentPalette.replaceChildren();
+    for (const componentId of COMPONENT_ORDER) {
+      const definition = COMPONENT_DEFINITIONS[componentId];
+      const button = document.createElement('button');
+      const exists = Boolean(design.components[componentId]);
+      button.type = 'button';
+      button.dataset.component = componentId;
+      button.className = `component-button${currentCraftComponent === componentId ? ' selected' : ''}${recommended === componentId ? ' recommended' : ''}`;
+      const previewCost = componentId === 'muzzle' ? componentCost(componentId, { x: 0, y: 0, w: 4, h: 3 }, design) : null;
+      button.innerHTML = `${definition.label}<span>${exists ? componentCost(componentId, design.components[componentId], design) : previewCost ? `ОТ ${previewCost}` : '+'}</span>`;
+      componentPalette.appendChild(button);
+    }
+  }
+
+  function renderCraftShapes(design) {
+    craftShapes.replaceChildren();
+    for (const componentId of COMPONENT_ORDER) {
+      const rect = design.components[componentId];
+      if (!rect) continue;
+      const definition = COMPONENT_DEFINITIONS[componentId];
+      const group = svgElement('g');
+      const shadow = svgElement('rect');
+      const face = svgElement('rect');
+      const highlight = svgElement('rect');
+      const label = svgElement('text');
+      const selected = componentId === currentCraftComponent;
+
+      shadow.setAttribute('x', String(rect.x + 0.8));
+      shadow.setAttribute('y', String(rect.y + 0.8));
+      shadow.setAttribute('width', String(rect.w));
+      shadow.setAttribute('height', String(rect.h));
+      shadow.setAttribute('fill', '#020406');
+      shadow.setAttribute('opacity', '.8');
+
+      face.setAttribute('x', String(rect.x));
+      face.setAttribute('y', String(rect.y));
+      face.setAttribute('width', String(rect.w));
+      face.setAttribute('height', String(rect.h));
+      face.setAttribute('fill', definition.color);
+      face.setAttribute('stroke', selected ? '#fff7a8' : definition.light);
+      face.setAttribute('stroke-width', selected ? '.55' : '.28');
+
+      highlight.setAttribute('x', String(rect.x + 0.45));
+      highlight.setAttribute('y', String(rect.y + 0.45));
+      highlight.setAttribute('width', String(Math.max(0.2, rect.w - 0.9)));
+      highlight.setAttribute('height', String(Math.min(0.8, Math.max(0.25, rect.h * 0.16))));
+      highlight.setAttribute('fill', definition.light);
+      highlight.setAttribute('opacity', '.55');
+
+      label.setAttribute('x', String(rect.x + rect.w / 2));
+      label.setAttribute('y', String(rect.y + rect.h / 2 + 0.8));
+      label.setAttribute('fill', '#f0fbfc');
+      label.setAttribute('font-size', String(clamp(Math.min(rect.w, rect.h) * 0.28, 1.5, 2.25)));
+      label.setAttribute('font-weight', '900');
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('pointer-events', 'none');
+      label.textContent = rect.w >= 5 && rect.h >= 3 ? definition.label : '';
+
+      group.setAttribute('pointer-events', 'none');
+      group.append(shadow, face, highlight);
+      appendCraftComponentDetails(group, componentId, rect, design);
+      if (componentId === 'trigger') appendCraftTriggerDetails(group, rect, design);
+      group.append(label);
+      craftShapes.appendChild(group);
+    }
+  }
+
+  function appendCraftComponentDetails(group, componentId, rect, design) {
+    const addLine = (x1, y1, x2, y2, stroke = '#10181c', width = 0.45, opacity = 0.85) => {
+      const line = svgElement('line');
+      line.setAttribute('x1', String(x1));
+      line.setAttribute('y1', String(y1));
+      line.setAttribute('x2', String(x2));
+      line.setAttribute('y2', String(y2));
+      line.setAttribute('stroke', stroke);
+      line.setAttribute('stroke-width', String(width));
+      line.setAttribute('opacity', String(opacity));
+      line.setAttribute('pointer-events', 'none');
+      group.appendChild(line);
+    };
+    const addRect = (x, y, w, h, fill = '#0a1014', opacity = 0.85) => {
+      const shape = svgElement('rect');
+      shape.setAttribute('x', String(x));
+      shape.setAttribute('y', String(y));
+      shape.setAttribute('width', String(Math.max(0.2, w)));
+      shape.setAttribute('height', String(Math.max(0.2, h)));
+      shape.setAttribute('fill', fill);
+      shape.setAttribute('opacity', String(opacity));
+      shape.setAttribute('pointer-events', 'none');
+      group.appendChild(shape);
+    };
+
+    if (componentId === 'barrel') {
+      const profileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
+      if (profileId === 'tapered') {
+        const cover = svgElement('polygon');
+        cover.setAttribute('points', `${rect.x},${rect.y} ${rect.x + rect.w},${rect.y + rect.h * 0.2} ${rect.x + rect.w},${rect.y + rect.h * 0.8} ${rect.x},${rect.y + rect.h}`);
+        cover.setAttribute('fill', '#40545d');
+        cover.setAttribute('stroke', '#8ca4ad');
+        cover.setAttribute('stroke-width', '.25');
+        cover.setAttribute('pointer-events', 'none');
+        group.appendChild(cover);
+      } else if (profileId === 'fluted') {
+        for (const ratio of [0.28, 0.5, 0.72]) addLine(rect.x + 1, rect.y + rect.h * ratio, rect.x + rect.w - 1, rect.y + rect.h * ratio, '#101a1f', Math.max(0.25, rect.h * 0.08));
+      } else if (profileId === 'heavy') {
+        const inset = Math.max(0.6, Math.min(rect.h * 0.16, 1.8));
+        addRect(rect.x + inset, rect.y + inset, rect.w - inset * 2, rect.h - inset * 2, '#1d2a30', 0.52);
+        addLine(rect.x + 1, rect.y + rect.h * 0.5, rect.x + rect.w - 1, rect.y + rect.h * 0.5, '#a7bdc5', Math.max(0.25, rect.h * 0.05), 0.55);
+      } else if (profileId === 'radiator') {
+        const finCount = clamp(Math.floor(rect.w / Math.max(2, rect.h * 0.42)), 4, 12);
+        for (let i = 1; i < finCount; i += 1) {
+          const x = rect.x + rect.w * i / finCount;
+          addLine(x, rect.y - Math.min(0.8, rect.h * 0.12), x, rect.y + rect.h + Math.min(0.8, rect.h * 0.12), '#b8d2d7', Math.max(0.3, rect.w * 0.012), 0.78);
+        }
+      } else if (profileId === 'polygonal') {
+        for (const ratio of [0.18, 0.42, 0.66, 0.88]) {
+          const x = rect.x + rect.w * ratio;
+          addLine(x - rect.h * 0.22, rect.y + rect.h * 0.08, x + rect.h * 0.22, rect.y + rect.h * 0.92, '#abc7cd', Math.max(0.24, rect.h * 0.08), 0.7);
+        }
+      } else if (profileId === 'carbonSleeve') {
+        for (const ratio of [0.1, 0.28, 0.46, 0.64, 0.82]) {
+          addLine(rect.x + rect.w * ratio, rect.y + 0.4, rect.x + rect.w * (ratio + 0.12), rect.y + rect.h - 0.4, '#6d9da1', Math.max(0.22, rect.h * 0.06), 0.65);
+        }
+      } else if (profileId === 'cryo') {
+        const finCount = clamp(Math.floor(rect.w / Math.max(2, rect.h * 0.42)), 4, 12);
+        for (let i = 1; i < finCount; i += 1) {
+          const x = rect.x + rect.w * i / finCount;
+          addLine(x, rect.y - Math.min(0.8, rect.h * 0.12), x, rect.y + rect.h + Math.min(0.8, rect.h * 0.12), '#8ef9ff', Math.max(0.3, rect.w * 0.012), 0.88);
+        }
+      }
+    }
+
+    if (componentId === 'muzzle') {
+      const typeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+      if (typeId === 'suppressor') {
+        for (const ratio of [0.2, 0.42, 0.64, 0.86]) addLine(rect.x + rect.w * ratio, rect.y + 0.4, rect.x + rect.w * ratio, rect.y + rect.h - 0.4, '#738991', Math.max(0.25, rect.w * 0.018), 0.72);
+        addRect(rect.x + rect.w - Math.max(1, rect.w * 0.08), rect.y + rect.h * 0.22, Math.max(0.7, rect.w * 0.08), rect.h * 0.56, '#020406', 1);
+      } else if (typeId === 'compensator') {
+        const portW = Math.max(0.8, rect.w * 0.18);
+        const portH = Math.max(0.5, rect.h * 0.23);
+        for (const ratio of [0.28, 0.6]) {
+          addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.12, portW, portH, '#030608', 0.95);
+          addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.65, portW, portH, '#030608', 0.95);
+        }
+      } else if (typeId === 'linearComp') {
+        addRect(rect.x + rect.w * 0.18, rect.y + rect.h * 0.25, rect.w * 0.62, rect.h * 0.5, '#030608', 0.9);
+        addLine(rect.x + rect.w * 0.75, rect.y + rect.h * 0.14, rect.x + rect.w * 0.75, rect.y + rect.h * 0.86, '#a8d7df', Math.max(0.25, rect.h * 0.08), 0.62);
+      } else if (typeId === 'breacher') {
+        const tooth = Math.max(0.45, rect.w * 0.11);
+        for (const ratio of [0.14, 0.42, 0.7]) {
+          addLine(rect.x + rect.w * ratio, rect.y + rect.h * 0.14, rect.x + rect.w * ratio + tooth, rect.y + rect.h * 0.04, '#dceff2', Math.max(0.25, rect.h * 0.09), 0.85);
+          addLine(rect.x + rect.w * ratio, rect.y + rect.h * 0.86, rect.x + rect.w * ratio + tooth, rect.y + rect.h * 0.96, '#dceff2', Math.max(0.25, rect.h * 0.09), 0.85);
+        }
+      } else if (typeId === 'choke') {
+        addLine(rect.x + rect.w * 0.72, rect.y + rect.h * 0.12, rect.x + rect.w * 0.92, rect.y + rect.h * 0.5, '#d7b36a', Math.max(0.25, rect.h * 0.08), 0.75);
+        addLine(rect.x + rect.w * 0.72, rect.y + rect.h * 0.88, rect.x + rect.w * 0.92, rect.y + rect.h * 0.5, '#d7b36a', Math.max(0.25, rect.h * 0.08), 0.75);
+      } else {
+        const cutW = Math.max(0.55, rect.w * 0.13);
+        for (const ratio of [0.48, 0.68, 0.86]) addRect(rect.x + rect.w * ratio, rect.y + rect.h * 0.12, cutW, rect.h * 0.42, '#030608', 0.95);
+      }
+    }
+  }
+
+  function appendCraftTriggerDetails(group, rect, design) {
+    const systemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const accent = systemId === 'electronic' ? '#8ef9ff' : systemId === 'burstCam' ? '#ffda6e' : '#ff9bde';
+    const triggerLine = svgElement('line');
+    triggerLine.setAttribute('x1', String(rect.x + rect.w * 0.28));
+    triggerLine.setAttribute('y1', String(rect.y + rect.h * 0.14));
+    triggerLine.setAttribute('x2', String(rect.x + rect.w * 0.68));
+    triggerLine.setAttribute('y2', String(rect.y + rect.h * 0.86));
+    triggerLine.setAttribute('stroke', accent);
+    triggerLine.setAttribute('stroke-width', String(Math.max(0.3, rect.w * 0.12)));
+    triggerLine.setAttribute('opacity', '.9');
+    group.appendChild(triggerLine);
+    if (systemId !== 'standard') {
+      const chip = svgElement('rect');
+      chip.setAttribute('x', String(rect.x + rect.w * 0.12));
+      chip.setAttribute('y', String(rect.y + rect.h * 0.2));
+      chip.setAttribute('width', String(Math.max(0.25, rect.w * 0.22)));
+      chip.setAttribute('height', String(Math.max(0.25, rect.h * 0.25)));
+      chip.setAttribute('fill', accent);
+      chip.setAttribute('opacity', systemId === 'electronic' ? '.95' : '.72');
+      group.appendChild(chip);
+    }
+  }
+
+  function renderCraftIsoPreview(design) {
+    const markup = buildWeaponProjectionMarkup(design);
+    craftIsoPreview.innerHTML = `<rect width="120" height="70" fill="#05080c"/><path d="M0 57H120M12 0V70M0 35H120" stroke="#1c4550" stroke-width=".35" opacity=".55"/>${markup}`;
+  }
+
+  function renderCraftStats(stats, design) {
+    const entries = [
+      ['МАССА', `${stats.weight.toFixed(2)} кг`],
+      ['УРОН', `${Math.round(stats.damage)}`],
+      ['ТЕМП', `${Math.round(stats.rpm)} в/м`],
+      ['МАГАЗИН', `${stats.capacity}`],
+      ['ПЕРЕЗАРЯДКА', `${stats.reloadTime.toFixed(2)} с`],
+      ['ОТДАЧА', `${stats.recoil.toFixed(1)}`],
+      ['ТОЧНОСТЬ', `${Math.round(stats.accuracy)}%`],
+      ['ЭРГОНОМИКА', `${Math.round(stats.ergonomics)}%`],
+      ['НАДЁЖНОСТЬ', `${Math.round(stats.reliability)}%`],
+      ['ПРИЦЕЛ', stats.hasSight ? `${formatMagnificationLabel(stats.sightMagnification)} · разброс ×${stats.aimSpreadMultiplier.toFixed(2)}` : 'НЕТ ПРИЦЕЛА'],
+      ['СКОРОСТЬ', `×${stats.movementMultiplier.toFixed(2)}`],
+      ['НАГРЕВ / ВЫСТРЕЛ', `${stats.heatPerShot.toFixed(1)}%`],
+      ['ОХЛАЖДЕНИЕ', `${stats.coolRate.toFixed(1)}%/с`],
+      ['РЕЖИМ ОГНЯ', stats.fireMode === 'burst' ? `ОЧЕРЕДЬ ×${stats.burstCount}` : stats.fireMode.toUpperCase()],
+      ['СПУСК', stats.triggerSystemLabel],
+      ['ПРОФИЛЬ СТВОЛА', stats.barrelProfileLabel],
+      ['НАДУЛЬНИК', stats.muzzleTypeLabel],
+      ['ВСПЫШКА', `×${stats.muzzleFlashMultiplier.toFixed(2)}`],
+      ['ГРОМКОСТЬ', `×${stats.soundMultiplier.toFixed(2)}`],
+      ['ВЛОЖЕНО', `${design.invested} очк.`]
+    ];
+    craftStats.innerHTML = entries.map(([label, value]) => `<div class="stat-card"><span class="stat-label">${label}</span><strong>${value}</strong></div>`).join('');
+  }
+
+  function renderCraftValidation(validation) {
+    craftValidation.replaceChildren();
+    for (const text of validation.errors) appendValidationItem(text, 'error');
+    for (const text of validation.warnings) appendValidationItem(text, 'warning');
+    if (validation.errors.length === 0) appendValidationItem(
+      craftLimitBreak
+        ? 'Безлимитный чертёж допущен. Он сохранится отдельно от обычного GunCraft.'
+        : 'Чертёж пригоден к испытанию. Оружие будет сохранено в выбранном слоте.',
+      'ok'
+    );
+  }
+
+  function appendValidationItem(text, className) {
+    const item = document.createElement('li');
+    item.className = className;
+    item.textContent = text;
+    craftValidation.appendChild(item);
+  }
+
+  function renderCraftTutorial(design, validation) {
+    if (currentCraftComponent === 'muzzle' && !design.components.muzzle) {
+      const device = MUZZLE_DEVICE_TYPES[design.muzzleType] || MUZZLE_DEVICE_TYPES.flashHider;
+      craftTutorial.innerHTML = `<strong>НАДУЛЬНИК · ${device.label}</strong><br>Нарисуйте дорогую деталь у дульного среза. Игра автоматически состыкует её с концом ствола.`;
+      return;
+    }
+    const componentId = getTutorialComponent(design);
+    if (componentId) {
+      const definition = COMPONENT_DEFINITIONS[componentId];
+      const hints = {
+        receiver: 'Нарисуйте коробку в центральной части верхней зоны. Это база всех креплений.',
+        barrel: 'Выберите «Ствол» и протяните его вправо. Игра сама состыкует его с коробкой.',
+        grip: 'Добавьте рукоять снизу коробки. От её положения зависит баланс и раскачка.',
+        magazine: 'Нарисуйте магазин под коробкой. Его высота и ширина задают вместимость.',
+        cartridge: craftLimitBreak
+          ? 'Нарисуйте патрон в любой части свободного поля. Его размеры не ограничены и определят урон, отдачу, массу и время перезарядки.'
+          : 'Нарисуйте патрон в жёлтой зоне. Его размеры определят урон, отдачу и массу боезапаса.'
+      };
+      craftTutorial.innerHTML = `<strong>ТУТОРИАЛ · ${definition.label}</strong><br>${hints[componentId] || 'Добавьте следующий компонент.'}`;
+      return;
+    }
+
+    if (validation.errors.length > 0) {
+      craftTutorial.innerHTML = craftLimitBreak
+        ? `<strong>ПРОВЕРКА СРЫВА ЛИМИТОВ</strong><br>Размеры свободны, но обязательные детали, крепления, приклад, передняя рукоять и сошки всё ещё проверяются.`
+        : `<strong>ПРОВЕРКА ЧЕРТЕЖА</strong><br>Базовые детали готовы. Исправьте красные ошибки справа; игра подсказывает взаимосвязанные ограничения.`;
+    } else if (!metaProgress.tutorialDone) {
+      craftTutorial.innerHTML = '<strong>ТУТОРИАЛ ЗАВЕРШЁН</strong><br>Настройте толщину по Z и нажмите «Сохранить и начать выживание».';
+    } else {
+      craftTutorial.innerHTML = '<strong>РЕДАКТОР АКТИВЕН</strong><br>Перерисовка детали возвращает стоимость старой формы и списывает стоимость новой.';
+    }
+  }
+
+  function getTutorialComponent(design) {
+    const required = ['receiver', 'barrel', 'grip'];
+    const subtype = WEAPON_CLASSES[design.classId]?.subtypes[design.subtype];
+    if (subtype && subtypeNeedsMagazine(design.classId, subtype.mode)) required.push('magazine');
+    required.push('cartridge');
+    return required.find((componentId) => !design.components[componentId]) || null;
+  }
+
+  function showCraftNotice(text, type = 'warning') {
+    const color = type === 'ok' ? '#baffae' : '#ffe39a';
+    craftTutorial.innerHTML = `<strong style="color:${color}">${escapeHtml(text)}</strong>`;
+    window.setTimeout(() => {
+      if (craftOverlay.classList.contains('visible')) refreshCraftEditor();
+    }, 1400);
+  }
+
+  function beginCraftDraw(event) {
+    if (event.button !== 0) return;
+    const design = getCurrentDesign();
+    if (!design) return;
+    if (currentCraftComponent !== 'receiver' && currentCraftComponent !== 'cartridge' && !design.components.receiver) {
+      showCraftNotice('Сначала нарисуйте коробку — к ней крепятся остальные части.');
+      return;
+    }
+    if (currentCraftComponent === 'muzzle' && !design.components.barrel) {
+      showCraftNotice('Надульное устройство можно установить только после создания ствола.');
+      return;
+    }
+
+    const point = craftPointFromEvent(event);
+    craftDrawState = { pointerId: event.pointerId, start: point, current: point };
+    try { craftCanvas.setPointerCapture?.(event.pointerId); } catch { /* Синтетические и старые pointer-события могут не поддерживать захват. */ }
+    updateCraftPreview(point, point);
+    event.preventDefault();
+  }
+
+  function updateCraftDraw(event) {
+    if (!craftDrawState || event.pointerId !== craftDrawState.pointerId) return;
+    craftDrawState.current = craftPointFromEvent(event);
+    updateCraftPreview(craftDrawState.start, craftDrawState.current);
+  }
+
+  function finishCraftDraw(event) {
+    if (!craftDrawState || event.pointerId !== craftDrawState.pointerId) return;
+    const raw = rectFromPoints(craftDrawState.start, craftPointFromEvent(event));
+    try {
+      if (!craftCanvas.hasPointerCapture || craftCanvas.hasPointerCapture(event.pointerId)) craftCanvas.releasePointerCapture?.(event.pointerId);
+    } catch { /* Захват уже мог быть снят браузером. */ }
+    craftDrawState = null;
+    craftPreview.setAttribute('visibility', 'hidden');
+    if (raw.w < 0.75 || raw.h < 0.75) return;
+    commitCraftComponent(currentCraftComponent, raw);
+  }
+
+  function cancelCraftDraw(event) {
+    if (craftDrawState && (!event || event.pointerId === craftDrawState.pointerId)) {
+      craftDrawState = null;
+      craftPreview.setAttribute('visibility', 'hidden');
+    }
+  }
+
+  function updateCraftPreview(start, end) {
+    const rect = rectFromPoints(start, end);
+    craftPreview.setAttribute('x', String(rect.x));
+    craftPreview.setAttribute('y', String(rect.y));
+    craftPreview.setAttribute('width', String(rect.w));
+    craftPreview.setAttribute('height', String(rect.h));
+    craftPreview.setAttribute('visibility', 'visible');
+  }
+
+  function craftPointFromEvent(event) {
+    const point = craftCanvas.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const matrix = craftCanvas.getScreenCTM();
+    if (!matrix) return { x: 0, y: 0 };
+    const transformed = point.matrixTransform(matrix.inverse());
+    if (craftLimitBreak) {
+      return {
+        x: snapToGrid(clamp(transformed.x, -1000000, 1000000)),
+        y: snapToGrid(clamp(transformed.y, -1000000, 1000000))
+      };
+    }
+    return { x: snapToGrid(clamp(transformed.x, 0, 100)), y: snapToGrid(clamp(transformed.y, 0, 55)) };
+  }
+
+  function snapToGrid(value) {
+    return Math.round(value);
+  }
+
+  function rectFromPoints(first, second) {
+    const x = Math.min(first.x, second.x);
+    const y = Math.min(first.y, second.y);
+    return { x, y, w: Math.max(1, Math.abs(second.x - first.x)), h: Math.max(1, Math.abs(second.y - first.y)) };
+  }
+
+  function commitCraftComponent(componentId, rawRect) {
+    const design = getCurrentDesign();
+    if (!design) return;
+    const nextComponents = cloneComponents(design.components);
+    nextComponents[componentId] = normalizeComponentRect(componentId, rawRect, { ...design, components: nextComponents });
+    const normalizedComponents = normalizeAllComponents({ ...design, components: nextComponents });
+    const newInvested = calculateDesignInvested(normalizedComponents, { ...design, components: normalizedComponents });
+    const delta = newInvested - design.invested;
+
+    if (delta > metaProgress.modPoints) {
+      showCraftNotice(`Недостаточно очков: нужно ещё ${delta - metaProgress.modPoints}. Уменьшите деталь или заработайте очки в выживании.`);
+      return;
+    }
+
+    metaProgress.modPoints -= delta;
+    design.components = normalizedComponents;
+    design.invested = newInvested;
+    design.updatedAt = Date.now();
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function deleteSelectedComponent() {
+    const design = getCurrentDesign();
+    if (!design || !design.components[currentCraftComponent]) return;
+    const nextComponents = cloneComponents(design.components);
+    if (currentCraftComponent === 'receiver') {
+      for (const componentId of Object.keys(nextComponents)) {
+        if (componentId !== 'cartridge') delete nextComponents[componentId];
+      }
+    } else {
+      delete nextComponents[currentCraftComponent];
+      if (currentCraftComponent === 'barrel') delete nextComponents.muzzle;
+    }
+    const normalizedComponents = normalizeAllComponents({ ...design, components: nextComponents });
+    const newInvested = calculateDesignInvested(normalizedComponents, { ...design, components: normalizedComponents });
+    metaProgress.modPoints += design.invested - newInvested;
+    design.components = normalizedComponents;
+    design.invested = newInvested;
+    design.updatedAt = Date.now();
+    persistCraftProgress();
+    refreshCraftEditor();
+  }
+
+  function normalizeAllComponents(design) {
+    const components = cloneComponents(design.components);
+    const working = { ...design, components };
+    const sequence = ['receiver', 'barrel', 'muzzle', 'stock', 'grip', 'trigger', 'foregrip', 'bipod', 'sight', 'magazine', 'cartridge', 'receiver', 'barrel', 'muzzle', 'magazine', 'trigger'];
+    for (const componentId of sequence) {
+      if (!components[componentId]) continue;
+      components[componentId] = normalizeComponentRect(componentId, components[componentId], working);
+    }
+    return components;
+  }
+
+  function normalizeComponentRect(componentId, rawRect, design) {
+    const components = design.components || {};
+    const receiver = components.receiver;
+    const barrel = components.barrel;
+    const magazine = components.magazine;
+    const cartridge = components.cartridge;
+    const muzzle = components.muzzle;
+    const classDefinition = WEAPON_CLASSES[design.classId] || WEAPON_CLASSES.pistol;
+    const rect = {
+      x: clamp(snapToGrid(rawRect.x), -1000000, 1000000),
+      y: clamp(snapToGrid(rawRect.y), -1000000, 1000000),
+      w: clamp(Math.max(1, snapToGrid(rawRect.w)), 1, 1000000),
+      h: clamp(Math.max(1, snapToGrid(rawRect.h)), 1, 1000000)
+    };
+
+    if (design.limitBreak) {
+      if (componentId === 'receiver' || componentId === 'cartridge' || !receiver) return roundRect(rect);
+      const receiverRight = receiver.x + receiver.w;
+      const receiverBottom = receiver.y + receiver.h;
+      if (componentId === 'barrel') {
+        rect.x = receiverRight - 1;
+      } else if (componentId === 'stock') {
+        rect.x = receiver.x - rect.w + 1;
+      } else if (componentId === 'sight') {
+        const top = Math.min(receiver.y, barrel ? barrel.y : receiver.y);
+        rect.y = top - rect.h + 1;
+      } else if (componentId === 'grip' || componentId === 'magazine' || componentId === 'trigger') {
+        rect.y = receiverBottom - 1;
+      } else if (componentId === 'foregrip') {
+        rect.y = Math.max(receiverBottom, barrel ? barrel.y + barrel.h : receiverBottom) - 1;
+      } else if (componentId === 'bipod') {
+        rect.y = (barrel ? barrel.y + barrel.h : receiverBottom) - 1;
+      } else if (componentId === 'muzzle' && barrel) {
+        rect.x = barrel.x + barrel.w - 1;
+        rect.y = barrel.y + (barrel.h - rect.h) / 2;
+      }
+      return roundRect(rect);
+    }
+
+    if (componentId === 'receiver') {
+      const minW = Math.max(classDefinition.minReceiver[0], cartridge ? Math.ceil(cartridge.w / 0.6) : 0);
+      const minH = Math.max(classDefinition.minReceiver[1], cartridge ? Math.ceil(cartridge.h * 1.35) : 0);
+      rect.w = clamp(rect.w, minW, 34);
+      rect.h = clamp(rect.h, minH, 17);
+      rect.x = clamp(rect.x, 16, 66 - rect.w);
+      rect.y = clamp(rect.y, 9, 30 - rect.h * 0.25);
+      return roundRect(rect);
+    }
+
+    if (componentId === 'cartridge') {
+      let maxW = receiver ? receiver.w * 0.6 : 12;
+      if (magazine) maxW = Math.min(maxW, magazine.w * 0.9);
+      const maxH = barrel ? barrel.h * 0.92 : 6;
+      rect.w = clamp(rect.w, 1, Math.max(1, Math.floor(maxW)));
+      rect.h = clamp(rect.h, 1, Math.max(1, Math.floor(maxH)));
+      rect.x = 4;
+      rect.y = clamp(52 - rect.h, 44, 52 - rect.h);
+      return roundRect(rect);
+    }
+
+    if (!receiver) return roundRect(rect);
+    const receiverRight = receiver.x + receiver.w;
+    const receiverBottom = receiver.y + receiver.h;
+
+    if (componentId === 'barrel') {
+      rect.w = clamp(rect.w, classDefinition.barrelRange[0], classDefinition.barrelRange[1]);
+      rect.h = clamp(rect.h, cartridge ? Math.ceil(cartridge.h / 0.92) : 2, 12);
+      rect.x = receiverRight - 1;
+      rect.y = clamp(rect.y, receiver.y - Math.floor(rect.h * 0.25), receiverBottom - rect.h);
+    } else if (componentId === 'stock') {
+      rect.w = clamp(rect.w, 7, 30);
+      rect.h = clamp(rect.h, 4, 17);
+      rect.x = receiver.x - rect.w + 1;
+      rect.y = clamp(rect.y, receiver.y - 3, receiverBottom - Math.max(2, rect.h * 0.45));
+    } else if (componentId === 'sight') {
+      const top = Math.min(receiver.y, barrel ? barrel.y : receiver.y);
+      const maxRight = Math.max(receiverRight, barrel ? barrel.x + barrel.w : receiverRight);
+      rect.w = clamp(rect.w, 3, 19);
+      rect.h = clamp(rect.h, 2, 7);
+      rect.x = clamp(rect.x, receiver.x, Math.max(receiver.x, maxRight - rect.w));
+      rect.y = top - rect.h + 1;
+    } else if (componentId === 'grip') {
+      rect.w = clamp(rect.w, 3, 9);
+      rect.h = clamp(rect.h, 5, 16);
+      rect.x = clamp(rect.x, receiver.x + 1, receiverRight - rect.w - 1);
+      rect.y = receiverBottom - 1;
+    } else if (componentId === 'trigger') {
+      rect.w = clamp(rect.w, 2, 7);
+      rect.h = clamp(rect.h, 2, 7);
+      rect.x = clamp(rect.x, receiver.x + receiver.w * 0.38, receiverRight - rect.w - 1);
+      rect.y = receiverBottom - 1;
+    } else if (componentId === 'foregrip') {
+      const maxRight = barrel ? barrel.x + barrel.w : receiverRight;
+      rect.w = clamp(rect.w, 3, 9);
+      rect.h = clamp(rect.h, 4, 14);
+      rect.x = clamp(rect.x, receiver.x + receiver.w * 0.55, Math.max(receiver.x + receiver.w * 0.55, maxRight - rect.w - 1));
+      rect.y = Math.max(receiverBottom, barrel ? barrel.y + barrel.h : receiverBottom) - 1;
+    } else if (componentId === 'bipod') {
+      const maxRight = barrel ? barrel.x + barrel.w : receiverRight;
+      rect.w = clamp(rect.w, 5, 18);
+      rect.h = clamp(rect.h, 6, 18);
+      rect.x = clamp(rect.x, receiverRight - 1, Math.max(receiverRight - 1, maxRight - rect.w));
+      rect.y = (barrel ? barrel.y + barrel.h : receiverBottom) - 1;
+    } else if (componentId === 'magazine') {
+      rect.w = clamp(rect.w, cartridge ? Math.ceil(cartridge.w / 0.9) : 3, 15);
+      rect.h = clamp(rect.h, 4, 23);
+      rect.x = clamp(rect.x, receiver.x + 1, receiverRight - rect.w - 1);
+      rect.y = receiverBottom - 1;
+    } else if (componentId === 'muzzle' && barrel) {
+      const typeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+      const widthRange = typeId === 'suppressor' ? [6, 18] : typeId === 'compensator' ? [4, 11] : [3, 9];
+      rect.w = clamp(rect.w, widthRange[0], widthRange[1]);
+      rect.h = clamp(rect.h, Math.max(2, Math.ceil(barrel.h * 0.65)), Math.max(3, Math.ceil(barrel.h * 1.65)));
+      rect.x = barrel.x + barrel.w - 1;
+      rect.w = Math.max(1, Math.min(rect.w, 99 - rect.x));
+      rect.y = barrel.y + (barrel.h - rect.h) / 2;
+      rect.y = clamp(rect.y, 1, 37 - rect.h);
+      return roundRect(rect);
+    }
+
+    rect.x = clamp(rect.x, 1, 99 - rect.w);
+    rect.y = clamp(rect.y, 1, 37 - rect.h);
+    return roundRect(rect);
+  }
+
+  function roundRect(rect) {
+    return {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      w: Math.max(1, Math.round(rect.w)),
+      h: Math.max(1, Math.round(rect.h))
+    };
+  }
+
+  function cloneComponents(components) {
+    const result = {};
+    for (const [componentId, rect] of Object.entries(components || {})) {
+      if (!COMPONENT_DEFINITIONS[componentId] || !rect) continue;
+      result[componentId] = { x: Number(rect.x), y: Number(rect.y), w: Number(rect.w), h: Number(rect.h) };
+    }
+    return result;
+  }
+
+  function componentCost(componentId, rect, design = null) {
+    const definition = COMPONENT_DEFINITIONS[componentId];
+    if (!definition || !rect) return 0;
+    let cost = definition.baseCost + rect.w * rect.h * definition.areaCost;
+    if (componentId === 'muzzle') {
+      const type = MUZZLE_DEVICE_TYPES[design?.muzzleType] || MUZZLE_DEVICE_TYPES.flashHider;
+      cost += type.cost;
+    }
+    if (componentId === 'trigger') {
+      const system = TRIGGER_SYSTEMS[design?.triggerSystem] || TRIGGER_SYSTEMS.standard;
+      cost += system.cost;
+    }
+    return Math.max(1, Math.ceil(cost));
+  }
+
+  function calculateDesignInvested(components, design = null) {
+    let total = Object.entries(components || {}).reduce((sum, [componentId, rect]) => sum + componentCost(componentId, rect, design), 0);
+    if (components?.barrel) {
+      const profile = BARREL_PROFILES[design?.barrelProfile] || BARREL_PROFILES.standard;
+      total += profile.cost;
+    }
+    return Math.max(0, Math.ceil(total));
+  }
+
+  function calculateWeaponStats(design) {
+    const classDefinition = WEAPON_CLASSES[design.classId] || WEAPON_CLASSES.pistol;
+    const subtype = classDefinition.subtypes[design.subtype] || Object.values(classDefinition.subtypes)[0];
+    const c = design.components || {};
+    const receiver = c.receiver;
+    const barrel = c.barrel;
+    const muzzle = c.muzzle;
+    const stock = c.stock;
+    const sight = c.sight;
+    const grip = c.grip;
+    const foregrip = c.foregrip;
+    const bipod = c.bipod;
+    const magazine = c.magazine;
+    const cartridge = c.cartridge;
+    const trigger = c.trigger;
+    const limitBreak = Boolean(design.limitBreak);
+    const barrelProfileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
+    const barrelProfile = BARREL_PROFILES[barrelProfileId];
+    const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    const muzzleDevice = muzzle ? MUZZLE_DEVICE_TYPES[muzzleTypeId] : null;
+    const selectedTriggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const selectedTriggerSystem = TRIGGER_SYSTEMS[selectedTriggerSystemId];
+    const triggerSystem = trigger ? selectedTriggerSystem : TRIGGER_SYSTEMS.standard;
+    const triggerOverrideAllowed = Boolean(trigger && triggerSystem.modeOverride && ['semi', 'auto', 'burst'].includes(subtype.mode));
+    const fireMode = triggerOverrideAllowed ? triggerSystem.modeOverride : subtype.mode;
+
+    const receiverArea = rectArea(receiver);
+    const barrelArea = rectArea(barrel);
+    const muzzleArea = rectArea(muzzle);
+    const cartridgeArea = Math.max(0.5, rectArea(cartridge));
+    const cartridgePower = limitBreak
+      ? Math.max(0.2, 0.42 + Math.pow(cartridgeArea / classDefinition.nominalCartridgeArea, 0.64) * 0.76)
+      : clamp(0.48 + (cartridgeArea / classDefinition.nominalCartridgeArea) * 0.7, 0.48, 2.45);
+    const barrelLength = barrel?.w || 0;
+    const barrelEfficiency = clamp(0.55 + Math.sqrt(Math.max(0, barrelLength) / classDefinition.targetBarrel) * 0.47, 0.55, 1.2);
+
+    const fixedCapacity = subtypeFixedCapacity(design.classId, subtype.mode);
+    let capacity = fixedCapacity || 1;
+    if (fixedCapacity == null && subtypeNeedsMagazine(design.classId, subtype.mode) && magazine && cartridge) {
+      const rows = Math.max(1, Math.floor((magazine.h - 0.5) / Math.max(1, cartridge.h * 1.05)));
+      const stack = magazine.w >= cartridge.w * 1.55 ? 2 : magazine.w >= cartridge.w * 1.12 ? 1.45 : 1;
+      capacity = Math.max(1, Math.floor(rows * stack * classDefinition.capacityMultiplier));
+    }
+    const capacityCap = design.classId === 'machinegun' ? 220 : design.classId === 'smg' ? 80 : design.classId === 'carbine' ? 60 : design.classId === 'sniper' ? (subtype.mode === 'bolt' ? 1 : 20) : design.classId === 'shotgun' ? 18 : design.classId === 'revolver' ? 6 : 36;
+    capacity = limitBreak ? clamp(capacity, 1, 1000000) : clamp(capacity, 1, capacityCap);
+
+    const componentMasses = {
+      receiver: receiverArea * 0.0047,
+      barrel: barrelArea * 0.0068 * barrelProfile.massMultiplier,
+      muzzle: muzzle ? muzzleArea * 0.0058 + muzzleDevice.fixedMass : 0,
+      stock: rectArea(stock) * 0.0028,
+      sight: rectArea(sight) * 0.004,
+      grip: rectArea(grip) * 0.0027,
+      trigger: rectArea(trigger) * 0.0034,
+      foregrip: rectArea(foregrip) * 0.0029,
+      bipod: rectArea(bipod) * 0.0075,
+      magazine: rectArea(magazine) * 0.0042
+    };
+    const cartridgeMass = cartridgeArea * 0.0026 * (0.8 + cartridgePower * 0.25);
+    const loadedAmmoMass = cartridgeMass * capacity;
+    const weight = classDefinition.baseMass + Object.values(componentMasses).reduce((sum, value) => sum + value, 0) + loadedAmmoMass;
+
+    const weightedPoints = [];
+    for (const [componentId, mass] of Object.entries(componentMasses)) {
+      const rect = c[componentId];
+      if (rect && mass > 0) weightedPoints.push([rect.x + rect.w / 2, mass]);
+    }
+    if (magazine && loadedAmmoMass > 0) weightedPoints.push([magazine.x + magazine.w / 2, loadedAmmoMass]);
+    const totalWeightedMass = weightedPoints.reduce((sum, point) => sum + point[1], 0) || 1;
+    const balanceX = weightedPoints.reduce((sum, point) => sum + point[0] * point[1], 0) / totalWeightedMass;
+    const gripCenter = grip ? grip.x + grip.w / 2 : receiver ? receiver.x + receiver.w * 0.35 : 30;
+    const imbalance = balanceX - gripCenter;
+
+    const bounds = getWeaponBounds(c);
+    const totalLength = bounds ? bounds.maxX - bounds.minX : 0;
+    const gripQuality = grip ? clamp(18 - Math.abs(grip.h / Math.max(1, grip.w) - 2.2) * 7, 0, 18) : 0;
+    let ergonomics = 51 + gripQuality + (stock ? 9 : 0) + (foregrip ? 8 : 0) + (sight ? 2 : 0);
+    ergonomics += barrelProfile.ergonomicsBonus + (muzzleDevice?.ergonomicsBonus || 0);
+    ergonomics += trigger ? triggerSystem.accuracyBonus * 0.18 : 0;
+    ergonomics -= weight * 2.35 + Math.abs(imbalance) * 1.7;
+    ergonomics -= Math.max(0, totalLength - classDefinition.lengthRange[1] * 0.8) * 0.45;
+    ergonomics -= Math.max(0, capacity - 25) * 0.09;
+    ergonomics = clamp(ergonomics, limitBreak ? 1 : 5, 100);
+
+    let damage = classDefinition.baseDamage * cartridgePower * barrelEfficiency * subtype.damage;
+    if (subtype.mode === 'single') damage *= 1.08;
+    damage *= muzzleDevice?.damageMultiplier || 1;
+    damage = limitBreak ? Math.max(1, damage) : clamp(damage, 4, 240);
+
+    let recoil = damage * (0.45 + cartridgePower * 0.22) / Math.max(0.65, weight) * 0.56;
+    if (stock) recoil *= 0.74;
+    if (foregrip) recoil *= 0.82;
+    if (bipod) recoil *= 0.88;
+    recoil *= barrelProfile.recoilMultiplier * (muzzleDevice?.recoilMultiplier || 1) * triggerSystem.recoilMultiplier;
+    recoil = limitBreak ? Math.max(2, recoil) : clamp(recoil, 2, 70);
+
+    let accuracy = 36 + clamp(barrelLength / Math.max(1, classDefinition.targetBarrel), 0, 1.5) * 30;
+    accuracy += sight ? 16 : 0;
+    accuracy += stock ? 8 : 0;
+    accuracy += foregrip ? 4 : 0;
+    accuracy += barrelProfile.accuracyBonus + (muzzleDevice?.accuracyBonus || 0) + triggerSystem.accuracyBonus;
+    accuracy -= recoil * 0.43 + Math.abs(imbalance) * 1.15;
+    accuracy = clamp(accuracy, limitBreak ? 1 : 8, 99);
+
+    const receiverDemand = cartridgeArea * 7.2 + 44;
+    const receiverFactor = clamp(receiverArea / Math.max(1, receiverDemand), 0.55, 1.12);
+    const cyclePowerPenalty = clamp(1.12 - cartridgePower * 0.09, 0.7, 1.04);
+    let rpm = subtype.rpm * receiverFactor * cyclePowerPenalty;
+    rpm *= clamp(0.86 + ergonomics / 420, 0.72, 1.08) * triggerSystem.rpmMultiplier;
+    rpm = clamp(rpm, 32, 1100);
+
+    const strength = (receiverArea / Math.max(1, cartridgeArea * 8.5 + 32)) * 0.58 +
+      (barrelArea * barrelProfile.strengthMultiplier / Math.max(1, cartridgeArea * 4.8 + 16)) * 0.42;
+    let reliability = 93 + subtype.reliability + clamp((strength - 0.8) * 18, -18, 8);
+    reliability += barrelProfile.reliabilityBonus + (muzzleDevice?.reliabilityBonus || 0) + triggerSystem.reliabilityBonus;
+    reliability -= Math.max(0, capacity - 45) * 0.055;
+    reliability -= fireMode === 'auto' || fireMode === 'burst' ? cartridgePower * 1.8 : 0;
+    reliability = clamp(reliability, limitBreak ? 1 : 50, 99.8);
+
+    let heatPerShot = (cartridgePower * cartridgeArea * 3.9) / (barrelArea * 0.065 + 4) *
+      (fireMode === 'auto' || fireMode === 'burst' ? 1.18 : 1);
+    heatPerShot *= barrelProfile.heatMultiplier * (muzzleDevice?.heatMultiplier || 1);
+    heatPerShot = clamp(heatPerShot, 1.5, limitBreak ? 100 : 38);
+    let coolRate = (8 + barrelArea * 0.05 + (bipod ? 1 : 0)) * barrelProfile.coolMultiplier * (muzzleDevice?.coolMultiplier || 1);
+    coolRate = clamp(coolRate, 5, limitBreak ? 80 : 48);
+
+    const classReloadBase = { pistol: 0.86, revolver: 1.12, smg: 1.18, carbine: 1.28, sniper: 1.65, machinegun: 2.2, shotgun: 1.4 }[design.classId] || 1;
+    let reloadTime = classReloadBase + capacity * 0.026 + cartridgeArea * 0.052 + weight * 0.075 + (100 - ergonomics) * 0.009;
+    if (subtype.mode === 'single') reloadTime = 0.95 + cartridgeArea * 0.08 + weight * 0.05;
+    if (design.classId === 'sniper' && subtype.mode === 'bolt') reloadTime = 0.78 + cartridgeArea * 0.07 + weight * 0.045;
+    if (design.classId === 'shotgun' && subtype.mode === 'break') reloadTime = 1.12 + cartridgeArea * 0.055 + weight * 0.05;
+    if (design.classId === 'shotgun' && subtype.mode === 'pump') reloadTime *= 1.12;
+    if (design.classId === 'shotgun' && subtype.mode === 'revolver') reloadTime *= 1.08;
+    if (subtype.mode === 'bolt') reloadTime *= 0.82;
+    reloadTime = limitBreak ? Math.max(0.5, reloadTime) : clamp(reloadTime, 0.5, 12);
+
+    const movementMultiplier = limitBreak
+      ? clamp((1.08 + ergonomics * 0.0008) / (1 + Math.max(0, weight - 1) * 0.05), 0.04, 1.06)
+      : clamp(1.08 - weight * 0.036 + ergonomics * 0.0008, 0.48, 1.06);
+    const muzzleSpreadMultiplier = muzzleDevice?.spreadMultiplier || 1;
+    const nonShotgunMuzzleSpread = 1 + (muzzleSpreadMultiplier - 1) * 0.2;
+    let spread = clamp(((100 - accuracy) * 0.00043 + recoil * 0.00013) * (design.classId === 'shotgun' ? muzzleSpreadMultiplier : nonShotgunMuzzleSpread), 0.0022, limitBreak ? 0.42 : 0.09);
+    let crosshair = clamp(5 + (100 - accuracy) * 0.12 + recoil * 0.08, 5, limitBreak ? 70 : 22);
+    const kick = clamp(recoil * 0.72, 5, limitBreak ? 140 : 38);
+    let pellets = 1;
+    if (design.classId === 'shotgun') {
+      pellets = shotgunSubtypePellets(subtype.mode);
+      spread = clamp(spread * 3.15, 0.028, limitBreak ? 0.48 : 0.17);
+      crosshair = clamp(crosshair * 1.75, 10, limitBreak ? 88 : 34);
+    }
+    const requiresBipod = weight > 10;
+    const bipodDeployTime = clamp(0.62 + weight * 0.055, 0.75, limitBreak ? 12 : 1.8);
+    const swayScale = clamp(1.32 - ergonomics / 112 + (limitBreak ? Math.max(0, weight - 10) * 0.012 : 0), 0.34, limitBreak ? 5 : 1.25);
+    const movementSpread = clamp((100 - ergonomics) * 0.0002 + Math.max(0, imbalance) * 0.0006, 0.003, limitBreak ? 0.3 : 0.035);
+    const jamChance = clamp((100 - reliability) * (limitBreak ? 0.0034 : 0.00042), 0, limitBreak ? 0.35 : 0.022);
+    const sightArea = rectArea(sight);
+    const sightLength = sight?.w || 0;
+    const sightMagnification = sight ? getSightMagnificationFromLength(sightLength) : 1;
+    const aimSpreadMultiplier = sight
+      ? clamp((0.62 - Math.sqrt(sightArea) * 0.028 - (design.classId === 'sniper' ? 0.08 : 0)) * Math.pow(1 / sightMagnification, 0.18), 0.16, 0.58)
+      : 1;
+    const aimFovMultiplier = sight ? Math.max(0.125, 1 / sightMagnification) : 1;
+
+    return {
+      classId: design.classId,
+      subtypeId: design.subtype,
+      fireMode,
+      triggerSystemId: trigger ? selectedTriggerSystemId : 'standard',
+      triggerSystemLabel: trigger ? triggerSystem.label : 'БАЗОВЫЙ (НЕТ ДЕТАЛИ)',
+      triggerActive: Boolean(trigger),
+      burstCount: triggerSystem.burstCount || 3,
+      weight,
+      damage,
+      pellets,
+      recoil,
+      accuracy,
+      ergonomics,
+      reliability,
+      rpm,
+      capacity,
+      reloadTime,
+      heatPerShot,
+      coolRate,
+      movementMultiplier,
+      spread,
+      crosshair,
+      kick,
+      requiresBipod,
+      bipodDeployTime,
+      swayScale,
+      movementSpread,
+      jamChance,
+      hasSight: Boolean(sight),
+      sightLength,
+      sightMagnification,
+      aimSpreadMultiplier,
+      aimFovMultiplier,
+      cartridgePower,
+      cartridgeMass,
+      loadedAmmoMass,
+      balanceX,
+      gripCenter,
+      imbalance,
+      totalLength,
+      receiverArea,
+      barrelArea,
+      muzzleArea,
+      cartridgeArea,
+      strength,
+      barrelProfileId,
+      barrelProfileLabel: barrelProfile.label,
+      muzzleTypeId: muzzle ? muzzleTypeId : null,
+      muzzleTypeLabel: muzzleDevice?.label || 'НЕТ',
+      hasMuzzleDevice: Boolean(muzzle),
+      muzzleFlashMultiplier: muzzleDevice?.flashMultiplier || 1,
+      soundMultiplier: muzzleDevice?.soundMultiplier || 1,
+      suppressed: Boolean(muzzle && muzzleTypeId === 'suppressor')
+    };
+  }
+
+  function validateWeaponDesign(design, stats) {
+    const errors = [];
+    const warnings = [];
+    const c = design.components || {};
+    const classDefinition = WEAPON_CLASSES[design.classId] || WEAPON_CLASSES.pistol;
+    const subtype = classDefinition.subtypes[design.subtype] || Object.values(classDefinition.subtypes)[0];
+    const receiver = c.receiver;
+    const barrel = c.barrel;
+    const muzzle = c.muzzle;
+    const stock = c.stock;
+    const sight = c.sight;
+    const grip = c.grip;
+    const foregrip = c.foregrip;
+    const bipod = c.bipod;
+    const magazine = c.magazine;
+    const cartridge = c.cartridge;
+    const trigger = c.trigger;
+    const limitBreak = Boolean(design.limitBreak);
+    const barrelProfileId = BARREL_PROFILES[design.barrelProfile] ? design.barrelProfile : 'standard';
+    const muzzleTypeId = MUZZLE_DEVICE_TYPES[design.muzzleType] ? design.muzzleType : 'flashHider';
+    const triggerSystemId = TRIGGER_SYSTEMS[design.triggerSystem] ? design.triggerSystem : 'standard';
+    const triggerSystem = TRIGGER_SYSTEMS[triggerSystemId];
+
+    const magazineRequired = subtypeNeedsMagazine(design.classId, subtype.mode);
+    if (!receiver) errors.push('Нужна коробка — базовая несущая часть оружия.');
+    if (!barrel) errors.push('Нужен ствол.');
+    if (!grip) errors.push('Нужна основная рукоять.');
+    if (!cartridge) errors.push(limitBreak ? 'Нужно нарисовать патрон на свободном поле.' : 'Нужно нарисовать патрон в отдельной жёлтой зоне.');
+    if (magazineRequired && !magazine) errors.push('Для этой схемы нужен магазин или трубчатая подача, задаваемая деталью магазина.');
+    if (!receiver || !barrel || !grip || !cartridge || (magazineRequired && !magazine)) return { errors, warnings };
+
+    if (receiver.w < classDefinition.minReceiver[0] || receiver.h < classDefinition.minReceiver[1]) {
+      (limitBreak ? warnings : errors).push(`Коробка меньше нормы класса «${classDefinition.label}» (${classDefinition.minReceiver[0]}×${classDefinition.minReceiver[1]}): снижены надёжность и темп.`);
+    }
+    if (Math.abs(barrel.x - (receiver.x + receiver.w - 1)) > 1) errors.push('Ствол должен быть состыкован с передней гранью коробки.');
+    if (barrel.w < classDefinition.barrelRange[0]) (limitBreak ? warnings : errors).push(`Ствол короче нормы ${classDefinition.barrelRange[0]}: снижены урон и точность.`);
+    if (cartridge.h > barrel.h * 0.92 + 0.01) (limitBreak ? warnings : errors).push('Патрон толще рекомендуемых 92% ствола: прочность и надёжность резко снижены.');
+    if (cartridge.w > receiver.w * 0.6 + 0.01) (limitBreak ? warnings : errors).push('Патрон длиннее рекомендуемых 60% коробки: автоматика замедлена.');
+    if (receiver.h < cartridge.h * 1.35 || receiver.w < cartridge.w * 1.65) (limitBreak ? warnings : errors).push('Коробка не соответствует патроннику: в «Срыве лимитов» это разрешено, но вызывает тяжёлые задержки.');
+    if (stats.strength < 0.67) (limitBreak ? warnings : errors).push('Прочность коробки и ствола недостаточна для патрона: высокий риск осечки и перегрева.');
+
+    if (muzzle) {
+      const barrelEnd = barrel.x + barrel.w - 1;
+      const barrelCenter = barrel.y + barrel.h / 2;
+      const muzzleCenter = muzzle.y + muzzle.h / 2;
+      if (Math.abs(muzzle.x - barrelEnd) > 1.5) errors.push('Надульник должен быть установлен на передний торец ствола.');
+      if (Math.abs(muzzleCenter - barrelCenter) > Math.max(1, barrel.h * 0.28)) errors.push('Ось надульника должна совпадать с осью ствола.');
+      if (muzzle.h < barrel.h * 0.55 || muzzle.h > barrel.h * 1.8) {
+        (limitBreak ? warnings : errors).push('Диаметр надульника плохо согласован со стволом: возрастает передний дисбаланс и падает надёжность.');
+      }
+      if (muzzleTypeId === 'suppressor' && muzzle.w < Math.max(5, barrel.w * 0.22)) {
+        (limitBreak ? warnings : errors).push('Глушитель слишком короткий относительно ствола: звук снижается слабо, а нагрев остаётся высоким.');
+      }
+      if (muzzleTypeId === 'suppressor' && stats.heatPerShot > 14) warnings.push('Глушитель удерживает горячие газы: оружие будет быстро перегреваться очередями.');
+      if (muzzleTypeId === 'compensator' && stats.recoil < 6) warnings.push('Компенсатор почти не даёт дополнительной пользы при уже низкой отдаче, но остаётся громким.');
+    }
+
+    if (barrelProfileId === 'fluted' && barrel.h < 3) warnings.push('На очень тонком стволе канавки уменьшают запас прочности; профиль лучше работает на более толстом стволе.');
+    if (barrelProfileId === 'radiator' && barrel.w < 10) warnings.push('Встроенный радиатор малоэффективен на очень коротком стволе.');
+    if (barrelProfileId === 'heavy' && stats.weight > 9) warnings.push('Тяжёлый профиль приблизил оружие к порогу, после которого спринт отключается.');
+    if (muzzleTypeId === 'choke' && design.classId !== 'shotgun') warnings.push('Дульное сужение раскрывает потенциал только на дробовике; на этом классе эффект осыпи не используется.');
+
+    if (magazine) {
+      if (design.classId === 'sniper' && subtype.mode === 'bolt') {
+        warnings.push('Для болтовой винтовки магазин не нужен: оружие заряжается по одному патрону, а эта деталь только утяжеляет конструкцию.');
+      } else if (design.classId === 'shotgun' && subtype.mode === 'break') {
+        warnings.push('Для переломного дробовика магазин не используется: схема уже ограничена двумя патронами.');
+      } else if (design.classId === 'revolver') {
+        warnings.push('Револьвер использует встроенный барабан на шесть патронов: внешняя деталь магазина только утяжеляет конструкцию.');
+      } else {
+        if (Math.abs(magazine.y - (receiver.y + receiver.h - 1)) > 1) errors.push('Магазин должен крепиться снизу коробки.');
+        if (cartridge.w > magazine.w * 0.9 + 0.01) (limitBreak ? warnings : errors).push('Патрон длиннее 90% магазина: ёмкость и надёжность подачи резко снижены.');
+        if (stats.capacity < 2 && magazineRequired) (limitBreak ? warnings : errors).push('Магазин вмещает меньше двух патронов.');
+      }
+    }
+
+    if (Math.abs(grip.y - (receiver.y + receiver.h - 1)) > 1) errors.push('Основная рукоять должна крепиться снизу коробки.');
+    if (magazine && overlapArea(grip, magazine) > Math.min(rectArea(grip), rectArea(magazine)) * 0.34) errors.push('Рукоять и магазин слишком сильно пересекаются.');
+    if (trigger) {
+      if (Math.abs(trigger.y - (receiver.y + receiver.h - 1)) > 1.5) errors.push('Спусковой механизм должен крепиться под коробкой.');
+      if (trigger.x < receiver.x + receiver.w * 0.3 || trigger.x > receiver.x + receiver.w * 0.9) warnings.push('Спуск расположен вне удобной зоны хвата: бонус эргономики снижен.');
+    } else if (triggerSystemId !== 'standard') {
+      warnings.push('Выбран нестандартный спуск, но компонент «Спуск» ещё не нарисован: работает базовый механизм.');
+    }
+    if (trigger && triggerSystem.modeOverride && !['semi', 'auto', 'burst'].includes(subtype.mode)) {
+      warnings.push('Этот спуск не может изменить выбранную ручную схему; он работает только как улучшенный базовый механизм.');
+    }
+
+    const stockRequired = design.classId === 'sniper' || design.classId === 'machinegun' || stats.recoil > 30;
+    if (stockRequired && !stock) errors.push('Для этого класса или уровня отдачи обязателен приклад.');
+    if (stock && Math.abs(stock.x + stock.w - (receiver.x + 1)) > 1.5) errors.push('Приклад должен примыкать к задней грани коробки.');
+
+    if (design.classId === 'sniper' && !sight) errors.push('Снайперской винтовке обязателен прицел.');
+    if (sight) {
+      const top = Math.min(receiver.y, barrel.y);
+      if (Math.abs(sight.y + sight.h - (top + 1)) > 1.5) errors.push('Прицел должен стоять сверху коробки или ствола.');
+    }
+
+    const foregripRequired = stats.weight > 6 || stats.imbalance > 8;
+    if (foregripRequired && !foregrip) errors.push('Передний перевес или масса требуют переднюю рукоять.');
+    if (foregrip && foregrip.x < receiver.x + receiver.w * 0.45) warnings.push('Передняя рукоять стоит слишком близко к основной и мало помогает балансу.');
+
+    if (stats.requiresBipod && !bipod) errors.push('Масса превышает 10 кг — обязательны сошки.');
+    if (bipod && bipod.x < receiver.x + receiver.w - 2) errors.push('Сошки должны находиться под передней частью оружия.');
+
+    if (design.classId === 'machinegun' && (barrel.h < 5 || stats.barrelArea < 135)) (limitBreak ? warnings : errors).push('Пулемётный ствол недостаточен для отвода тепла.');
+    if (design.classId === 'shotgun') {
+      if (cartridgeArea < classDefinition.nominalCartridgeArea * 0.55) warnings.push('Для дробовика патрон выглядит маловатым: осыпь будет редкой и слабой.');
+      if (subtype.mode === 'break' && stats.capacity !== 2) warnings.push('Переломный дробовик всегда ограничен двумя патронами.');
+      if (subtype.mode === 'auto' && stats.reliability < 84) warnings.push('Автоматический дробовик очень требователен к массе затвора и патрону: возможны задержки.');
+      if (subtype.mode === 'pump' && !foregrip) warnings.push('Помповой схеме обычно полезно цевьё / передняя рукоять для уверенного хода.');
+    }
+    if (design.classId === 'pistol' && subtype.mode === 'auto') {
+      if (stats.receiverArea < 100) (limitBreak ? warnings : errors).push('Автоматический пистолет имеет слишком малую коробку: надёжность автоматики снижена.');
+      if (stats.capacity < 6) (limitBreak ? warnings : errors).push('Автоматический пистолет имеет магазин меньше 6 патронов.');
+    }
+    if (design.classId === 'sniper' && subtype.mode === 'bolt' && barrel.w < classDefinition.targetBarrel * 0.82) (limitBreak ? warnings : errors).push('Болтовая винтовка имеет короткий ствол: снижены урон и точность.');
+
+    if (stats.totalLength < classDefinition.lengthRange[0]) (limitBreak ? warnings : errors).push(`Оружие короче нормы класса ${classDefinition.lengthRange[0]}: характеристики снижены.`);
+    if (stats.totalLength > classDefinition.lengthRange[1]) warnings.push('Оружие длиннее рекомендуемого: снижены эргономика и скорость поворота.');
+    if (stats.reliability < 78) warnings.push(`Надёжность всего ${Math.round(stats.reliability)}%: возможны осечки и задержки автоматики.`);
+    else if (stats.reliability < 88) warnings.push(`Надёжность ${Math.round(stats.reliability)}%: редкие задержки возможны.`);
+    if (stats.heatPerShot > 12) warnings.push('Ствол быстро нагревается — длинная очередь приведёт к блокировке до охлаждения.');
+    if (stats.reloadTime > 5) warnings.push('Тяжёлый боекомплект делает перезарядку очень долгой.');
+    if (stats.movementMultiplier < 0.7) warnings.push('Большая масса заметно снижает скорость игрока и отключает спринт около 9 кг.');
+    if (stats.imbalance > 7) warnings.push('Центр масс сильно смещён вперёд: повышена раскачка при движении.');
+    if (stats.capacity > 80) warnings.push('Очень большой магазин сильно увеличивает загруженную массу и время перезарядки.');
+    if (limitBreak) warnings.unshift('Срыв лимитов активен: размерные нормы не блокируют запуск, но все физические дебаффы и обязательные механизмы сохранены.');
+
+    return { errors, warnings };
+  }
+
+  function vec3(x = 0, y = 0, z = 0) {
+    return { x, y, z };
+  }
+
+  function addVec3(first, second) {
+    return vec3(first.x + second.x, first.y + second.y, first.z + second.z);
+  }
+
+  function subtractVec3(first, second) {
+    return vec3(first.x - second.x, first.y - second.y, first.z - second.z);
+  }
+
+  function scaleVec3(value, scalar) {
+    return vec3(value.x * scalar, value.y * scalar, value.z * scalar);
+  }
+
+  function dotVec3(first, second) {
+    return first.x * second.x + first.y * second.y + first.z * second.z;
+  }
+
+  function crossVec3(first, second) {
+    return vec3(
+      first.y * second.z - first.z * second.y,
+      first.z * second.x - first.x * second.z,
+      first.x * second.y - first.y * second.x
+    );
+  }
+
+  function normalizeVec3(value) {
+    const length = Math.hypot(value.x, value.y, value.z);
+    return length > 1e-9 ? scaleVec3(value, 1 / length) : vec3(0, 0, 0);
+  }
+
+  function averageVec3(points) {
+    if (!points.length) return vec3();
+    const sum = points.reduce((result, point) => addVec3(result, point), vec3());
+    return scaleVec3(sum, 1 / points.length);
+  }
+
+  function createWeaponBox(id, center, size, color, light = color, options = {}) {
+    return {
+      id,
+      center: vec3(Number(center[0]) || 0, Number(center[1]) || 0, Number(center[2]) || 0),
+      size: vec3(Math.max(0.01, Number(size[0]) || 0.01), Math.max(0.01, Number(size[1]) || 0.01), Math.max(0.01, Number(size[2]) || 0.01)),
+      color,
+      light,
+      stroke: options.stroke || '#05080a',
+      strokeWidth: Number(options.strokeWidth) || 0.48,
+      opacity: Number.isFinite(options.opacity) ? options.opacity : 1
+    };
+  }
+
+  function getWeaponBoxVertices(box) {
+    const hx = box.size.x * 0.5;
+    const hy = box.size.y * 0.5;
+    const hz = box.size.z * 0.5;
+    const { x, y, z } = box.center;
+    return [
+      vec3(x - hx, y - hy, z - hz),
+      vec3(x + hx, y - hy, z - hz),
+      vec3(x + hx, y + hy, z - hz),
+      vec3(x - hx, y + hy, z - hz),
+      vec3(x - hx, y - hy, z + hz),
+      vec3(x + hx, y - hy, z + hz),
+      vec3(x + hx, y + hy, z + hz),
+      vec3(x - hx, y + hy, z + hz)
+    ];
+  }
+
+  function getWeaponModelBounds(model) {
+    const points = [];
+    for (const box of model.boxes || []) points.push(...getWeaponBoxVertices(box));
+    if (!points.length) return null;
+    return {
+      min: vec3(
+        Math.min(...points.map((point) => point.x)),
+        Math.min(...points.map((point) => point.y)),
+        Math.min(...points.map((point) => point.z))
+      ),
+      max: vec3(
+        Math.max(...points.map((point) => point.x)),
+        Math.max(...points.map((point) => point.y)),
+        Math.max(...points.map((point) => point.z))
+      )
+    };
+  }
+
+  function getWeaponViewLayout() {
+    const heightByViewport = renderViewHeight * WEAPON_HIP_LAYOUT_HEIGHT_FRACTION;
+    const heightByWidth = (renderViewWidth * 0.68) / WEAPON_MODEL_ASPECT;
+    const height = Math.max(1, Math.min(heightByViewport, heightByWidth));
+    const width = height * WEAPON_MODEL_ASPECT;
+    const horizontalCenter = renderViewX + renderViewWidth * WEAPON_RIGHT_HORIZONTAL_CENTER;
+    const edgePadding = Math.max(2, renderViewWidth * 0.006);
+    const x = clamp(
+      horizontalCenter - width * 0.5,
+      renderViewX + edgePadding,
+      renderViewX + renderViewWidth - edgePadding - width
+    );
+    const hudClearance = Math.min(74, renderViewHeight * 0.13);
+    const bottomPadding = Math.max(3, renderViewHeight * 0.012);
+    return {
+      x,
+      y: renderViewY + renderViewHeight - hudClearance - bottomPadding - height,
+      width,
+      height
+    };
+  }
+
+  function fitWeaponProjection(rawPoints, preset) {
+    const left = preset.padding[0];
+    const top = preset.padding[1];
+    const right = preset.padding[2];
+    const bottom = preset.padding[3];
+    const minX = Math.min(...rawPoints.map((point) => point.x));
+    const maxX = Math.max(...rawPoints.map((point) => point.x));
+    const minY = Math.min(...rawPoints.map((point) => point.y));
+    const maxY = Math.max(...rawPoints.map((point) => point.y));
+    const rawWidth = Math.max(1e-6, maxX - minX);
+    const rawHeight = Math.max(1e-6, maxY - minY);
+    const availableWidth = Math.max(1, WEAPON_MODEL_VIEW_W - left - right);
+    const availableHeight = Math.max(1, WEAPON_MODEL_VIEW_H - top - bottom);
+    const scale = Math.min(availableWidth / rawWidth, availableHeight / rawHeight);
+    const drawnWidth = rawWidth * scale;
+    const drawnHeight = rawHeight * scale;
+    const offsetX = left + (availableWidth - drawnWidth) * 0.5 - minX * scale;
+    const offsetY = preset.alignY === 'bottom'
+      ? WEAPON_MODEL_VIEW_H - bottom - drawnHeight - minY * scale
+      : top + (availableHeight - drawnHeight) * 0.5 - minY * scale;
+    return {
+      map(point) {
+        return { x: point.x * scale + offsetX, y: point.y * scale + offsetY };
+      }
+    };
+  }
+
+  function renderWeapon3DProjection(model, requestedPreset = 'center') {
+    const presetName = WEAPON_CAMERA_PRESETS[requestedPreset] ? requestedPreset : normalizeWeaponPosition(requestedPreset);
+    const preset = WEAPON_CAMERA_PRESETS[presetName] || WEAPON_CAMERA_PRESETS.center;
+    const bounds = getWeaponModelBounds(model);
+    if (!bounds) return { markup: '', aim: { x: 60, y: 36 }, muzzle: { x: 60, y: 12 } };
+
+    const center = scaleVec3(addVec3(bounds.min, bounds.max), 0.5);
+    const size = subtractVec3(bounds.max, bounds.min);
+    const radius = Math.max(1, Math.hypot(size.x, size.y, size.z) * 0.5);
+    const eyeDirection = normalizeVec3(vec3(...preset.eye));
+    const camera = addVec3(center, scaleVec3(eyeDirection, radius * preset.distance));
+    const targetOffset = preset.targetOffset || [0, 0, 0];
+    const target = addVec3(center, vec3(targetOffset[0] || 0, targetOffset[1] || 0, targetOffset[2] || 0));
+    const forward = normalizeVec3(subtractVec3(target, camera));
+    let right = normalizeVec3(crossVec3(forward, vec3(0, 1, 0)));
+    if (Math.hypot(right.x, right.y, right.z) < 0.01) right = vec3(1, 0, 0);
+    const up = normalizeVec3(crossVec3(right, forward));
+    const focal = 1 / Math.tan((preset.fov * Math.PI / 180) * 0.5);
+
+    const projectRaw = (point) => {
+      const relative = subtractVec3(point, camera);
+      const depth = Math.max(1e-5, dotVec3(relative, forward));
+      return {
+        x: dotVec3(relative, right) * focal / depth,
+        y: -dotVec3(relative, up) * focal / depth,
+        depth
+      };
+    };
+
+    const allWorldPoints = [];
+    const boxGeometry = [];
+    for (const box of model.boxes || []) {
+      const vertices = getWeaponBoxVertices(box);
+      allWorldPoints.push(...vertices);
+      boxGeometry.push({ box, vertices, projected: vertices.map(projectRaw) });
+    }
+    const allRawPoints = allWorldPoints.map(projectRaw);
+    const fit = fitWeaponProjection(allRawPoints, preset);
+    const lightDirection = normalizeVec3(vec3(-0.55, 0.92, -0.72));
+    const faces = [];
+
+    for (const geometry of boxGeometry) {
+      for (const indices of WEAPON_BOX_FACES) {
+        const worldPoints = indices.map((index) => geometry.vertices[index]);
+        const faceCenter = averageVec3(worldPoints);
+        const edgeA = subtractVec3(worldPoints[1], worldPoints[0]);
+        const edgeB = subtractVec3(worldPoints[2], worldPoints[0]);
+        const normal = normalizeVec3(crossVec3(edgeA, edgeB));
+        const towardCamera = normalizeVec3(subtractVec3(camera, faceCenter));
+        if (dotVec3(normal, towardCamera) <= 0.001) continue;
+        const raw = indices.map((index) => geometry.projected[index]);
+        const points = raw.map(fit.map);
+        const diffuse = Math.max(0, dotVec3(normal, lightDirection));
+        const rim = Math.max(0, dotVec3(normal, towardCamera));
+        const brightness = clamp(0.48 + diffuse * 0.48 + rim * 0.08, 0.36, 1.12);
+        const fill = brightness > 1.02 && geometry.box.light
+          ? shadeHex(geometry.box.light, Math.min(0.08, brightness - 1))
+          : shadeHex(geometry.box.color, brightness - 1);
+        faces.push({
+          depth: raw.reduce((sum, point) => sum + point.depth, 0) / raw.length,
+          points,
+          fill,
+          box: geometry.box
+        });
+      }
+    }
+
+    faces.sort((first, second) => second.depth - first.depth);
+    const polygons = faces.map((face) => {
+      const points = face.points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+      return `<polygon points="${points}" fill="${face.fill}" fill-opacity="${face.box.opacity}" stroke="${face.box.stroke}" stroke-width="${face.box.strokeWidth}" stroke-linejoin="round"/>`;
+    }).join('');
+
+    const projectAnchor = (anchor, fallback) => {
+      if (!anchor) return fallback;
+      const raw = projectRaw(anchor);
+      return fit.map(raw);
+    };
+    const aim = projectAnchor(model.anchors?.aim, { x: 60, y: 34 });
+    const muzzle = projectAnchor(model.anchors?.muzzle, { x: 60, y: 10 });
+    return {
+      markup: `<g shape-rendering="geometricPrecision" data-weapon-projection="3d">${polygons}</g>`,
+      aim,
+      muzzle
+    };
+  }
+
+  function buildClassicWeapon3DModel(index) {
+    const boxes = [];
+    const add = (id, center, size, color, light = color, options = {}) => boxes.push(createWeaponBox(id, center, size, color, light, options));
+    let anchors;
+
+    if (index === 0) {
+      add('slide', [10, 3.1, 0], [23, 4.8, 5.4], '#40535c', '#a8bec5');
+      add('barrel', [23.2, 3.2, 0], [4.8, 2.3, 2.5], '#182329', '#81989f');
+      add('frame', [5.5, -0.4, 0], [14, 5.5, 5.8], '#26343a', '#6c838c');
+      add('grip', [-0.5, -7.5, 0], [5.7, 10.5, 4.8], '#1a2429', '#4e6169');
+      add('grip-inset', [-0.5, -7.4, -2.5], [3.5, 7.6, 0.55], '#76513e', '#a77b61', { strokeWidth: 0.35 });
+      add('trigger-guard', [4.3, -3.6, 0], [5.5, 3.6, 1.3], '#11191d', '#5b6c72');
+      add('pulse-cell', [7.8, 0.9, -3.15], [7.8, 2.2, 0.62], '#ce2e91', '#ff9bdc', { strokeWidth: 0.3 });
+      add('pixel-rail', [12.2, 6.05, 0], [16.5, 0.7, 1.35], '#1f9eb7', '#81f6ff', { strokeWidth: 0.25 });
+      add('rear-sight', [2.5, 6.05, 0], [3.4, 1.2, 1.5], '#0a0f12', '#a6bcc3');
+      add('front-sight', [19, 5.72, 0], [1.2, 1.1, 1.2], '#0a0f12', '#a6bcc3');
+      anchors = { muzzle: vec3(25.7, 3.2, 0), aim: vec3(10.5, 6.1, 0) };
+    } else if (index === 1) {
+      add('stock', [-17, -1.2, 0], [20, 8.5, 6.5], '#754b31', '#c18a5d');
+      add('receiver', [-1.5, 1.2, 0], [17, 7.2, 7.2], '#465b65', '#a7bdc4');
+      add('barrel', [22, 4.1, 0], [36, 3.3, 3.3], '#26363d', '#aabfc6');
+      add('tube', [18.5, 0.8, 0], [29, 2.6, 3.4], '#172329', '#647981');
+      add('pump', [12.2, -1.1, 0], [11, 6.4, 6.6], '#875635', '#d49a68');
+      add('grip', [-7, -6.5, 0], [5.5, 8.5, 5.2], '#1b252a', '#5d7078');
+      add('shell-window', [7.5, 3.6, -3.85], [11.5, 2.5, 0.7], '#c85032', '#ffc16d', { strokeWidth: 0.3 });
+      add('top-rail', [13.5, 6.05, 0], [39, 0.7, 1.1], '#20889e', '#83f6ff', { strokeWidth: 0.25 });
+      add('rear-sight', [-0.5, 5.8, 0], [2.5, 1.1, 1.4], '#080d10', '#9eb4bb');
+      add('front-sight', [37.5, 5.9, 0], [1.2, 1.15, 1.2], '#080d10', '#9eb4bb');
+      anchors = { muzzle: vec3(40.2, 4.1, 0), aim: vec3(18, 5.95, 0) };
+    } else {
+      add('stock', [-21, -0.8, 0], [20, 10, 7.5], '#18252b', '#657b84');
+      add('receiver', [-2, 0.8, 0], [25, 10.5, 8.6], '#40545d', '#a5bbc2');
+      add('top-cover', [-1, 6.4, 0], [20, 2.1, 7.2], '#657a83', '#b8cbd1');
+      add('barrel', [25, 3.5, 0], [31, 4.2, 4.3], '#283940', '#afc3ca');
+      add('muzzle', [43, 3.5, 0], [6, 5.2, 5.1], '#11191d', '#81959d');
+      add('magazine', [-3, -11, 0], [9.5, 15.5, 6.8], '#172126', '#566a72');
+      add('grip', [-12, -8.2, 0], [5.8, 10.5, 5.2], '#192328', '#586c74');
+      add('foregrip', [12, -4.5, 0], [5, 7.5, 4.8], '#26363d', '#708891');
+      add('carry-handle', [-4, 9.2, 0], [13, 2.4, 2.2], '#10181c', '#8ca1a8');
+      add('energy-belt', [-1.5, -6.2, -4.55], [18.5, 2.4, 0.72], '#bd317e', '#ff9fd5', { strokeWidth: 0.28 });
+      add('cooling-rail', [19, 7.3, 0], [37, 0.82, 1.05], '#1d94a7', '#85f7ff', { strokeWidth: 0.25 });
+      add('front-sight', [33, 7.1, 0], [1.4, 2.5, 1.5], '#080d10', '#a5b9bf');
+      anchors = { muzzle: vec3(46.2, 3.5, 0), aim: vec3(14, 8.35, 0) };
+    }
+
+    return { boxes, anchors, revision: `classic-${index}-mesh-v1` };
+  }
+
+  function buildCustomWeapon3DModel(design) {
+    const components = design.components || {};
+    const visible = COMPONENT_ORDER.filter((componentId) => componentId !== 'cartridge' && components[componentId]);
+    if (!visible.length) return { boxes: [], anchors: {}, revision: `empty-${design.updatedAt || 0}` };
+    const bounds = getWeaponBounds(components);
+    const modelHeight = Math.max(1, bounds.maxY - bounds.minY);
+    const depthRatio = clamp(Number(design.depthRatio) || 6, 1, 15);
+    const baseDepth = clamp(modelHeight / depthRatio, 0.8, Math.max(1.1, modelHeight * 0.82));
+    const boxes = [];
+    const depthFactors = { stock: 0.86, receiver: 1, barrel: 0.68, muzzle: 0.82, magazine: 0.76, grip: 0.78, trigger: 0.38, foregrip: 0.7, bipod: 0.44, sight: 0.52 };
+    const addRectBox = (componentId, rect, suffix = '', overrides = {}) => {
+      const definition = COMPONENT_DEFINITIONS[componentId];
+      const depth = Math.max(0.45, baseDepth * (overrides.depthFactor || depthFactors[componentId] || 0.75));
+      boxes.push(createWeaponBox(
+        `${componentId}${suffix}`,
+        [rect.x + rect.w * 0.5, -(rect.y + rect.h * 0.5), overrides.z || 0],
+        [rect.w, rect.h, depth],
+        overrides.color || definition.color,
+        overrides.light || definition.light,
+        overrides.options || {}
+      ));
+      return depth;
+    };
+
+    for (const componentId of ['bipod', 'stock', 'magazine', 'grip', 'trigger', 'foregrip', 'receiver', 'barrel', 'muzzle', 'sight']) {
+      const rect = components[componentId];
+      if (!rect) continue;
+      if (componentId === 'barrel' && design.barrelProfile === 'tapered') {
+        const segments = 5;
+        for (let index = 0; index < segments; index += 1) {
+          const start = index / segments;
+          const segmentRect = {
+            x: rect.x + rect.w * start,
+            y: rect.y + rect.h * (0.12 * start),
+            w: rect.w / segments + rect.w * 0.008,
+            h: rect.h * lerp(1, 0.58, start)
+          };
+          addRectBox(componentId, segmentRect, `-segment-${index}`, { depthFactor: lerp(0.74, 0.48, start) });
+        }
+      } else {
+        const overrides = componentId === 'barrel' && design.barrelProfile === 'heavy'
+          ? { depthFactor: 0.88 }
+          : componentId === 'barrel' && design.barrelProfile === 'carbonSleeve'
+            ? { color: '#19282e', light: '#79a9aa', depthFactor: 0.78 }
+            : componentId === 'trigger'
+              ? { color: '#5b2d4d', light: '#ff9bde' }
+              : {};
+        addRectBox(componentId, rect, '', overrides);
+      }
+
+      if (componentId === 'barrel' && (design.barrelProfile === 'radiator' || design.barrelProfile === 'cryo')) {
+        const finCount = clamp(Math.floor(rect.w / Math.max(2, rect.h * 0.5)), 4, 12);
+        for (let index = 1; index < finCount; index += 1) {
+          const x = rect.x + rect.w * index / finCount;
+          boxes.push(createWeaponBox(
+            `barrel-fin-${index}`,
+            [x, -(rect.y + rect.h * 0.5), 0],
+            [Math.max(0.22, rect.w * 0.018), rect.h * 1.28, baseDepth * 0.92],
+            design.barrelProfile === 'cryo' ? '#4b8a9a' : '#81979f',
+            design.barrelProfile === 'cryo' ? '#8ef9ff' : '#c4d8dd',
+            { strokeWidth: 0.32 }
+          ));
+        }
+      }
+
+      if (componentId === 'barrel' && design.barrelProfile === 'fluted') {
+        for (const side of [-1, 1]) {
+          boxes.push(createWeaponBox(
+            `barrel-flute-${side}`,
+            [rect.x + rect.w * 0.52, -(rect.y + rect.h * 0.28), side * baseDepth * 0.34],
+            [rect.w * 0.9, Math.max(0.18, rect.h * 0.09), Math.max(0.16, baseDepth * 0.08)],
+            '#101a1f', '#3e555e', { strokeWidth: 0.25 }
+          ));
+        }
+      }
+
+      if (componentId === 'muzzle' && design.muzzleType === 'suppressor') {
+        for (const ratio of [0.2, 0.42, 0.64, 0.86]) {
+          boxes.push(createWeaponBox(
+            `suppressor-ring-${ratio}`,
+            [rect.x + rect.w * ratio, -(rect.y + rect.h * 0.5), 0],
+            [Math.max(0.18, rect.w * 0.035), rect.h * 1.08, baseDepth * 0.94],
+            '#687d85', '#aabec4', { strokeWidth: 0.3 }
+          ));
+        }
+      }
+    }
+
+    const muzzleSource = components.muzzle || components.barrel || components.receiver;
+    const aimSource = components.sight || components.receiver || components.barrel || muzzleSource;
+    const anchors = {
+      muzzle: muzzleSource
+        ? vec3(muzzleSource.x + muzzleSource.w + Math.max(0.05, muzzleSource.w * 0.01), -(muzzleSource.y + muzzleSource.h * 0.5), 0)
+        : vec3(bounds.maxX, -(bounds.minY + bounds.maxY) * 0.5, 0),
+      aim: aimSource
+        ? vec3(aimSource.x + aimSource.w * 0.58, -aimSource.y + Math.max(0.05, aimSource.h * 0.04), 0)
+        : vec3((bounds.minX + bounds.maxX) * 0.5, -bounds.minY, 0)
+    };
+    return {
+      boxes,
+      anchors,
+      revision: `custom-mesh-v2:${design.updatedAt || 0}:${design.depthRatio || 6}:${design.barrelProfile || 'standard'}:${design.muzzleType || 'flashHider'}:${design.triggerSystem || 'standard'}`
+    };
+  }
+
+  function projectCustomAnchorToScreen(layout, point) {
+    return {
+      x: layout.x + (point.x / WEAPON_MODEL_VIEW_W) * layout.width,
+      y: layout.y + (point.y / WEAPON_MODEL_VIEW_H) * layout.height
+    };
+  }
+
+  function buildWeaponProjectionViews(model) {
+    const projection = renderWeapon3DProjection(model, 'game');
+    const layout = getWeaponViewLayout();
+    const aim = projectCustomAnchorToScreen(layout, projection.aim);
+    const muzzle = projectCustomAnchorToScreen(layout, projection.muzzle);
+    return {
+      right: {
+        symbol: '#weapon-custom',
+        x: layout.x,
+        y: layout.y,
+        width: layout.width,
+        height: layout.height,
+        aimAnchorX: aim.x,
+        aimAnchorY: aim.y,
+        muzzleX: muzzle.x,
+        muzzleY: muzzle.y,
+        markup: projection.markup
+      }
+    };
+  }
+
+  function assignWeaponProjectionViews(weapon) {
+    if (!weapon?.model3d) return;
+    const views = buildWeaponProjectionViews(weapon.model3d);
+    const rightView = views.right;
+    weapon.views = views;
+    weapon.symbol = '#weapon-custom';
+    weapon.x = rightView.x;
+    weapon.y = rightView.y;
+    weapon.width = rightView.width;
+    weapon.height = rightView.height;
+    weapon.aimAnchorX = rightView.aimAnchorX;
+    weapon.aimAnchorY = rightView.aimAnchorY;
+    weapon.muzzleX = rightView.muzzleX;
+    weapon.muzzleY = rightView.muzzleY;
+    weapon.viewRevision = `${weapon.model3d.revision}:${weaponProjectionLayoutRevision}`;
+  }
+
+  function prepareClassicWeaponModels() {
+    for (let index = 0; index < CLASSIC_WEAPONS.length; index += 1) {
+      CLASSIC_WEAPONS[index].model3d = buildClassicWeapon3DModel(index);
+      CLASSIC_WEAPONS[index].projection3d = true;
+      assignWeaponProjectionViews(CLASSIC_WEAPONS[index]);
+    }
+  }
+
+  function refreshWeaponProjectionLayouts() {
+    weaponProjectionLayoutRevision += 1;
+    const weapons = new Set(CLASSIC_WEAPONS);
+    for (const weapon of WEAPONS || []) weapons.add(weapon);
+    for (const weapon of weapons) assignWeaponProjectionViews(weapon);
+    renderedWeaponViewKey = '';
+    if (WEAPONS?.length) updateWeaponVisual(true);
+  }
+
+  function buildCustomWeaponGameProjection(design) {
+    const model = buildCustomWeapon3DModel(design);
+    return renderWeapon3DProjection(model, 'game');
+  }
+
+  function buildRuntimeWeapon(design, stats) {
+    const classDefinition = WEAPON_CLASSES[design.classId];
+    const subtype = classDefinition.subtypes[design.subtype];
+    const cooldown = 60 / Math.max(1, stats.rpm);
+    const model3d = buildCustomWeapon3DModel(design);
+    const views = buildWeaponProjectionViews(model3d);
+    const rightView = views.right;
+    return {
+      name: sanitizeWeaponName(design.name) || classDefinition.label,
+      symbol: '#weapon-custom',
+      custom: true,
+      projection3d: true,
+      model3d,
+      classId: design.classId,
+      soundType: design.classId,
+      cooldown,
+      damage: stats.damage,
+      pellets: stats.pellets || 1,
+      spread: stats.spread,
+      automatic: stats.fireMode === 'auto',
+      fireMode: stats.fireMode,
+      burstInterval: cooldown,
+      burstPause: 0.19 + cooldown * 1.2,
+      burstCount: stats.burstCount || 3,
+      magazine: Math.max(1, Math.round(stats.capacity)),
+      reloadTime: stats.reloadTime,
+      kick: stats.kick,
+      crosshair: stats.crosshair,
+      weight: stats.weight,
+      movementMultiplier: stats.movementMultiplier,
+      movementSpread: stats.movementSpread,
+      swayScale: stats.swayScale,
+      hasSight: stats.hasSight,
+      sightLength: stats.sightLength,
+      sightMagnification: stats.sightMagnification,
+      aimSpreadMultiplier: stats.aimSpreadMultiplier,
+      aimFovMultiplier: stats.aimFovMultiplier,
+      heatPerShot: stats.heatPerShot,
+      coolRate: stats.coolRate,
+      reliability: stats.reliability,
+      triggerSystem: stats.triggerSystemId,
+      jamChance: stats.jamChance,
+      requiresBipod: stats.requiresBipod,
+      bipodDeployTime: stats.bipodDeployTime,
+      barrelProfile: stats.barrelProfileId,
+      muzzleType: stats.muzzleTypeId,
+      muzzleFlashMultiplier: stats.muzzleFlashMultiplier,
+      muzzleFlashIntensity: stats.muzzleFlashMultiplier,
+      soundMultiplier: stats.soundMultiplier,
+      suppressed: stats.suppressed,
+      x: rightView.x,
+      y: rightView.y,
+      width: rightView.width,
+      height: rightView.height,
+      aimAnchorX: rightView.aimAnchorX,
+      aimAnchorY: rightView.aimAnchorY,
+      muzzleX: rightView.muzzleX,
+      muzzleY: rightView.muzzleY,
+      views,
+      viewRevision: `${model3d.revision}:${weaponProjectionLayoutRevision}`
+    };
+  }
+
+  function rebuildCustomWeaponGraphic(design, position = weaponPosition, runtimeWeapon = null) {
+    const view = runtimeWeapon?.views?.right;
+    customWeaponGraphic.innerHTML = view?.markup || buildCustomWeaponGameProjection(design).markup;
+    renderedWeaponViewKey = '';
+  }
+
+  function buildWeaponProjectionMarkup(design, forGame = false) {
+    const model = buildCustomWeapon3DModel(design);
+    return renderWeapon3DProjection(model, forGame ? 'game' : 'preview').markup;
+  }
+
+  function shadeHex(hex, amount) {
+    const clean = String(hex).replace('#', '');
+    const value = Number.parseInt(clean.length === 3 ? clean.split('').map((char) => char + char).join('') : clean, 16);
+    if (!Number.isFinite(value)) return hex;
+    const factor = 1 + amount;
+    const r = clamp(Math.round(((value >> 16) & 255) * factor), 0, 255);
+    const g = clamp(Math.round(((value >> 8) & 255) * factor), 0, 255);
+    const b = clamp(Math.round((value & 255) * factor), 0, 255);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function getWeaponBounds(components) {
+    const rects = Object.entries(components || {})
+      .filter(([componentId, rect]) => componentId !== 'cartridge' && rect)
+      .map(([, rect]) => rect);
+    if (rects.length === 0) return null;
+    return {
+      minX: Math.min(...rects.map((rect) => rect.x)),
+      minY: Math.min(...rects.map((rect) => rect.y)),
+      maxX: Math.max(...rects.map((rect) => rect.x + rect.w)),
+      maxY: Math.max(...rects.map((rect) => rect.y + rect.h))
+    };
+  }
+
+  function rectArea(rect) {
+    return rect ? Math.max(0, rect.w) * Math.max(0, rect.h) : 0;
+  }
+
+  function overlapArea(first, second) {
+    if (!first || !second) return 0;
+    const width = Math.max(0, Math.min(first.x + first.w, second.x + second.w) - Math.max(first.x, second.x));
+    const height = Math.max(0, Math.min(first.y + first.h, second.y + second.h) - Math.max(first.y, second.y));
+    return width * height;
+  }
+
+  function summarizeStatsForSave(stats) {
+    return {
+      weight: Number(stats.weight.toFixed(3)),
+      damage: Number(stats.damage.toFixed(2)),
+      rpm: Math.round(stats.rpm),
+      capacity: Math.round(stats.capacity),
+      reliability: Number(stats.reliability.toFixed(2)),
+      barrelProfile: stats.barrelProfileId,
+      muzzleType: stats.muzzleTypeId,
+      triggerSystem: stats.triggerSystemId,
+      updatedAt: Date.now()
+    };
+  }
+
+  function sanitizeWeaponName(value) {
+    return String(value || '')
+      .replace(/[<>"'&]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 24)
+      .toUpperCase();
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function buildWallPalette() {
+    return baseWallColors.map((color) => {
+      return [0, 1].map((side) => {
+        return Array.from({ length: 10 }, (_, shade) => {
+          const distanceFactor = Math.max(0.24, 1 - shade * 0.077);
+          const sideFactor = side === 1 ? 0.76 : 1;
+          const factor = distanceFactor * sideFactor;
+          return `rgb(${Math.round(color[0] * factor)},${Math.round(color[1] * factor)},${Math.round(color[2] * factor)})`;
+        });
+      });
+    });
+  }
+
+  function chunkKey(cx, cy) {
+    return `${cx},${cy}`;
+  }
+
+
+  function getSightMagnificationFromLength(length) {
+    const value = Math.max(0, Number(length) || 0);
+    if (value <= 0) return 1;
+    if (value < 6) return 1;
+    if (value < 10) return 1.5;
+    if (value < 16) return 2;
+    if (value < 24) return 4;
+    return 8;
+  }
+
+  function formatMagnificationLabel(value) {
+    const amount = Math.max(1, Number(value) || 1);
+    return Number.isInteger(amount) ? `${amount}X` : `${amount.toFixed(1)}X`;
+  }
+
+  function buildScopeReticleGeometry(magnification = 1) {
+    const zoom = Math.max(1, Number(magnification) || 1);
+    const spanFactor = clamp(1 + Math.log2(zoom) * 0.28, 1, 1.95);
+    const outerRadius = clamp(36 + Math.log2(zoom) * 7, 36, 56);
+    const innerRadius = clamp(10 + Math.log2(zoom) * 2.5, 10, 18);
+    const gap = Math.round(9 + spanFactor * 4);
+    const arm = Math.round(13 + spanFactor * 11);
+    const corner = Math.round(8 + spanFactor * 4);
+    const ringInset = Math.round(outerRadius - 6);
+    const cx = 480;
+    const cy = 270;
+    const path = [
+      `M${cx} ${cy - gap - arm}v${arm}`,
+      `M${cx} ${cy + gap}v${arm}`,
+      `M${cx - gap - arm} ${cy}h${arm}`,
+      `M${cx + gap} ${cy}h${arm}`,
+      `M${cx - ringInset} ${cy - outerRadius + corner}v-${corner}h${corner}`,
+      `M${cx + ringInset} ${cy - outerRadius + corner}v-${corner}h-${corner}`,
+      `M${cx - ringInset} ${cy + outerRadius - corner}v${corner}h${corner}`,
+      `M${cx + ringInset} ${cy + outerRadius - corner}v${corner}h-${corner}`
+    ].join('');
+    return { outerRadius, innerRadius, path, labelY: cy - outerRadius - 8 };
+  }
+
+  function subtypeNeedsMagazine(classId, subtypeMode) {
+    if (classId === 'sniper' && subtypeMode === 'bolt') return false;
+    if (classId === 'shotgun' && subtypeMode === 'break') return false;
+    if (classId === 'revolver') return false;
+    return subtypeMode !== 'single';
+  }
+
+  function subtypeFixedCapacity(classId, subtypeMode) {
+    if (classId === 'sniper' && subtypeMode === 'bolt') return 1;
+    if (classId === 'shotgun' && subtypeMode === 'break') return 2;
+    if (classId === 'revolver') return 6;
+    return null;
+  }
+
+  function shotgunSubtypePellets(subtypeMode) {
+    switch (subtypeMode) {
+      case 'break': return 10;
+      case 'pump': return 9;
+      case 'semi': return 8;
+      case 'auto': return 7;
+      case 'revolver': return 8;
+      default: return 8;
+    }
+  }
+
+  function formatSeconds(value) {
+    const rounded = Math.max(0, Math.ceil(value * 10) / 10);
+    return `${rounded.toFixed(rounded < 1 || Math.abs(rounded - Math.round(rounded)) > 0.001 ? 1 : 0)} С`;
+  }
+
+  function createDefaultProgress() {
+    let legacyRecord = 0;
+    try {
+      const legacy = Number.parseInt(localStorage.getItem('vector-doom-high-score') || '0', 10);
+      if (Number.isFinite(legacy)) legacyRecord = Math.max(0, legacy);
+    } catch {
+      legacyRecord = 0;
+    }
+    return {
+      version: 9,
+      records: { classic: legacyRecord, guncraft: 0, limitbreak: 0 },
+      modPoints: STARTING_MOD_POINTS,
+      unlockedClasses: ['pistol'],
+      slots: [null, null, null],
+      limitBreakSlots: [null, null, null],
+      selectedSlot: 0,
+      selectedLimitBreakSlot: 0,
+      limitBreakEnabled: false,
+      tutorialDone: false,
+      viewSettings: { weaponPosition: 'right', fov: 66 },
+      audioSettings: { musicVolume: 70, effectsVolume: 85, musicMuted: loadMusicMuted(), effectsMuted: false },
+      controlSettings: { mouseSensitivity: 1, keybinds: { ...DEFAULT_KEYBINDS } }
+    };
+  }
+
+  function loadMetaProgress() {
+    const fallback = createDefaultProgress();
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return fallback;
+
+      const result = createDefaultProgress();
+      result.records.classic = Math.max(0, Math.floor(Number(parsed.records?.classic) || fallback.records.classic));
+      result.records.guncraft = Math.max(0, Math.floor(Number(parsed.records?.guncraft) || 0));
+      result.records.limitbreak = Math.max(0, Math.floor(Number(parsed.records?.limitbreak) || 0));
+      result.modPoints = Math.max(0, Math.floor(Number(parsed.modPoints) || 0));
+      result.tutorialDone = Boolean(parsed.tutorialDone);
+      result.selectedSlot = clamp(Math.floor(Number(parsed.selectedSlot) || 0), 0, 2);
+      result.selectedLimitBreakSlot = clamp(Math.floor(Number(parsed.selectedLimitBreakSlot) || 0), 0, 2);
+      result.limitBreakEnabled = Boolean(parsed.limitBreakEnabled);
+      result.viewSettings = {
+        weaponPosition: 'right',
+        fov: clamp(Math.round(Number(parsed.viewSettings?.fov) || 66), 45, 120)
+      };
+      result.audioSettings = normalizeAudioSettings(parsed.audioSettings);
+      result.controlSettings = normalizeControlSettings(parsed.controlSettings);
+
+      const unlocked = Array.isArray(parsed.unlockedClasses) ? parsed.unlockedClasses : [];
+      result.unlockedClasses = [...new Set(['pistol', ...unlocked.filter((classId) => WEAPON_CLASSES[classId])])];
+      result.slots = [0, 1, 2].map((index) => normalizeStoredDesign(parsed.slots?.[index], false));
+      result.limitBreakSlots = [0, 1, 2].map((index) => normalizeStoredDesign(parsed.limitBreakSlots?.[index], true));
+      for (const design of [...result.slots, ...result.limitBreakSlots]) {
+        if (design && !result.unlockedClasses.includes(design.classId)) result.unlockedClasses.push(design.classId);
+      }
+      result.version = 8;
+      return result;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function normalizeStoredDesign(value, limitBreak = false) {
+    if (!value || typeof value !== 'object') return null;
+    const classId = WEAPON_CLASSES[value.classId] ? value.classId : 'pistol';
+    const classDefinition = WEAPON_CLASSES[classId];
+    const subtype = classDefinition.subtypes[value.subtype] ? value.subtype : Object.keys(classDefinition.subtypes)[0];
+    const barrelProfile = BARREL_PROFILES[value.barrelProfile] ? value.barrelProfile : 'standard';
+    const muzzleType = MUZZLE_DEVICE_TYPES[value.muzzleType] ? value.muzzleType : 'flashHider';
+    const triggerSystem = TRIGGER_SYSTEMS[value.triggerSystem] ? value.triggerSystem : 'standard';
+    const components = {};
+    for (const [componentId, rect] of Object.entries(value.components || {})) {
+      if (!COMPONENT_DEFINITIONS[componentId] || !rect || typeof rect !== 'object') continue;
+      const x = Number(rect.x);
+      const y = Number(rect.y);
+      const w = Number(rect.w);
+      const h = Number(rect.h);
+      if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) continue;
+      components[componentId] = roundRect(limitBreak ? {
+        x: clamp(x, -1000000, 1000000),
+        y: clamp(y, -1000000, 1000000),
+        w: clamp(w, 1, 1000000),
+        h: clamp(h, 1, 1000000)
+      } : {
+        x: clamp(x, 0, 99),
+        y: clamp(y, 0, 54),
+        w: clamp(w, 1, 98),
+        h: clamp(h, 1, 53)
+      });
+    }
+    const design = {
+      version: 3,
+      name: sanitizeWeaponName(value.name) || defaultWeaponName(classId),
+      classId,
+      subtype,
+      barrelProfile,
+      muzzleType,
+      triggerSystem,
+      depthRatio: clamp(Math.round(Number(value.depthRatio) || 6), 1, 15),
+      limitBreak: Boolean(limitBreak),
+      components,
+      invested: 0,
+      updatedAt: Number(value.updatedAt) || Date.now()
+    };
+    design.components = normalizeAllComponents(design);
+    design.invested = calculateDesignInvested(design.components, design);
+    if (value.statsSnapshot && typeof value.statsSnapshot === 'object') design.statsSnapshot = value.statsSnapshot;
+    return design;
+  }
+
+  function getModeHighScore() {
+    return Math.max(0, Number(metaProgress?.records?.[gameMode]) || 0);
+  }
+
+  function saveHighScore(value) {
+    const safe = Math.max(0, Math.floor(Number(value) || 0));
+    if (!metaProgress.records) metaProgress.records = { classic: 0, guncraft: 0, limitbreak: 0 };
+    metaProgress.records[gameMode] = Math.max(metaProgress.records[gameMode] || 0, safe);
+    persistCraftProgress();
+  }
+
+  function loadMusicMuted() {
+    try {
+      return localStorage.getItem('vector-doom-music-muted') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function saveMusicMuted(value) {
+    try {
+      localStorage.setItem('vector-doom-music-muted', value ? '1' : '0');
+    } catch {
+      // Настройка остается действующей до закрытия вкладки.
+    }
+  }
+
+  function initAudio() {
+    try {
+      if (!audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        audioContext = new AudioContextClass();
+
+        masterGain = audioContext.createGain();
+        masterGain.gain.value = 0.25;
+        masterGain.connect(audioContext.destination);
+
+        sfxGain = audioContext.createGain();
+        sfxGain.gain.value = 0.0001;
+        sfxGain.connect(masterGain);
+
+        musicGain = audioContext.createGain();
+        musicGain.gain.value = 0.0001;
+
+        const musicFilter = audioContext.createBiquadFilter();
+        musicFilter.type = 'lowpass';
+        musicFilter.frequency.value = 7600;
+        musicFilter.Q.value = 0.7;
+
+        const musicCompressor = audioContext.createDynamicsCompressor();
+        musicCompressor.threshold.value = -22;
+        musicCompressor.knee.value = 18;
+        musicCompressor.ratio.value = 4;
+        musicCompressor.attack.value = 0.012;
+        musicCompressor.release.value = 0.18;
+
+        musicInput = musicFilter;
+        musicFilter.connect(musicCompressor);
+        musicCompressor.connect(musicGain);
+        musicGain.connect(masterGain);
+        noiseBuffer = createNoiseBuffer(audioContext, 1.6);
+      }
+
+      if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+      startMusic();
+      applyEffectsGain();
+      applyMusicGain();
+    } catch {
+      audioContext = null;
+      masterGain = null;
+      sfxGain = null;
+      musicGain = null;
+      musicInput = null;
+      noiseBuffer = null;
+      if (musicSchedulerTimer !== null) {
+        window.clearInterval(musicSchedulerTimer);
+        musicSchedulerTimer = null;
+      }
+    }
+
+  }
+
+  function createNoiseBuffer(context, seconds) {
+    const length = Math.floor(context.sampleRate * seconds);
+    const buffer = context.createBuffer(1, length, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
+    return buffer;
+  }
+
+  function playTone(frequency, duration, type = 'square', gain = 0.08, endFrequency = frequency) {
+    if (!audioContext || !sfxGain) return;
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const envelope = audioContext.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(Math.max(20, frequency), now);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), now + duration);
+    envelope.gain.setValueAtTime(gain, now);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    oscillator.connect(envelope);
+    envelope.connect(sfxGain);
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.01);
+  }
+
+  function playNoise(duration, gain = 0.08, filterFrequency = 1800) {
+    if (!audioContext || !sfxGain || !noiseBuffer) return;
+    const now = audioContext.currentTime;
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    source.buffer = noiseBuffer;
+    filter.type = 'lowpass';
+    filter.frequency.value = filterFrequency;
+    envelope.gain.setValueAtTime(gain, now);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    source.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(sfxGain);
+    source.start(now, Math.random() * Math.max(0.01, noiseBuffer.duration - duration), Math.min(duration, noiseBuffer.duration));
+  }
+
+  function toggleMusic() {
+    musicMuted = !musicMuted;
+    metaProgress.audioSettings.musicMuted = musicMuted;
+    saveMusicMuted(musicMuted);
+    syncAudioSettingsUi();
+    applyMusicGain();
+    persistCraftProgress();
+    showMessage(musicMuted ? 'МУЗЫКА ВЫКЛЮЧЕНА' : 'МУЗЫКА ВКЛЮЧЕНА', 0.8);
+  }
+
+  function updateMusicButton() {
+    audioToggle.setAttribute('aria-pressed', String(musicMuted));
+    musicStatus.textContent = musicMuted ? 'МУЗЫКА: ВЫКЛ' : `МУЗЫКА: ${Math.round(musicVolume * 100)}%`;
+    audioToggle.title = musicMuted ? 'Включить музыку' : `Выключить музыку · ${formatKeyCode(keybinds.music)}`;
+  }
+
+  function applyMusicGain() {
+    if (!audioContext || !musicGain) return;
+    const now = audioContext.currentTime;
+    const target = musicMuted ? 0.0001 : Math.max(0.0001, 0.2 * musicVolume);
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), now);
+    musicGain.gain.exponentialRampToValueAtTime(target, now + 0.18);
+  }
+
+  function startMusic() {
+    if (!audioContext || !musicInput || musicSchedulerTimer !== null) return;
+    musicStep = 0;
+    musicNextStepTime = audioContext.currentTime + 0.08;
+    musicSchedulerTimer = window.setInterval(scheduleMusic, 45);
+    scheduleMusic();
+  }
+
+  function scheduleMusic() {
+    if (!audioContext || !musicInput || audioContext.state !== 'running') return;
+    const now = audioContext.currentTime;
+    if (musicNextStepTime < now - 0.2) musicNextStepTime = now + 0.04;
+
+    while (musicNextStepTime < now + 0.24) {
+      if (!musicMuted) scheduleMusicStep(musicStep, musicNextStepTime);
+      musicStep = (musicStep + 1) % 64;
+      musicNextStepTime += MUSIC_STEP_SECONDS;
+    }
+  }
+
+  function scheduleMusicStep(step, time) {
+    const beatStep = step % 16;
+    const phraseStep = step % 32;
+
+    if (beatStep === 0 || beatStep === 4 || beatStep === 8 || beatStep === 12 || (step % 32 === 30)) {
+      scheduleKick(time, beatStep === 0 ? 1.15 : 0.9);
+    }
+    if (beatStep === 4 || beatStep === 12) scheduleSnare(time, beatStep === 12 ? 1.08 : 0.92);
+    if (step % 2 === 0) scheduleHat(time, beatStep === 6 || beatStep === 14 ? 0.7 : 0.42, beatStep === 6 || beatStep === 14);
+
+    const bassMidi = MUSIC_BASS_PATTERN[phraseStep];
+    if (bassMidi !== null) {
+      scheduleBass(midiToFrequency(bassMidi), time, MUSIC_STEP_SECONDS * 1.7, beatStep === 0 || beatStep === 8 ? 1.15 : 0.9);
+    }
+
+    if (step % 2 === 1) {
+      const arpMidi = MUSIC_ARP_PATTERN[(step >> 1) % MUSIC_ARP_PATTERN.length] + (step >= 32 ? 12 : 0);
+      scheduleArp(midiToFrequency(arpMidi), time, MUSIC_STEP_SECONDS * 1.35, step % 8 === 7 ? 0.72 : 0.5);
+    }
+
+    if (step % 16 === 0) {
+      const chord = MUSIC_PAD_CHORDS[Math.floor(step / 16) % MUSIC_PAD_CHORDS.length];
+      schedulePad(chord, time, MUSIC_STEP_SECONDS * 15.2);
+    }
+
+    if (beatStep === 3 || beatStep === 11 || (step % 32 === 27)) {
+      const glitchMidi = 74 + ((step * 5) % 12);
+      scheduleGlitch(midiToFrequency(glitchMidi), time, MUSIC_STEP_SECONDS * 0.7);
+    }
+  }
+
+  function scheduleKick(time, accent) {
+    const oscillator = audioContext.createOscillator();
+    const envelope = audioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(145, time);
+    oscillator.frequency.exponentialRampToValueAtTime(42, time + 0.14);
+    envelope.gain.setValueAtTime(0.18 * accent, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.19);
+    oscillator.connect(envelope);
+    envelope.connect(musicInput);
+    oscillator.start(time);
+    oscillator.stop(time + 0.2);
+  }
+
+  function scheduleSnare(time, accent) {
+    if (!noiseBuffer) return;
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    source.buffer = noiseBuffer;
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1850, time);
+    filter.Q.value = 0.7;
+    envelope.gain.setValueAtTime(0.095 * accent, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.15);
+    source.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+    source.start(time, (time * 0.37) % 1.1, 0.16);
+
+    const body = audioContext.createOscillator();
+    const bodyGain = audioContext.createGain();
+    body.type = 'triangle';
+    body.frequency.setValueAtTime(210, time);
+    body.frequency.exponentialRampToValueAtTime(125, time + 0.08);
+    bodyGain.gain.setValueAtTime(0.035 * accent, time);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+    body.connect(bodyGain);
+    bodyGain.connect(musicInput);
+    body.start(time);
+    body.stop(time + 0.11);
+  }
+
+  function scheduleHat(time, level, open) {
+    if (!noiseBuffer) return;
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    const duration = open ? 0.13 : 0.045;
+    source.buffer = noiseBuffer;
+    filter.type = 'highpass';
+    filter.frequency.value = 5600;
+    envelope.gain.setValueAtTime(0.035 * level, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    source.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+    source.start(time, (time * 0.71) % 1.2, duration);
+  }
+
+  function scheduleBass(frequency, time, duration, accent) {
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(520, time);
+    filter.frequency.exponentialRampToValueAtTime(1550, time + Math.min(0.07, duration * 0.4));
+    filter.frequency.exponentialRampToValueAtTime(380, time + duration);
+    filter.Q.value = 5.5;
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(0.055 * accent, time + 0.012);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+
+    for (const [type, detune, gainScale] of [['sawtooth', -5, 1], ['square', 7, 0.33]]) {
+      const oscillator = audioContext.createOscillator();
+      const voiceGain = audioContext.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, time);
+      oscillator.detune.value = detune;
+      voiceGain.gain.value = gainScale;
+      oscillator.connect(voiceGain);
+      voiceGain.connect(filter);
+      oscillator.start(time);
+      oscillator.stop(time + duration + 0.02);
+    }
+  }
+
+  function scheduleArp(frequency, time, duration, level) {
+    const oscillator = audioContext.createOscillator();
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(frequency, time);
+    oscillator.detune.value = stepDetune(frequency);
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(Math.min(5200, frequency * 3.4), time);
+    filter.Q.value = 1.6;
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(0.018 * level, time + 0.008);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    oscillator.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+    oscillator.start(time);
+    oscillator.stop(time + duration + 0.015);
+  }
+
+  function schedulePad(chord, time, duration) {
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1050, time);
+    filter.frequency.linearRampToValueAtTime(2400, time + duration * 0.55);
+    filter.frequency.linearRampToValueAtTime(900, time + duration);
+    filter.Q.value = 0.9;
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(0.018, time + 0.32);
+    envelope.gain.setValueAtTime(0.018, Math.max(time + 0.33, time + duration - 0.45));
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+
+    chord.forEach((midi, noteIndex) => {
+      for (const detune of [-8, 8]) {
+        const oscillator = audioContext.createOscillator();
+        const voiceGain = audioContext.createGain();
+        oscillator.type = noteIndex === 1 ? 'triangle' : 'sawtooth';
+        oscillator.frequency.setValueAtTime(midiToFrequency(midi), time);
+        oscillator.detune.value = detune;
+        voiceGain.gain.value = noteIndex === 1 ? 0.45 : 0.28;
+        oscillator.connect(voiceGain);
+        voiceGain.connect(filter);
+        oscillator.start(time);
+        oscillator.stop(time + duration + 0.04);
+      }
+    });
+  }
+
+  function scheduleGlitch(frequency, time, duration) {
+    const oscillator = audioContext.createOscillator();
+    const filter = audioContext.createBiquadFilter();
+    const envelope = audioContext.createGain();
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(frequency * 1.5, time);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(55, frequency * 0.65), time + duration);
+    filter.type = 'highpass';
+    filter.frequency.value = 900;
+    envelope.gain.setValueAtTime(0.012, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    oscillator.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(musicInput);
+    oscillator.start(time);
+    oscillator.stop(time + duration + 0.01);
+  }
+
+  function midiToFrequency(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  function stepDetune(frequency) {
+    return ((Math.round(frequency) % 9) - 4) * 0.8;
+  }
+
+  function playWeaponSound(index) {
+    if (!audioContext) return;
+    const weapon = WEAPONS[index];
+    if (weapon?.custom) {
+      const power = clamp((weapon.damage || 20) / 70, 0.35, 2.2);
+      const soundScale = clamp(weapon.soundMultiplier || 1, 0.15, 1.5);
+      if (weapon.suppressed) {
+        playNoise(0.055, 0.055 * power * soundScale, 820);
+        playTone(92, 0.085, 'triangle', 0.05 * soundScale, 52);
+        return;
+      }
+      if (weapon.soundType === 'sniper') {
+        playNoise(0.18, 0.13 * power * soundScale, 1450);
+        playTone(105, 0.19, 'sawtooth', 0.1 * soundScale, 38);
+      } else if (weapon.soundType === 'machinegun') {
+        playNoise(0.065, 0.11 * power * soundScale, 2300);
+        playTone(145, 0.07, 'square', 0.07 * soundScale, 72);
+      } else if (weapon.soundType === 'smg') {
+        playNoise(0.048, 0.075 * power * soundScale, 2850);
+        playTone(205, 0.045, 'square', 0.045 * soundScale, 118);
+      } else {
+        playNoise(0.08, 0.1 * power * soundScale, 2200);
+        playTone(165, 0.08, 'square', 0.065 * soundScale, 75);
+      }
+      return;
+    }
+    if (index === 0) {
+      playNoise(0.085, 0.12, 2100);
+      playTone(150, 0.085, 'square', 0.08, 72);
+    } else if (index === 1) {
+      playNoise(0.22, 0.2, 1350);
+      playTone(95, 0.18, 'sawtooth', 0.12, 42);
+    } else {
+      playNoise(0.055, 0.095, 2600);
+      playTone(180, 0.05, 'square', 0.06, 105);
+    }
+  }
+
+  function playReloadStartSound(index) {
+    const weapon = WEAPONS[index];
+    const customBase = weapon?.classId === 'sniper' ? 175 : weapon?.classId === 'machinegun' ? 115 : weapon?.classId === 'smg' ? 245 : 320;
+    const base = weapon?.custom ? customBase : index === 0 ? 320 : index === 1 ? 185 : 120;
+    playTone(base, 0.09, 'square', 0.045, base * 0.62);
+    window.setTimeout(() => playTone(base * 0.72, 0.07, 'square', 0.032, base * 0.48), 70);
+  }
+
+  function playReloadCompleteSound(index) {
+    const weapon = WEAPONS[index];
+    const customBase = weapon?.classId === 'sniper' ? 360 : weapon?.classId === 'machinegun' ? 250 : weapon?.classId === 'smg' ? 430 : 520;
+    const base = weapon?.custom ? customBase : index === 0 ? 520 : index === 1 ? 390 : 280;
+    playTone(base, 0.055, 'square', 0.05, base * 1.18);
+    window.setTimeout(() => playTone(base * 1.22, 0.06, 'triangle', 0.035, base * 1.45), 42);
+  }
+
+  function playHitSound() {
+    playTone(310, 0.045, 'square', 0.025, 205);
+  }
+
+  function playKillSound(kind) {
+    const start = kind === 'prince' ? 120 : kind === 'mech' ? 170 : 145;
+    playTone(start, kind === 'prince' ? 0.34 : 0.2, 'sawtooth', kind === 'prince' ? 0.12 : 0.07, 42);
+    playNoise(kind === 'prince' ? 0.28 : 0.13, 0.08, 780);
+  }
+
+  function playPickupSound() {
+    playTone(520, 0.08, 'sine', 0.07, 840);
+    window.setTimeout(() => playTone(820, 0.09, 'sine', 0.055, 1160), 45);
+  }
+
+  function playEnemyShotSound(kind) {
+    if (kind === 'prince') {
+      playTone(130, 0.22, 'sawtooth', 0.07, 70);
+    } else {
+      playTone(420, 0.08, 'square', 0.055, 190);
+    }
+  }
+
+  function playDamageSound() {
+    playNoise(0.16, 0.11, 700);
+    playTone(82, 0.18, 'sawtooth', 0.08, 38);
+  }
+
+  function playDeathSound() {
+    playNoise(0.5, 0.16, 520);
+    playTone(96, 0.65, 'sawtooth', 0.13, 22);
+  }
+
+  function playWeaponSwitchSound() {
+    playTone(210, 0.055, 'square', 0.035, 145);
+  }
+
+  function playDoorSealSound() {
+    playTone(190, 0.22, 'sawtooth', 0.065, 48);
+    playNoise(0.18, 0.055, 620);
+    window.setTimeout(() => playTone(520, 0.08, 'square', 0.04, 260), 110);
+  }
+
+  function playBipodSound() {
+    playTone(285, 0.055, 'square', 0.035, 170);
+    window.setTimeout(() => playTone(170, 0.075, 'square', 0.045, 105), 65);
+  }
+
+  function playJamSound() {
+    playTone(240, 0.045, 'square', 0.035, 130);
+    window.setTimeout(() => playTone(125, 0.06, 'square', 0.028, 90), 55);
+  }
+})();
