@@ -32,7 +32,9 @@
     castling: { K: true, Q: true, k: true, q: true },
     enPassant: null,
     playerColor: "w",
-    difficulty: 0
+    difficulty: 0,
+    aiTimer: null,
+    advanceTimer: null
   };
 
   const getElement = id => document.getElementById(id);
@@ -59,6 +61,7 @@
   }
 
   function init() {
+    clearTimers();
     state.board = freshBoard();
     state.turn = "w";
     state.selected = null;
@@ -72,7 +75,14 @@
     updateDifficultyDisplay();
     updateStatus();
     render();
-    if (state.playerColor === "b") setTimeout(aiMove, 80);
+    if (state.playerColor === "b") aiMove(80);
+  }
+
+  function clearTimers() {
+    if (state.aiTimer !== null) clearTimeout(state.aiTimer);
+    if (state.advanceTimer !== null) clearTimeout(state.advanceTimer);
+    state.aiTimer = null;
+    state.advanceTimer = null;
   }
 
   function updateDifficultyDisplay() {
@@ -261,11 +271,12 @@
     return score;
   }
 
-  function aiMove() {
+  function aiMove(delay = 40) {
     if (state.gameOver) return;
     const color = botColor();
     getElement("thinking").textContent = "Бот думает…";
-    setTimeout(() => {
+    state.aiTimer = setTimeout(() => {
+      state.aiTimer = null;
       const moves = legalMoves(state.board, color, state.castling, state.enPassant);
       if (!moves.length) { endGame(inCheck(state.board, color) ? "win" : "draw"); return; }
       const level = currentDifficulty();
@@ -283,7 +294,7 @@
       const selected = choicePool[Math.floor(Math.random() * choicePool.length)];
       if (selected) doMove(selected.move);
       getElement("thinking").textContent = "";
-    }, 40);
+    }, delay);
   }
 
   function doMove(move) {
@@ -304,9 +315,23 @@
 
   function endGame(result) {
     state.gameOver = true;
-    getElement("status").textContent = result === "win" ? "Вы победили!" : result === "lose" ? "Вы проиграли" : "Ничья";
+    const status = getElement("status");
+    if (result === "win" && state.difficulty < DIFFICULTY_LEVELS.length - 1) {
+      const nextDifficulty = state.difficulty + 1;
+      status.textContent = `Победа! Следующий уровень: ${nextDifficulty + 1} · ${DIFFICULTY_LEVELS[nextDifficulty].label}`;
+      getElement("thinking").textContent = "Переход к следующему сопернику…";
+      state.advanceTimer = setTimeout(() => {
+        state.difficulty = nextDifficulty;
+        init();
+      }, 1600);
+    } else if (result === "win") {
+      status.textContent = "Вы прошли все 10 уровней. Легендарная победа!";
+      getElement("thinking").textContent = "";
+    } else {
+      status.textContent = result === "lose" ? "Вы проиграли" : "Ничья";
+      getElement("thinking").textContent = "";
+    }
     getElement("restart").style.display = "inline-block";
-    getElement("thinking").textContent = "";
   }
 
   function updateStatus() {
