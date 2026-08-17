@@ -21,6 +21,8 @@
     { label: "Гроссмейстер", depth: 3, candidates: 2, mistakeChance: 0.06, mistakePool: 3 },
     { label: "Легенда", depth: 4, candidates: 1, mistakeChance: 0, mistakePool: 1 }
   ];
+  const THEMES = new Set(["midnight", "ivory", "forest", "ember", "contrast"]);
+  const PREFERENCES_KEY = "chess-preferences-v1";
 
   const state = {
     board: [],
@@ -91,6 +93,24 @@
     const level = currentDifficulty();
     getElement("difficulty").value = String(state.difficulty);
     getElement("level-indicator").textContent = `Уровень ${state.difficulty + 1} из 10 · ${level.label}`;
+  }
+
+  function restorePreferences() {
+    try {
+      const preferences = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}");
+      if (Number.isInteger(preferences.difficulty) && preferences.difficulty >= 0 && preferences.difficulty < DIFFICULTY_LEVELS.length) state.difficulty = preferences.difficulty;
+      if (THEMES.has(preferences.theme)) state.theme = preferences.theme;
+    } catch {
+      // Локальное хранилище недоступно — игра продолжит работать с настройками по умолчанию.
+    }
+  }
+
+  function savePreferences() {
+    try {
+      localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ difficulty: state.difficulty, theme: state.theme }));
+    } catch {
+      // Настройки необязательно сохранять для работы локальной партии.
+    }
   }
 
   function applyTheme() {
@@ -329,6 +349,7 @@
       getElement("thinking").textContent = "Переход к следующему сопернику…";
       state.advanceTimer = setTimeout(() => {
         state.difficulty = nextDifficulty;
+        savePreferences();
         init();
       }, 1600);
     } else if (result === "win") {
@@ -402,11 +423,14 @@
   getElement("switch").addEventListener("click", () => { state.playerColor = enemy(state.playerColor); init(); });
   getElement("difficulty").addEventListener("change", event => {
     state.difficulty = Number(event.target.value);
+    savePreferences();
     init();
   });
   getElement("theme").addEventListener("change", event => {
     state.theme = event.target.value;
     applyTheme();
+    savePreferences();
   });
+  restorePreferences();
   init();
 })();
