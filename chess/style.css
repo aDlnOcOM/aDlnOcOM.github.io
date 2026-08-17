@@ -7,6 +7,100 @@
   --check: rgba(220, 60, 60, 0.55);
   --text: #e8e8e8;
   --accent: #8ab4f8;
+  --control: #2a2a2a;
+  --control-hover: #3a3a3a;
+  --control-border: #555;
+  --board-border: #333;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --piece-light: #f5f5f5;
+  --piece-dark: #1a1a1a;
+  --piece-light-shadow: #000;
+  --piece-dark-shadow: #fff3;
+  --move-marker: rgba(0, 0, 0, 0.28);
+}
+
+body[data-theme="ivory"] {
+  --bg: #f5efe2;
+  --board-light: #f0d9b5;
+  --board-dark: #b58863;
+  --highlight: #e8c952;
+  --last-move: #d4d68e;
+  --check: #dd7272;
+  --text: #2c251e;
+  --accent: #7c3f1d;
+  --control: #fffaf0;
+  --control-hover: #efe3cc;
+  --control-border: #9c8163;
+  --board-border: #72543e;
+  --shadow: rgba(67, 45, 25, 0.24);
+  --piece-light: #fffdf6;
+  --piece-dark: #30231d;
+  --piece-light-shadow: #5d4635;
+  --piece-dark-shadow: #f6e7cf;
+  --move-marker: rgba(63, 43, 27, 0.36);
+}
+
+body[data-theme="forest"] {
+  --bg: #0b1b19;
+  --board-light: #a7c49b;
+  --board-dark: #326d55;
+  --highlight: #f3cf63;
+  --last-move: #7ebd94;
+  --check: #e86d72;
+  --text: #e6f3e9;
+  --accent: #79d9a3;
+  --control: #15352d;
+  --control-hover: #21503f;
+  --control-border: #468269;
+  --board-border: #1d4b3b;
+  --shadow: rgba(0, 0, 0, 0.56);
+  --piece-light: #fffdf0;
+  --piece-dark: #12251e;
+  --piece-light-shadow: #14251e;
+  --piece-dark-shadow: #dbf4d6;
+  --move-marker: rgba(9, 43, 29, 0.38);
+}
+
+body[data-theme="ember"] {
+  --bg: #201211;
+  --board-light: #e5bd87;
+  --board-dark: #8d4437;
+  --highlight: #ffd65c;
+  --last-move: #da8c5d;
+  --check: #ff6363;
+  --text: #fff0df;
+  --accent: #ffab5c;
+  --control: #3a211e;
+  --control-hover: #593027;
+  --control-border: #96503d;
+  --board-border: #542a24;
+  --shadow: rgba(0, 0, 0, 0.62);
+  --piece-light: #fff3df;
+  --piece-dark: #271313;
+  --piece-light-shadow: #4a1f18;
+  --piece-dark-shadow: #ffe5c9;
+  --move-marker: rgba(59, 22, 17, 0.4);
+}
+
+body[data-theme="contrast"] {
+  --bg: #000;
+  --board-light: #fff;
+  --board-dark: #202020;
+  --highlight: #ffec00;
+  --last-move: #00e5ff;
+  --check: #ff3b30;
+  --text: #fff;
+  --accent: #00e5ff;
+  --control: #000;
+  --control-hover: #202020;
+  --control-border: #fff;
+  --board-border: #fff;
+  --shadow: rgba(255, 255, 255, 0.24);
+  --piece-light: #fff;
+  --piece-dark: #000;
+  --piece-light-shadow: #000;
+  --piece-dark-shadow: #fff;
+  --move-marker: rgba(255, 0, 230, 0.9);
 }
 
 * {
@@ -71,6 +165,8 @@ body {
 
 .settings {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   justify-content: center;
   width: min(88vmin, 560px);
 }
@@ -84,8 +180,8 @@ body {
 }
 
 .setting-control select {
-  background: #242424;
-  border: 1px solid #555;
+  background: var(--control);
+  border: 1px solid var(--control-border);
   border-radius: 5px;
   color: var(--text);
   font: inherit;
@@ -105,9 +201,9 @@ body {
   grid-template-rows: repeat(8, 1fr);
   width: min(88vmin, 560px);
   height: min(88vmin, 560px);
-  border: 3px solid #333;
+  border: 3px solid var(--board-border);
   border-radius: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 32px var(--shadow);
   position: relative;
 }
 
@@ -147,14 +243,14 @@ body {
   width: 28%;
   height: 28%;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--move-marker);
 }
 
 .sq.possible.capture::after {
   width: 88%;
   height: 88%;
   background: transparent;
-  border: 4px solid rgba(0, 0, 0, 0.28);
+  border: 4px solid var(--move-marker);
   border-radius: 50%;
 }
 
@@ -164,13 +260,13 @@ body {
 }
 
 .white {
-  color: #f5f5f5;
-  text-shadow: 0 1px 2px #000, 0 0 1px #000;
+  color: var(--piece-light);
+  text-shadow: 0 1px 2px var(--piece-light-shadow), 0 0 1px var(--piece-light-shadow);
 }
 
 .black {
-  color: #1a1a1a;
-  text-shadow: 0 1px 1px #fff3, 0 0 1px #fff3;
+  color: var(--piece-dark);
+  text-shadow: 0 1px 1px var(--piece-dark-shadow), 0 0 1px var(--piece-dark-shadow);
 }
 
 #controls {
@@ -185,9 +281,9 @@ body {
   display: none;
   padding: 10px 22px;
   font-size: 15px;
-  background: #2a2a2a;
+  background: var(--control);
   color: var(--text);
-  border: 1px solid #555;
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
@@ -203,7 +299,7 @@ body {
 
 #restart:hover,
 #switch:hover {
-  background: #3a3a3a;
+  background: var(--control-hover);
 }
 
 #thinking {

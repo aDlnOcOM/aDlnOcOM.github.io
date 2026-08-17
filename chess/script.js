@@ -33,6 +33,7 @@
     enPassant: null,
     playerColor: "w",
     difficulty: 0,
+    theme: "midnight",
     aiTimer: null,
     advanceTimer: null
   };
@@ -72,6 +73,7 @@
     state.enPassant = null;
     getElement("restart").style.display = "none";
     getElement("thinking").textContent = "";
+    applyTheme();
     updateDifficultyDisplay();
     updateStatus();
     render();
@@ -89,6 +91,11 @@
     const level = currentDifficulty();
     getElement("difficulty").value = String(state.difficulty);
     getElement("level-indicator").textContent = `Уровень ${state.difficulty + 1} из 10 · ${level.label}`;
+  }
+
+  function applyTheme() {
+    document.body.dataset.theme = state.theme;
+    getElement("theme").value = state.theme;
   }
 
   function findKing(board, color) {
@@ -396,6 +403,10 @@
   getElement("difficulty").addEventListener("change", event => {
     state.difficulty = Number(event.target.value);
     init();
+  });
+  getElement("theme").addEventListener("change", event => {
+    state.theme = event.target.value;
+    applyTheme();
   });
   init();
 })();
