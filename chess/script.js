@@ -9,6 +9,18 @@
   const KING_STEPS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
   const DIAGONALS = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
   const STRAIGHTS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const DIFFICULTY_LEVELS = [
+    { label: "Новичок", depth: 1, candidates: 12, mistakeChance: 0.82, mistakePool: 18 },
+    { label: "Любитель", depth: 1, candidates: 9, mistakeChance: 0.68, mistakePool: 14 },
+    { label: "Практик", depth: 1, candidates: 6, mistakeChance: 0.52, mistakePool: 10 },
+    { label: "Тактик", depth: 2, candidates: 8, mistakeChance: 0.46, mistakePool: 9 },
+    { label: "Стратег", depth: 2, candidates: 6, mistakeChance: 0.34, mistakePool: 7 },
+    { label: "Эксперт", depth: 2, candidates: 4, mistakeChance: 0.22, mistakePool: 5 },
+    { label: "Мастер", depth: 3, candidates: 6, mistakeChance: 0.24, mistakePool: 5 },
+    { label: "Элитный", depth: 3, candidates: 4, mistakeChance: 0.15, mistakePool: 4 },
+    { label: "Гроссмейстер", depth: 3, candidates: 2, mistakeChance: 0.06, mistakePool: 3 },
+    { label: "Легенда", depth: 4, candidates: 1, mistakeChance: 0, mistakePool: 1 }
+  ];
 
   const state = {
     board: [],
@@ -19,7 +31,8 @@
     gameOver: false,
     castling: { K: true, Q: true, k: true, q: true },
     enPassant: null,
-    playerColor: "w"
+    playerColor: "w",
+    difficulty: 0
   };
 
   const getElement = id => document.getElementById(id);
@@ -27,6 +40,7 @@
   const isBlack = piece => Boolean(piece) && piece === piece.toLowerCase();
   const enemy = color => color === "w" ? "b" : "w";
   const botColor = () => enemy(state.playerColor);
+  const currentDifficulty = () => DIFFICULTY_LEVELS[state.difficulty];
   const inBounds = (row, col) => row >= 0 && row < 8 && col >= 0 && col < 8;
   const copyBoard = board => board.map(row => [...row]);
   const owns = (piece, color) => color === "w" ? isWhite(piece) : isBlack(piece);
@@ -55,9 +69,16 @@
     state.enPassant = null;
     getElement("restart").style.display = "none";
     getElement("thinking").textContent = "";
+    updateDifficultyDisplay();
     updateStatus();
     render();
     if (state.playerColor === "b") setTimeout(aiMove, 80);
+  }
+
+  function updateDifficultyDisplay() {
+    const level = currentDifficulty();
+    getElement("difficulty").value = String(state.difficulty);
+    getElement("level-indicator").textContent = `Уровень ${state.difficulty + 1} из 10 · ${level.label}`;
   }
 
   function findKing(board, color) {
@@ -247,15 +268,20 @@
     setTimeout(() => {
       const moves = legalMoves(state.board, color, state.castling, state.enPassant);
       if (!moves.length) { endGame(inCheck(state.board, color) ? "win" : "draw"); return; }
-      const depth = moves.length > 22 ? 3 : 4;
-      let bestMove = null;
-      let bestScore = color === "w" ? -Infinity : Infinity;
+      const level = currentDifficulty();
+      const rankedMoves = [];
       for (const move of moves) {
         const next = applyMove(state.board, move, state.castling, state.enPassant);
-        const score = minimax(next.board, depth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant);
-        if ((color === "w" && score > bestScore) || (color === "b" && score < bestScore)) { bestScore = score; bestMove = move; }
+        const score = minimax(next.board, level.depth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant);
+        rankedMoves.push({ move, score });
       }
-      if (bestMove) doMove(bestMove);
+      rankedMoves.sort((first, second) => color === "w" ? second.score - first.score : first.score - second.score);
+      const strongest = rankedMoves.slice(0, Math.min(level.candidates, rankedMoves.length));
+      const choicePool = Math.random() < level.mistakeChance
+        ? rankedMoves.slice(0, Math.min(level.mistakePool, rankedMoves.length))
+        : strongest;
+      const selected = choicePool[Math.floor(Math.random() * choicePool.length)];
+      if (selected) doMove(selected.move);
       getElement("thinking").textContent = "";
     }, 40);
   }
@@ -342,5 +368,9 @@
 
   getElement("restart").addEventListener("click", init);
   getElement("switch").addEventListener("click", () => { state.playerColor = enemy(state.playerColor); init(); });
+  getElement("difficulty").addEventListener("change", event => {
+    state.difficulty = Number(event.target.value);
+    init();
+  });
   init();
 })();
