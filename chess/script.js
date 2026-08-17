@@ -396,6 +396,18 @@
           square.appendChild(pieceElement);
           if ((piece === "K" && inCheck(state.board, "w")) || (piece === "k" && inCheck(state.board, "b"))) square.classList.add("check");
         }
+        if (displayCol === 0) {
+          const rank = document.createElement("span");
+          rank.className = "board-coordinate rank-coordinate";
+          rank.textContent = String(8 - row);
+          square.appendChild(rank);
+        }
+        if (displayRow === 7) {
+          const file = document.createElement("span");
+          file.className = "board-coordinate file-coordinate";
+          file.textContent = String.fromCharCode(97 + col);
+          square.appendChild(file);
+        }
         square.dataset.row = displayRow;
         square.dataset.col = displayCol;
         square.addEventListener("click", onSquareClick);
