@@ -33,9 +33,63 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   max-width: 96vmin;
   width: 100%;
+}
+
+.game-header {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  width: min(88vmin, 560px);
+}
+
+.game-header h1 {
+  font-size: clamp(24px, 5vmin, 34px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#level-indicator {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 7px 10px;
+}
+
+.settings {
+  display: flex;
+  justify-content: center;
+  width: min(88vmin, 560px);
+}
+
+.setting-control {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 9px;
+  opacity: 0.9;
+}
+
+.setting-control select {
+  background: #242424;
+  border: 1px solid #555;
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  padding: 6px 8px;
 }
 
 #status {
