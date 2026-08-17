@@ -111,7 +111,7 @@ body[data-theme="contrast"] {
 
 html,
 body {
-  height: 100%;
+  min-height: 100svh;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
@@ -119,7 +119,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  padding: 12px;
   user-select: none;
 }
 
@@ -128,7 +129,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  max-width: 96vmin;
+  max-width: min(96vmin, 100%);
   width: 100%;
 }
 
@@ -199,8 +200,8 @@ body {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  width: min(88vmin, 560px);
-  height: min(88vmin, 560px);
+  width: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
+  height: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
   border: 3px solid var(--board-border);
   border-radius: 4px;
   box-shadow: 0 8px 32px var(--shadow);
@@ -332,4 +333,65 @@ body {
   font-size: 13px;
   opacity: 0.6;
   height: 18px;
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 460px) {
+  .game-header {
+    align-items: start;
+    gap: 8px;
+  }
+
+  .game-header h1 {
+    font-size: 25px;
+  }
+
+  #level-indicator {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  .settings {
+    gap: 6px 10px;
+  }
+
+  .setting-control {
+    font-size: 11px;
+    gap: 6px;
+  }
+
+  .setting-control select {
+    max-width: 138px;
+  }
+}
+
+@media (max-height: 660px) {
+  body {
+    padding-block: 6px;
+  }
+
+  #wrap {
+    gap: 7px;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  .setting-control select {
+    padding-block: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sq,
+  #restart,
+  #switch {
+    transition: none;
+  }
 }
