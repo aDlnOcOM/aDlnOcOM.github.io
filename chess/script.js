@@ -39,7 +39,8 @@
     theme: "midnight",
     aiTimer: null,
     advanceTimer: null,
-    squareGrid: []
+    squareGrid: [],
+    settingsOpen: false
   };
 
   const getElement = id => document.getElementById(id);
@@ -78,6 +79,7 @@
     getElement("restart").style.display = "none";
     getElement("thinking").textContent = "";
     applyTheme();
+    syncSettingsPanel();
     updateDifficultyDisplay();
     updateStatus();
     render();
@@ -118,6 +120,14 @@
   function applyTheme() {
     document.documentElement.dataset.theme = state.theme;
     getElement("theme").value = state.theme;
+  }
+
+  function syncSettingsPanel() {
+    const settings = getElement("settings");
+    const toggle = getElement("settings-toggle");
+    settings.hidden = !state.settingsOpen;
+    toggle.setAttribute("aria-expanded", String(state.settingsOpen));
+    toggle.setAttribute("aria-label", state.settingsOpen ? "Закрыть настройки" : "Открыть настройки");
   }
 
   function findKing(board, color) {
@@ -488,6 +498,10 @@
 
   getElement("restart").addEventListener("click", init);
   getElement("switch").addEventListener("click", () => { state.playerColor = enemy(state.playerColor); init(); });
+  getElement("settings-toggle").addEventListener("click", () => {
+    state.settingsOpen = !state.settingsOpen;
+    syncSettingsPanel();
+  });
   getElement("difficulty").addEventListener("change", event => {
     state.difficulty = Number(event.target.value);
     savePreferences();

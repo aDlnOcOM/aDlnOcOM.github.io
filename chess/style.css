@@ -141,6 +141,12 @@ body {
   width: min(88vmin, 560px);
 }
 
+.header-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .game-header h1 {
   font-size: clamp(24px, 5vmin, 34px);
   font-weight: 700;
@@ -166,10 +172,15 @@ body {
 }
 
 .settings {
+  align-items: center;
+  background: color-mix(in srgb, var(--control) 88%, transparent);
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
   justify-content: center;
+  padding: 10px 12px;
   width: min(88vmin, 560px);
 }
 
@@ -311,7 +322,8 @@ body {
 }
 
 #restart,
-#switch {
+#switch,
+.icon-button {
   display: none;
   padding: 10px 22px;
   font-size: 15px;
@@ -332,8 +344,20 @@ body {
 }
 
 #restart:hover,
-#switch:hover {
+#switch:hover,
+.icon-button:hover {
   background: var(--control-hover);
+}
+
+.icon-button {
+  align-items: center;
+  display: inline-flex;
+  font-size: 19px;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 34px;
 }
 
 #thinking {

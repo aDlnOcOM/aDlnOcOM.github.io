@@ -13,9 +13,12 @@
         <p class="eyebrow">Локальная партия</p>
         <h1>Шахматы</h1>
       </div>
-      <output id="level-indicator" aria-live="polite">Уровень 1 из 10</output>
+      <div class="header-actions">
+        <output id="level-indicator" aria-live="polite">Уровень 1 из 10</output>
+        <button id="settings-toggle" class="icon-button" type="button" aria-controls="settings" aria-expanded="false" aria-label="Открыть настройки" title="Настройки">⚙</button>
+      </div>
     </header>
-    <section class="settings" aria-label="Настройки партии">
+    <section id="settings" class="settings" aria-label="Настройки партии" hidden>
       <label class="setting-control" for="difficulty">
         <span>Сложность соперника</span>
         <select id="difficulty">
