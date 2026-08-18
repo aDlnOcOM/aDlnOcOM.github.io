@@ -17,6 +17,7 @@
   --piece-light-shadow: #000;
   --piece-dark-shadow: #fff3;
   --move-marker: rgba(0, 0, 0, 0.28);
+  --board-size: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
 }
 
 :root[data-theme="ivory"] {
@@ -212,8 +213,8 @@ body {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  width: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
-  height: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
+  width: var(--board-size);
+  height: var(--board-size);
   border: 3px solid var(--board-border);
   border-radius: 4px;
   box-shadow: 0 8px 32px var(--shadow);
@@ -413,6 +414,67 @@ select:focus-visible {
 
   .setting-control select {
     max-width: 138px;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  #wrap {
+    margin: auto;
+    max-width: 520px;
+  }
+
+  .game-header,
+  .settings {
+    width: 100%;
+  }
+
+  .settings {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setting-control {
+    justify-content: space-between;
+  }
+
+  .setting-control select {
+    min-width: 142px;
+  }
+
+  #controls {
+    width: 100%;
+  }
+
+  #restart,
+  #switch {
+    flex: 1;
+    min-height: 42px;
+  }
+}
+
+@media (min-width: 900px) and (min-height: 680px) {
+  :root {
+    --board-size: min(72vmin, 600px, calc(100vw - 56px), calc(100svh - 185px));
+  }
+
+  html,
+  body {
+    padding: 24px;
+  }
+
+  #wrap {
+    gap: 16px;
+    max-width: 680px;
+  }
+
+  .game-header,
+  .settings {
+    width: min(72vmin, 600px);
   }
 }
 
