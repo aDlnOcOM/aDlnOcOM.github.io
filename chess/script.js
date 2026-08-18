@@ -125,9 +125,11 @@
   function syncSettingsPanel() {
     const settings = getElement("settings");
     const levelIndicator = getElement("level-indicator");
+    const settingsControls = getElement("settings-controls");
     const toggle = getElement("settings-toggle");
     settings.hidden = !state.settingsOpen;
     levelIndicator.hidden = !state.settingsOpen;
+    settingsControls.hidden = !state.settingsOpen;
     toggle.setAttribute("aria-expanded", String(state.settingsOpen));
     toggle.setAttribute("aria-label", state.settingsOpen ? "Закрыть настройки" : "Открыть настройки");
   }

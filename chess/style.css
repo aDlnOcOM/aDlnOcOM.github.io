@@ -187,6 +187,11 @@ body {
   width: min(88vmin, 560px);
 }
 
+.settings[hidden],
+.settings-controls[hidden] {
+  display: none;
+}
+
 .settings-controls {
   align-items: center;
   display: flex;
