@@ -18,6 +18,8 @@
   --piece-dark-shadow: #fff3;
   --move-marker: rgba(0, 0, 0, 0.28);
   --board-size: min(88vmin, 560px, calc(100vw - 24px), calc(100svh - 215px));
+  --level-background: rgba(138, 180, 248, 0.18);
+  --level-border: rgba(138, 180, 248, 0.45);
 }
 
 :root[data-theme="ivory"] {
@@ -39,6 +41,8 @@
   --piece-light-shadow: #5d4635;
   --piece-dark-shadow: #f6e7cf;
   --move-marker: rgba(63, 43, 27, 0.36);
+  --level-background: rgba(124, 63, 29, 0.13);
+  --level-border: rgba(124, 63, 29, 0.5);
 }
 
 :root[data-theme="forest"] {
@@ -60,6 +64,8 @@
   --piece-light-shadow: #14251e;
   --piece-dark-shadow: #dbf4d6;
   --move-marker: rgba(9, 43, 29, 0.38);
+  --level-background: rgba(121, 217, 163, 0.16);
+  --level-border: rgba(121, 217, 163, 0.48);
 }
 
 :root[data-theme="ember"] {
@@ -81,6 +87,8 @@
   --piece-light-shadow: #4a1f18;
   --piece-dark-shadow: #ffe5c9;
   --move-marker: rgba(59, 22, 17, 0.4);
+  --level-background: rgba(255, 171, 92, 0.16);
+  --level-border: rgba(255, 171, 92, 0.52);
 }
 
 :root[data-theme="contrast"] {
@@ -102,6 +110,8 @@
   --piece-light-shadow: #000;
   --piece-dark-shadow: #fff;
   --move-marker: rgba(255, 0, 230, 0.9);
+  --level-background: #000;
+  --level-border: #00e5ff;
 }
 
 * {
@@ -154,17 +164,9 @@ body {
   letter-spacing: -0.04em;
 }
 
-.eyebrow {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 #level-indicator {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--level-background);
+  border: 1px solid var(--level-border);
   border-radius: 999px;
   color: var(--text);
   font-size: 12px;
@@ -178,11 +180,19 @@ body {
   border: 1px solid var(--control-border);
   border-radius: 10px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+  flex-direction: column;
+  gap: 10px;
   justify-content: center;
   padding: 10px 12px;
   width: min(88vmin, 560px);
+}
+
+.settings-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: center;
 }
 
 .setting-control {
@@ -438,6 +448,11 @@ select:focus-visible {
     flex-direction: column;
   }
 
+  .settings-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .setting-control {
     justify-content: space-between;
   }
@@ -485,10 +500,6 @@ select:focus-visible {
 
   #wrap {
     gap: 7px;
-  }
-
-  .eyebrow {
-    display: none;
   }
 
   .setting-control select {

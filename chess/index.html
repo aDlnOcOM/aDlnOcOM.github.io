@@ -9,41 +9,40 @@
 <body>
   <main id="wrap">
     <header class="game-header">
-      <div>
-        <p class="eyebrow">Локальная партия</p>
-        <h1>Шахматы</h1>
-      </div>
+      <h1>Шахматы</h1>
       <div class="header-actions">
-        <output id="level-indicator" aria-live="polite">Уровень 1 из 10</output>
         <button id="settings-toggle" class="icon-button" type="button" aria-controls="settings" aria-expanded="false" aria-label="Открыть настройки" title="Настройки">⚙</button>
       </div>
     </header>
     <section id="settings" class="settings" aria-label="Настройки партии" hidden>
-      <label class="setting-control" for="difficulty">
-        <span>Сложность соперника</span>
-        <select id="difficulty">
-          <option value="0">01 · Новичок</option>
-          <option value="1">02 · Любитель</option>
-          <option value="2">03 · Практик</option>
-          <option value="3">04 · Тактик</option>
-          <option value="4">05 · Стратег</option>
-          <option value="5">06 · Эксперт</option>
-          <option value="6">07 · Мастер</option>
-          <option value="7">08 · Элитный</option>
-          <option value="8">09 · Гроссмейстер</option>
-          <option value="9">10 · Легенда</option>
-        </select>
-      </label>
-      <label class="setting-control" for="theme">
-        <span>Тема доски</span>
-        <select id="theme">
-          <option value="midnight">Полночь</option>
-          <option value="ivory">Классика</option>
-          <option value="forest">Лес</option>
-          <option value="ember">Уголь и янтарь</option>
-          <option value="contrast">Высокий контраст</option>
-        </select>
-      </label>
+      <output id="level-indicator" aria-live="polite" hidden>Уровень 1 из 10</output>
+      <div class="settings-controls">
+        <label class="setting-control" for="difficulty">
+          <span>Сложность соперника</span>
+          <select id="difficulty">
+            <option value="0">01 · Новичок</option>
+            <option value="1">02 · Любитель</option>
+            <option value="2">03 · Практик</option>
+            <option value="3">04 · Тактик</option>
+            <option value="4">05 · Стратег</option>
+            <option value="5">06 · Эксперт</option>
+            <option value="6">07 · Мастер</option>
+            <option value="7">08 · Элитный</option>
+            <option value="8">09 · Гроссмейстер</option>
+            <option value="9">10 · Легенда</option>
+          </select>
+        </label>
+        <label class="setting-control" for="theme">
+          <span>Тема доски</span>
+          <select id="theme">
+            <option value="midnight">Полночь</option>
+            <option value="ivory">Классика</option>
+            <option value="forest">Лес</option>
+            <option value="ember">Уголь и янтарь</option>
+            <option value="contrast">Высокий контраст</option>
+          </select>
+        </label>
+      </div>
     </section>
     <div id="status">Ваш ход</div>
     <div id="board" role="grid" aria-label="Шахматная доска"></div>
