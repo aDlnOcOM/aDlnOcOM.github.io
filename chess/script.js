@@ -38,7 +38,8 @@
     difficulty: 0,
     theme: "midnight",
     aiTimer: null,
-    advanceTimer: null
+    advanceTimer: null,
+    squareGrid: []
   };
 
   const getElement = id => document.getElementById(id);
@@ -382,48 +383,69 @@
     return `${color} ${PIECE_NAMES[piece.toLowerCase()]} на ${coordinate}`;
   }
 
-  function render() {
+  function createBoardGrid() {
     const boardElement = getElement("board");
     boardElement.innerHTML = "";
+    state.squareGrid = [];
     for (let displayRow = 0; displayRow < 8; displayRow += 1) {
+      const row = [];
       for (let displayCol = 0; displayCol < 8; displayCol += 1) {
-        const [row, col] = toBoard(displayRow, displayCol);
         const square = document.createElement("div");
-        square.className = `sq ${(row + col) % 2 === 0 ? "light" : "dark"}`;
         square.setAttribute("role", "gridcell");
         square.tabIndex = 0;
-        if (state.selected?.[0] === row && state.selected?.[1] === col) square.classList.add("selected");
-        if (state.lastMove && ((state.lastMove.fr === row && state.lastMove.fc === col) || (state.lastMove.tr === row && state.lastMove.tc === col))) square.classList.add("last");
-        if (state.possible.some(move => move.tr === row && move.tc === col)) {
-          square.classList.add("possible");
-          if (state.board[row][col]) square.classList.add("capture");
-        }
-        const piece = state.board[row][col];
-        square.setAttribute("aria-label", describeSquare(row, col, piece));
-        if (piece) {
-          const pieceElement = document.createElement("span");
-          pieceElement.className = `piece ${isWhite(piece) ? "white" : "black"}`;
-          pieceElement.textContent = PIECES[piece];
-          square.appendChild(pieceElement);
-          if ((piece === "K" && inCheck(state.board, "w")) || (piece === "k" && inCheck(state.board, "b"))) square.classList.add("check");
-        }
+        const pieceElement = document.createElement("span");
+        pieceElement.className = "piece";
+        pieceElement.setAttribute("aria-hidden", "true");
+        square.appendChild(pieceElement);
+        square.pieceElement = pieceElement;
         if (displayCol === 0) {
           const rank = document.createElement("span");
           rank.className = "board-coordinate rank-coordinate";
-          rank.textContent = String(8 - row);
           square.appendChild(rank);
+          square.rankElement = rank;
         }
         if (displayRow === 7) {
           const file = document.createElement("span");
           file.className = "board-coordinate file-coordinate";
-          file.textContent = String.fromCharCode(97 + col);
           square.appendChild(file);
+          square.fileElement = file;
         }
         square.dataset.row = displayRow;
         square.dataset.col = displayCol;
         square.addEventListener("click", onSquareClick);
         square.addEventListener("keydown", onSquareKeyDown);
         boardElement.appendChild(square);
+        row.push(square);
+      }
+      state.squareGrid.push(row);
+    }
+  }
+
+  function render() {
+    if (state.squareGrid.length !== 8) createBoardGrid();
+    const availableSquares = new Set(state.possible.map(move => `${move.tr},${move.tc}`));
+    const whiteKingInCheck = inCheck(state.board, "w");
+    const blackKingInCheck = inCheck(state.board, "b");
+    for (let displayRow = 0; displayRow < 8; displayRow += 1) {
+      for (let displayCol = 0; displayCol < 8; displayCol += 1) {
+        const [row, col] = toBoard(displayRow, displayCol);
+        const square = state.squareGrid[displayRow][displayCol];
+        const piece = state.board[row][col];
+        const isSelected = state.selected?.[0] === row && state.selected?.[1] === col;
+        const isLastMove = state.lastMove && ((state.lastMove.fr === row && state.lastMove.fc === col) || (state.lastMove.tr === row && state.lastMove.tc === col));
+        const isPossible = availableSquares.has(`${row},${col}`);
+        const isCheckedKing = (piece === "K" && whiteKingInCheck) || (piece === "k" && blackKingInCheck);
+        square.className = `sq ${(row + col) % 2 === 0 ? "light" : "dark"}`;
+        if (isSelected) square.classList.add("selected");
+        if (isLastMove) square.classList.add("last");
+        if (isPossible) square.classList.add("possible");
+        if (isPossible && piece) square.classList.add("capture");
+        if (isCheckedKing) square.classList.add("check");
+        square.setAttribute("aria-label", describeSquare(row, col, piece));
+        square.pieceElement.className = piece ? `piece ${isWhite(piece) ? "white" : "black"}` : "piece";
+        square.pieceElement.textContent = piece ? PIECES[piece] : "";
+        if (square.rankElement) square.rankElement.textContent = String(8 - row);
+        if (square.fileElement) square.fileElement.textContent = String.fromCharCode(97 + col);
       }
     }
   }
