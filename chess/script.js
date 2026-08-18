@@ -4,6 +4,7 @@
     K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙",
     k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟"
   };
+  const PIECE_NAMES = { p: "пешка", n: "конь", b: "слон", r: "ладья", q: "ферзь", k: "король" };
   const VALUE = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
   const KNIGHT_STEPS = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
   const KING_STEPS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
@@ -374,6 +375,13 @@
     return state.playerColor === "w" ? [displayRow, displayCol] : [7 - displayRow, 7 - displayCol];
   }
 
+  function describeSquare(row, col, piece) {
+    const coordinate = `${String.fromCharCode(97 + col)}${8 - row}`;
+    if (!piece) return `Пустая клетка ${coordinate}`;
+    const color = isWhite(piece) ? "белая" : "чёрная";
+    return `${color} ${PIECE_NAMES[piece.toLowerCase()]} на ${coordinate}`;
+  }
+
   function render() {
     const boardElement = getElement("board");
     boardElement.innerHTML = "";
@@ -382,6 +390,8 @@
         const [row, col] = toBoard(displayRow, displayCol);
         const square = document.createElement("div");
         square.className = `sq ${(row + col) % 2 === 0 ? "light" : "dark"}`;
+        square.setAttribute("role", "gridcell");
+        square.tabIndex = 0;
         if (state.selected?.[0] === row && state.selected?.[1] === col) square.classList.add("selected");
         if (state.lastMove && ((state.lastMove.fr === row && state.lastMove.fc === col) || (state.lastMove.tr === row && state.lastMove.tc === col))) square.classList.add("last");
         if (state.possible.some(move => move.tr === row && move.tc === col)) {
@@ -389,6 +399,7 @@
           if (state.board[row][col]) square.classList.add("capture");
         }
         const piece = state.board[row][col];
+        square.setAttribute("aria-label", describeSquare(row, col, piece));
         if (piece) {
           const pieceElement = document.createElement("span");
           pieceElement.className = `piece ${isWhite(piece) ? "white" : "black"}`;
@@ -411,6 +422,7 @@
         square.dataset.row = displayRow;
         square.dataset.col = displayCol;
         square.addEventListener("click", onSquareClick);
+        square.addEventListener("keydown", onSquareKeyDown);
         boardElement.appendChild(square);
       }
     }
@@ -429,6 +441,27 @@
       state.possible = [];
     }
     render();
+  }
+
+  function onSquareKeyDown(event) {
+    const movement = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1]
+    };
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSquareClick(event);
+      return;
+    }
+    const step = movement[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const row = Number(event.currentTarget.dataset.row) + step[0];
+    const col = Number(event.currentTarget.dataset.col) + step[1];
+    if (!inBounds(row, col)) return;
+    getElement("board").querySelector(`[data-row="${row}"][data-col="${col}"]`)?.focus();
   }
 
   getElement("restart").addEventListener("click", init);

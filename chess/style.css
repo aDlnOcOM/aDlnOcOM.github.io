@@ -218,6 +218,12 @@ body {
   transition: background 0.12s;
 }
 
+.sq:focus-visible {
+  outline: 4px solid var(--accent);
+  outline-offset: -4px;
+  z-index: 1;
+}
+
 .sq.light {
   background: var(--board-light);
 }
