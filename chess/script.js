@@ -83,7 +83,7 @@
     updateDifficultyDisplay();
     updateStatus();
     render();
-    if (state.playerColor === "b") aiMove(80);
+    if (state.playerColor === "b") aiMove();
   }
 
   function clearTimers() {
@@ -310,7 +310,7 @@
     return score;
   }
 
-  function aiMove(delay = 40) {
+  function aiMove(delay = 500) {
     if (state.gameOver) return;
     const color = botColor();
     getElement("thinking").textContent = "Бот думает…";
@@ -337,6 +337,7 @@
   }
 
   function doMove(move) {
+    const animation = captureMoveAnimation(move);
     const next = applyMove(state.board, move, state.castling, state.enPassant);
     state.board = next.board;
     state.castling = next.castling;
@@ -346,6 +347,7 @@
     state.possible = [];
     state.turn = enemy(state.turn);
     render();
+    playMoveAnimation(animation);
     const moves = legalMoves(state.board, state.turn, state.castling, state.enPassant);
     if (!moves.length) { endGame(inCheck(state.board, state.turn) ? (state.turn === state.playerColor ? "lose" : "win") : "draw"); return; }
     updateStatus();
@@ -384,6 +386,50 @@
 
   function toBoard(displayRow, displayCol) {
     return state.playerColor === "w" ? [displayRow, displayCol] : [7 - displayRow, 7 - displayCol];
+  }
+
+  function toDisplay(row, col) {
+    return state.playerColor === "w" ? [row, col] : [7 - row, 7 - col];
+  }
+
+  function captureMoveAnimation(move) {
+    if (typeof window === "undefined" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return null;
+    const piece = state.board[move.fr][move.fc];
+    const [displayRow, displayCol] = toDisplay(move.fr, move.fc);
+    const sourceSquare = state.squareGrid[displayRow]?.[displayCol];
+    if (!piece || !sourceSquare?.getBoundingClientRect || !document.body?.appendChild) return null;
+    const sourceRect = sourceSquare.getBoundingClientRect();
+    if (!sourceRect.width || !sourceRect.height) return null;
+    return { move, piece, sourceRect };
+  }
+
+  function playMoveAnimation(animation) {
+    if (!animation) return;
+    const [displayRow, displayCol] = toDisplay(animation.move.tr, animation.move.tc);
+    const targetSquare = state.squareGrid[displayRow]?.[displayCol];
+    if (!targetSquare?.getBoundingClientRect) return;
+    const targetRect = targetSquare.getBoundingClientRect();
+    const targetPiece = targetSquare.pieceElement;
+    if (!targetRect.width || !targetRect.height || !targetPiece) return;
+    const ghost = document.createElement("span");
+    ghost.className = `piece move-ghost ${isWhite(animation.piece) ? "white" : "black"}`;
+    ghost.textContent = PIECES[animation.piece];
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.style.left = `${animation.sourceRect.left}px`;
+    ghost.style.top = `${animation.sourceRect.top}px`;
+    ghost.style.width = `${animation.sourceRect.width}px`;
+    ghost.style.height = `${animation.sourceRect.height}px`;
+    ghost.style.fontSize = `${animation.sourceRect.height * 0.76}px`;
+    targetPiece.classList.add("moving-target");
+    document.body.appendChild(ghost);
+    const translateX = targetRect.left - animation.sourceRect.left;
+    const translateY = targetRect.top - animation.sourceRect.top;
+    const nextFrame = window.requestAnimationFrame || (callback => setTimeout(callback, 0));
+    nextFrame(() => { ghost.style.transform = `translate(${translateX}px, ${translateY}px)`; });
+    setTimeout(() => {
+      targetPiece.classList.remove("moving-target");
+      ghost.remove();
+    }, 180);
   }
 
   function describeSquare(row, col, piece) {
