@@ -115,7 +115,7 @@
   }
 
   function applyTheme() {
-    document.body.dataset.theme = state.theme;
+    document.documentElement.dataset.theme = state.theme;
     getElement("theme").value = state.theme;
   }
 

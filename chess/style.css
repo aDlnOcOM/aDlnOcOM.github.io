@@ -19,7 +19,7 @@
   --move-marker: rgba(0, 0, 0, 0.28);
 }
 
-body[data-theme="ivory"] {
+:root[data-theme="ivory"] {
   --bg: #f5efe2;
   --board-light: #f0d9b5;
   --board-dark: #b58863;
@@ -40,7 +40,7 @@ body[data-theme="ivory"] {
   --move-marker: rgba(63, 43, 27, 0.36);
 }
 
-body[data-theme="forest"] {
+:root[data-theme="forest"] {
   --bg: #0b1b19;
   --board-light: #a7c49b;
   --board-dark: #326d55;
@@ -61,7 +61,7 @@ body[data-theme="forest"] {
   --move-marker: rgba(9, 43, 29, 0.38);
 }
 
-body[data-theme="ember"] {
+:root[data-theme="ember"] {
   --bg: #201211;
   --board-light: #e5bd87;
   --board-dark: #8d4437;
@@ -82,7 +82,7 @@ body[data-theme="ember"] {
   --move-marker: rgba(59, 22, 17, 0.4);
 }
 
-body[data-theme="contrast"] {
+:root[data-theme="contrast"] {
   --bg: #000;
   --board-light: #fff;
   --board-dark: #202020;
@@ -112,6 +112,7 @@ body[data-theme="contrast"] {
 html,
 body {
   min-height: 100svh;
+  width: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
