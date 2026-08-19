@@ -385,12 +385,67 @@
     return score;
   }
 
+  function movePriority(board, move) {
+    const mover = board[move.fr][move.fc];
+    const captured = move.enPassant ? (isWhite(mover) ? "p" : "P") : board[move.tr][move.tc];
+    const captureValue = captured ? VALUE[captured.toLowerCase()] : 0;
+    const moverValue = mover ? VALUE[mover.toLowerCase()] : 0;
+    const promotionValue = move.promo ? VALUE[move.promo.toLowerCase()] - VALUE.p : 0;
+    return promotionValue * 12 + captureValue * 16 - moverValue + (move.castle ? 40 : 0);
+  }
+
+  function orderAlexMoves(board, moves) {
+    return [...moves].sort((first, second) => movePriority(board, second) - movePriority(board, first));
+  }
+
+  function isTacticalMove(board, move) {
+    return Boolean(board[move.tr][move.tc]) || Boolean(move.enPassant) || Boolean(move.promo);
+  }
+
+  function alexSearchDepth(moveCount) {
+    if (moveCount > 16) return 3;
+    if (moveCount > 10) return 4;
+    return 5;
+  }
+
+  function quiescence(board, alpha, beta, maximizing, castling, enPassant, remainingDepth) {
+    const standPat = evaluateAlex(board);
+    if (maximizing) {
+      if (standPat >= beta) return standPat;
+      alpha = Math.max(alpha, standPat);
+    } else {
+      if (standPat <= alpha) return standPat;
+      beta = Math.min(beta, standPat);
+    }
+    if (remainingDepth === 0) return standPat;
+    const color = maximizing ? "w" : "b";
+    const moves = orderAlexMoves(board, legalMoves(board, color, castling, enPassant).filter(move => isTacticalMove(board, move)));
+    let score = standPat;
+    for (const move of moves) {
+      const next = applyMove(board, move, castling, enPassant);
+      const candidate = quiescence(next.board, alpha, beta, !maximizing, next.castling, next.enPassant, remainingDepth - 1);
+      if (maximizing) {
+        score = Math.max(score, candidate);
+        alpha = Math.max(alpha, score);
+      } else {
+        score = Math.min(score, candidate);
+        beta = Math.min(beta, score);
+      }
+      if (beta <= alpha) break;
+    }
+    return score;
+  }
+
   function minimax(board, depth, alpha, beta, maximizing, castling, enPassant, engine = "standard") {
-    if (depth === 0) return engine === "alex" ? evaluateAlex(board) : evaluate(board);
+    if (depth === 0) return engine === "alex"
+      ? quiescence(board, alpha, beta, maximizing, castling, enPassant, 1)
+      : evaluate(board);
     const color = maximizing ? "w" : "b";
     const moves = legalMoves(board, color, castling, enPassant);
     if (!moves.length) return inCheck(board, color) ? (maximizing ? -99999 + depth : 99999 - depth) : 0;
-    const ordered = [...moves].sort((first, second) => Number(Boolean(board[second.tr][second.tc])) - Number(Boolean(board[first.tr][first.tc])));
+    const ordered = engine === "alex"
+      ? orderAlexMoves(board, moves)
+      : [...moves].sort((first, second) => Number(Boolean(board[second.tr][second.tc])) - Number(Boolean(board[first.tr][first.tc])));
     let score = maximizing ? -Infinity : Infinity;
     for (const move of ordered) {
       const next = applyMove(board, move, castling, enPassant);
@@ -411,10 +466,11 @@
       const moves = legalMoves(state.board, color, state.castling, state.enPassant);
       if (!moves.length) { endGame(inCheck(state.board, color) ? "win" : "draw"); return; }
       const level = currentDifficulty();
+      const searchDepth = level.engine === "alex" ? alexSearchDepth(moves.length) : level.depth;
       const rankedMoves = [];
       for (const move of moves) {
         const next = applyMove(state.board, move, state.castling, state.enPassant);
-        const score = minimax(next.board, level.depth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant, level.engine);
+        const score = minimax(next.board, searchDepth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant, level.engine);
         rankedMoves.push({ move, score });
       }
       rankedMoves.sort((first, second) => color === "w" ? second.score - first.score : first.score - second.score);
