@@ -298,8 +298,95 @@
     return score;
   }
 
-  function minimax(board, depth, alpha, beta, maximizing, castling, enPassant) {
-    if (depth === 0) return evaluate(board);
+  function alexPieceBonus(type, color, row, col, endgame) {
+    const advance = color === "w" ? 6 - row : row - 1;
+    const center = Math.max(0, 6 - (Math.abs(3.5 - row) + Math.abs(3.5 - col)) * 2);
+    if (type === "p") return advance * 9 + center * 3;
+    if (type === "n") return center * 12;
+    if (type === "b") return center * 7;
+    if (type === "r") return advance * 2 + (col === 0 || col === 7 ? -4 : 0);
+    if (type === "q") return center * 3;
+    return endgame ? center * 11 : -center * 4 - Math.abs(advance) * 2;
+  }
+
+  function alexPawnStructure(board, color) {
+    const pawnsByFile = Array.from({ length: 8 }, () => []);
+    const pawn = color === "w" ? "P" : "p";
+    const enemyPawn = color === "w" ? "p" : "P";
+    for (let row = 0; row < 8; row += 1) {
+      for (let col = 0; col < 8; col += 1) {
+        if (board[row][col] === pawn) pawnsByFile[col].push(row);
+      }
+    }
+    let score = 0;
+    for (let col = 0; col < 8; col += 1) {
+      for (const row of pawnsByFile[col]) {
+        const advance = color === "w" ? 6 - row : row - 1;
+        const hasNeighbour = pawnsByFile[col - 1]?.length || pawnsByFile[col + 1]?.length;
+        if (!hasNeighbour) score -= 12;
+        if (pawnsByFile[col].length > 1) score -= 10;
+        let passed = true;
+        for (const enemyCol of [col - 1, col, col + 1]) {
+          if (enemyCol < 0 || enemyCol > 7) continue;
+          for (let enemyRow = 0; enemyRow < 8; enemyRow += 1) {
+            const isAhead = color === "w" ? enemyRow < row : enemyRow > row;
+            if (isAhead && board[enemyRow][enemyCol] === enemyPawn) passed = false;
+          }
+        }
+        if (passed) score += 18 + advance * 8;
+      }
+    }
+    return score;
+  }
+
+  function alexKingSafety(board, color) {
+    const king = findKing(board, color);
+    if (!king) return -500;
+    const pawn = color === "w" ? "P" : "p";
+    const shieldRow = king[0] + (color === "w" ? -1 : 1);
+    let score = 0;
+    for (let col = king[1] - 1; col <= king[1] + 1; col += 1) {
+      if (board[shieldRow]?.[col] === pawn) score += 13;
+    }
+    return score;
+  }
+
+  function evaluateAlex(board) {
+    let score = 0;
+    let whiteMinorPieces = 0;
+    let blackMinorPieces = 0;
+    let nonKingMaterial = 0;
+    for (const row of board) {
+      for (const piece of row) {
+        if (piece && piece.toLowerCase() !== "k") nonKingMaterial += VALUE[piece.toLowerCase()];
+      }
+    }
+    const endgame = nonKingMaterial < 2600;
+    for (let row = 0; row < 8; row += 1) {
+      for (let col = 0; col < 8; col += 1) {
+        const piece = board[row][col];
+        if (!piece) continue;
+        const color = isWhite(piece) ? "w" : "b";
+        const type = piece.toLowerCase();
+        const value = VALUE[type] + alexPieceBonus(type, color, row, col, endgame);
+        score += color === "w" ? value : -value;
+        if (piece === "B") whiteMinorPieces += 1;
+        if (piece === "b") blackMinorPieces += 1;
+      }
+    }
+    if (whiteMinorPieces >= 2) score += 32;
+    if (blackMinorPieces >= 2) score -= 32;
+    score += alexPawnStructure(board, "w") - alexPawnStructure(board, "b");
+    if (!endgame) score += alexKingSafety(board, "w") - alexKingSafety(board, "b");
+    for (const [row, col] of [[3, 3], [3, 4], [4, 3], [4, 4]]) {
+      const piece = board[row][col];
+      if (piece) score += isWhite(piece) ? 14 : -14;
+    }
+    return score;
+  }
+
+  function minimax(board, depth, alpha, beta, maximizing, castling, enPassant, engine = "standard") {
+    if (depth === 0) return engine === "alex" ? evaluateAlex(board) : evaluate(board);
     const color = maximizing ? "w" : "b";
     const moves = legalMoves(board, color, castling, enPassant);
     if (!moves.length) return inCheck(board, color) ? (maximizing ? -99999 + depth : 99999 - depth) : 0;
@@ -307,7 +394,7 @@
     let score = maximizing ? -Infinity : Infinity;
     for (const move of ordered) {
       const next = applyMove(board, move, castling, enPassant);
-      const candidate = minimax(next.board, depth - 1, alpha, beta, !maximizing, next.castling, next.enPassant);
+      const candidate = minimax(next.board, depth - 1, alpha, beta, !maximizing, next.castling, next.enPassant, engine);
       if (maximizing) { score = Math.max(score, candidate); alpha = Math.max(alpha, score); }
       else { score = Math.min(score, candidate); beta = Math.min(beta, score); }
       if (beta <= alpha) break;
@@ -327,7 +414,7 @@
       const rankedMoves = [];
       for (const move of moves) {
         const next = applyMove(state.board, move, state.castling, state.enPassant);
-        const score = minimax(next.board, level.depth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant);
+        const score = minimax(next.board, level.depth - 1, -Infinity, Infinity, color === "b", next.castling, next.enPassant, level.engine);
         rankedMoves.push({ move, score });
       }
       rankedMoves.sort((first, second) => color === "w" ? second.score - first.score : first.score - second.score);
