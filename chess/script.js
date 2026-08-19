@@ -20,7 +20,8 @@
     { label: "Мастер", depth: 3, candidates: 6, mistakeChance: 0.24, mistakePool: 5 },
     { label: "Элитный", depth: 3, candidates: 4, mistakeChance: 0.15, mistakePool: 4 },
     { label: "Гроссмейстер", depth: 3, candidates: 2, mistakeChance: 0.06, mistakePool: 3 },
-    { label: "Легенда", depth: 4, candidates: 1, mistakeChance: 0, mistakePool: 1 }
+    { label: "Легенда", depth: 4, candidates: 1, mistakeChance: 0, mistakePool: 1 },
+    { label: "Алекс", depth: 5, candidates: 1, mistakeChance: 0, mistakePool: 1, engine: "alex" }
   ];
   const THEMES = new Set(["midnight", "ivory", "forest", "ember", "contrast"]);
   const PREFERENCES_KEY = "chess-preferences-v1";
@@ -96,7 +97,7 @@
   function updateDifficultyDisplay() {
     const level = currentDifficulty();
     getElement("difficulty").value = String(state.difficulty);
-    getElement("level-indicator").textContent = `Уровень ${state.difficulty + 1} из 10 · ${level.label}`;
+    getElement("level-indicator").textContent = `Уровень ${state.difficulty + 1} из ${DIFFICULTY_LEVELS.length} · ${level.label}`;
   }
 
   function restorePreferences() {
