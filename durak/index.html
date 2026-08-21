@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Дурак — карточная игра</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section id="setup-screen" class="setup-screen" aria-labelledby="game-title">
+      <p class="eyebrow">Классическая карточная игра</p>
+      <h1 id="game-title">Дурак</h1>
+      <p class="intro">Соберите правила партии, выберите интеллект соперников и сыграйте против ботов.</p>
+      <form id="setup-form" class="setup-form">
+        <label><span>Количество карт</span><select id="deck-size" name="deckSize"><option value="24">24 карты</option><option value="36" selected>36 карт</option><option value="52">52 карты</option></select></label>
+        <label><span>Вариант</span><select id="variant" name="variant"><option value="throw-in" selected>Подкидной</option><option value="transfer">Переводной</option></select></label>
+        <label><span>Кто подкидывает</span><select id="thrower-scope" name="throwerScope"><option value="neighbors" selected>Соседи</option><option value="all">Все игроки</option></select></label>
+        <label><span>Режим подсказок</span><select id="fair-play" name="fairPlay"><option value="fair" selected>Честная игра</option><option value="tricks">С хитростями</option></select></label>
+        <label><span>Завершение</span><select id="finish-rule" name="finishRule"><option value="classic" selected>Классика</option><option value="draw">Ничья при равенстве</option></select></label>
+        <label><span>Игроков</span><select id="player-count" name="playerCount"><option value="2">2 игрока</option><option value="3">3 игрока</option><option value="4" selected>4 игрока</option><option value="5">5 игроков</option><option value="6">6 игроков</option><option value="7">7 игроков</option><option value="8">8 игроков</option></select></label>
+        <label class="wide-control"><span>Сложность ботов</span><select id="bot-level" name="botLevel"><option value="1">1 · Новички</option><option value="2">2 · Осторожные</option><option value="3">3 · Любители</option><option value="4">4 · Игроки клуба</option><option value="5" selected>5 · Опытные</option><option value="6">6 · Тактики</option><option value="7">7 · Мастера</option><option value="8">8 · Эксперты</option><option value="9">9 · Гроссмейстеры</option><option value="10">10 · Непобедимые</option></select></label>
+        <button class="primary-button wide-control" type="submit">Начать партию</button>
+      </form>
+    </section>
+
+    <section id="game-screen" class="game-screen" hidden aria-live="polite">
+      <header class="game-header">
+        <div><p id="round-label" class="eyebrow">Раунд 1</p><h1>Дурак</h1></div>
+        <div class="header-actions"><span id="deck-counter" class="info-chip">Колода: 0</span><span id="trump-card" class="trump-card" aria-label="Козырь"></span><button id="new-game" class="icon-button" type="button" title="Новая партия" aria-label="Новая партия">↻</button></div>
+      </header>
+      <section id="opponents" class="opponents" aria-label="Соперники"></section>
+      <section class="table-area" aria-label="Игровой стол">
+        <p id="status" class="status">Подготовка партии…</p>
+        <div id="hint" class="hint" hidden></div>
+        <div id="table" class="table"></div>
+        <div id="table-empty" class="table-empty">На столе пока нет карт</div>
+      </section>
+      <section class="action-bar" aria-label="Действия"><button id="pass-button" type="button">Пас</button><button id="take-button" type="button">Взять</button><button id="transfer-button" type="button">Перевести</button></section>
+      <section class="human-zone" aria-label="Ваши карты"><div class="hand-heading"><span>Ваши карты</span><span id="hand-counter" class="info-chip">0 карт</span></div><div id="human-hand" class="human-hand"></div></section>
+      <details class="log-panel"><summary>Ход партии</summary><ol id="event-log" class="event-log"></ol></details>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
