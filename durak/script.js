@@ -302,7 +302,7 @@
     state.phase = "finished";
     state.active = -1;
     if (!remaining.length) log("Колода пуста, у всех закончились карты: ничья.");
-    else if (state.config.finishRule === "draw" && remaining[0].player.hand.length === 0) log("Ничья: карты закончились одновременно.");
+    else if (state.config.finishRule === "draw" && state.players.filter(player => player.hand.length === 0).length > 1) log("Ничья: несколько игроков закончили партию одновременно.");
     else log(`Дурак — ${remaining[0].player.name}.`);
     render();
     return true;
