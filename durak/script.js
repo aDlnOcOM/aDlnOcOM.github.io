@@ -310,10 +310,23 @@
 
   function profile() { return AI_LEVELS[state.config.botLevel - 1]; }
 
-  function attackScore(card, level) {
+  function sameRankSupport(player, card) {
+    return player.hand.filter(candidate => candidate.id !== card.id && candidate.rank === card.rank).length;
+  }
+
+  function unseenRankPressure(card, level) {
+    if (state.config.fairPlay !== "tricks" || state.config.botLevel < 7) return 0;
+    const cardsStillInDeck = state.deck.filter(candidate => candidate.rank === card.rank).length;
+    return cardsStillInDeck * Math.min(8, level.reserve + 3);
+  }
+
+  function attackScore(card, level, player) {
     const trumpCost = isTrump(card) ? level.trumpPenalty : 0;
     const tableBonus = state.table.length ? (tableRanks().has(card.rank) ? -12 : 0) : 0;
-    return cardValue(card) * 8 + trumpCost + tableBonus + Math.random() * (11 - state.config.botLevel) * 7;
+    const supportBonus = sameRankSupport(player, card) * Math.max(0, state.config.botLevel - 3) * -4;
+    const deckPressure = unseenRankPressure(card, level) * -1;
+    const hesitation = Math.random() * (11 - state.config.botLevel) * 7;
+    return cardValue(card) * 8 + trumpCost + tableBonus + supportBonus + deckPressure + hesitation;
   }
 
   function defenseScore(card, attack, level) {
@@ -335,7 +348,7 @@
       const options = bot.hand.filter(canAttack);
       if (!options.length) { if (state.phase === "throw") pass(index); return; }
       if (state.phase === "throw" && Math.random() > level.throwChance) { pass(index); return; }
-      const card = bestCard(options, option => attackScore(option, level));
+      const card = bestCard(options, option => attackScore(option, level, bot));
       playAttack(index, card);
       return;
     }
@@ -344,7 +357,7 @@
       const defenses = bot.hand.filter(card => canDefend(card, attack.attack));
       const transfers = bot.hand.filter(card => canTransfer(card, index));
       const shouldTransfer = transfers.length && (defenses.length === 0 || Math.random() < level.transferBias);
-      if (shouldTransfer) { transfer(index, bestCard(transfers, card => attackScore(card, level))); return; }
+      if (shouldTransfer) { transfer(index, bestCard(transfers, card => attackScore(card, level, bot))); return; }
       if (defenses.length) { playDefense(index, bestCard(defenses, card => defenseScore(card, attack.attack, level))); return; }
       takeTable(index);
     }
