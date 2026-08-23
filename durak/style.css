@@ -47,8 +47,10 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .game-header h1 { font-size: clamp(30px, 6vw, 46px); }
 .rule-summary { margin: -9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .header-actions, .hand-heading, .action-bar { display: flex; align-items: center; gap: 10px; }
-.info-chip, .trump-card { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 5px 9px; color: var(--muted); background: var(--surface); border: 1px solid #3a527a; border-radius: 999px; font-size: 12px; font-weight: 750; }
-.trump-card { min-width: 54px; color: var(--accent); font-size: 17px; }
+.info-chip { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 5px 9px; color: var(--muted); background: var(--surface); border: 1px solid #3a527a; border-radius: 999px; font-size: 12px; font-weight: 750; }
+.trump-card { display: grid; grid-template-columns: auto 34px; align-items: center; gap: 5px; min-width: 92px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.trump-card-face { display: grid; place-items: center; width: 34px; height: 45px; color: var(--card-text); background: linear-gradient(135deg, white, #dce6f4); border: 1px solid #c5d0e1; border-radius: 5px; box-shadow: 0 4px 7px rgba(0,0,0,.22); font-size: 18px; font-weight: 900; line-height: 1; }
+.trump-card-face.red { color: var(--red); }
 .icon-button { width: 36px; height: 36px; color: var(--text); background: var(--surface-soft); border: 1px solid #46638d; border-radius: 10px; }
 
 .opponents { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
@@ -90,6 +92,16 @@ button.card { text-align: left; }
 .event-log { display: grid; gap: 5px; margin: 12px 0 0; padding-left: 22px; }
 .event-log li::marker { color: var(--accent); }
 
+.result-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(5, 11, 21, .72); backdrop-filter: blur(8px); }
+.result-card { width: min(430px, 100%); padding: clamp(26px, 7vw, 42px); text-align: center; background: linear-gradient(145deg, #213451, var(--surface)); border: 1px solid #506b97; border-radius: 22px; box-shadow: 0 26px 80px rgba(0,0,0,.45); }
+.result-card h2 { margin: 0; font-size: clamp(30px, 8vw, 46px); letter-spacing: -.05em; }
+.result-copy { margin: 12px auto 22px; color: var(--muted); line-height: 1.5; }
+.result-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 22px; }
+.result-stats span { display: grid; gap: 3px; padding: 12px; color: var(--muted); background: rgba(12, 22, 38, .45); border: 1px solid #3e587f; border-radius: 12px; font-size: 12px; }
+.result-stats strong { color: var(--accent); font-size: 24px; }
+.result-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.secondary-button { min-height: 46px; color: var(--text); background: var(--surface-soft); border: 1px solid #46638d; border-radius: 11px; font-weight: 800; }
+
 @media (max-width: 640px) {
   .app-shell { padding: 14px; }
   .setup-screen { margin: 8px auto; padding: 24px 18px; border-radius: 18px; }
@@ -97,6 +109,8 @@ button.card { text-align: left; }
   .wide-control { grid-column: auto; }
   .game-header { align-items: start; }
   .header-actions { flex-wrap: wrap; justify-content: end; }
+  .trump-card { grid-template-columns: auto 29px; min-width: 78px; }
+  .trump-card-face { width: 29px; height: 38px; font-size: 15px; }
   .opponents { justify-content: start; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
   .opponent { min-width: 136px; }
   .table-area { min-height: 310px; padding: 18px 10px; border-radius: 18px; }
@@ -109,6 +123,7 @@ button.card { text-align: left; }
   .human-hand .card { margin-left: -20px; }
   .action-bar { justify-content: stretch; }
   .action-bar button { flex: 1; min-width: 0; }
+  .result-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }

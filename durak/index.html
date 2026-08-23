@@ -27,7 +27,7 @@
     <section id="game-screen" class="game-screen" hidden aria-live="polite">
       <header class="game-header">
         <div><p id="round-label" class="eyebrow">Раунд 1</p><h1>Дурак</h1></div>
-        <div class="header-actions"><span id="deck-counter" class="info-chip">Колода: 0</span><span id="trump-card" class="trump-card" aria-label="Козырь"></span><button id="new-game" class="icon-button" type="button" title="Новая партия" aria-label="Новая партия">↻</button></div>
+        <div class="header-actions"><span id="deck-counter" class="info-chip">Колода: 0</span><span id="win-counter" class="info-chip">Победы: 0</span><div id="trump-card" class="trump-card" aria-label="Козырь"></div><button id="new-game" class="icon-button" type="button" title="Новая партия" aria-label="Новая партия">↻</button></div>
       </header>
       <p id="rule-summary" class="rule-summary"></p>
       <section id="opponents" class="opponents" aria-label="Соперники"></section>
@@ -42,6 +42,15 @@
       <details class="log-panel"><summary>Ход партии</summary><ol id="event-log" class="event-log"></ol></details>
     </section>
   </main>
+  <section id="result-modal" class="result-modal" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
+    <div class="result-card">
+      <p id="result-kicker" class="eyebrow">Партия завершена</p>
+      <h2 id="result-title">Результат</h2>
+      <p id="result-copy" class="result-copy"></p>
+      <div class="result-stats"><span>Победы <strong id="result-wins">0</strong></span><span>Партий <strong id="result-games">0</strong></span></div>
+      <div class="result-actions"><button id="play-again" class="primary-button" type="button">Ещё партия</button><button id="back-to-setup" class="secondary-button" type="button">К настройкам</button></div>
+    </div>
+  </section>
   <script src="script.js"></script>
 </body>
 </html>
