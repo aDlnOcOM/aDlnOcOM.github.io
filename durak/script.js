@@ -20,6 +20,7 @@
     { name: "Гроссмейстер", throwChance: 0.74, trumpPenalty: 34, transferBias: 0.7, reserve: 2 },
     { name: "Непобедимый", throwChance: 0.82, trumpPenalty: 40, transferBias: 0.88, reserve: 3 }
   ];
+  const STATS_KEY = "durak-player-stats-v1";
 
   const state = {
     config: null,
@@ -39,7 +40,9 @@
     round: 1,
     selectedCardId: null,
     log: [],
-    botTimer: null
+    botTimer: null,
+    stats: { games: 0, wins: 0, losses: 0, draws: 0 },
+    result: null
   };
 
   const $ = id => document.getElementById(id);
@@ -90,6 +93,23 @@
     };
   }
 
+  function restoreStats() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
+      state.stats = { ...state.stats, ...Object.fromEntries(Object.entries(saved).filter(([, value]) => Number.isInteger(value) && value >= 0)) };
+    } catch {
+      // Статистика необязательна для запуска партии.
+    }
+  }
+
+  function saveStats() {
+    try {
+      localStorage.setItem(STATS_KEY, JSON.stringify(state.stats));
+    } catch {
+      // В приватном режиме браузер может запретить сохранение.
+    }
+  }
+
   function drawCard(player) {
     const card = state.deck.pop();
     if (card) player.hand.push(card);
@@ -138,6 +158,7 @@
     state.log = [];
     state.round = 1;
     state.selectedCardId = null;
+    state.result = null;
     drawToLimit(0);
     state.attacker = lowestTrumpOwner();
     state.defender = nextPlayerWithCards(state.attacker);
@@ -146,6 +167,7 @@
     log(`Козырь: ${cardLabel(state.trumpCard)}. Первым атакует ${playerName(state.attacker)}.`);
     $("setup-screen").hidden = true;
     $("game-screen").hidden = false;
+    $("result-modal").hidden = true;
     render();
     continueGame();
   }
@@ -299,13 +321,36 @@
     if (state.deck.length) return false;
     const remaining = activePlayers();
     if (remaining.length > 1) return false;
+    if (!remaining.length) finishGame({ type: "draw", copy: "Колода пуста, и у всех игроков одновременно закончились карты." });
+    else if (state.config.finishRule === "draw" && state.players.filter(player => player.hand.length === 0).length > 1) finishGame({ type: "draw", copy: "Несколько игроков закончили партию одновременно." });
+    else if (remaining[0].index === humanIndex()) finishGame({ type: "loss", copy: "У соперников закончились карты, а у вас остались. В этой партии вы — дурак." });
+    else finishGame({ type: "win", copy: "У вас закончились карты раньше соперников. Отличная партия!" });
+    return true;
+  }
+
+  function finishGame(result) {
     state.phase = "finished";
     state.active = -1;
-    if (!remaining.length) log("Колода пуста, у всех закончились карты: ничья.");
-    else if (state.config.finishRule === "draw" && state.players.filter(player => player.hand.length === 0).length > 1) log("Ничья: несколько игроков закончили партию одновременно.");
-    else log(`Дурак — ${remaining[0].player.name}.`);
+    state.result = result;
+    state.stats.games += 1;
+    if (result.type === "win") state.stats.wins += 1;
+    if (result.type === "loss") state.stats.losses += 1;
+    if (result.type === "draw") state.stats.draws += 1;
+    saveStats();
+    log(result.type === "win" ? "Победа игрока." : result.type === "loss" ? "Игрок остался дураком." : "Партия завершилась ничьёй.");
     render();
-    return true;
+    showResult();
+  }
+
+  function showResult() {
+    const modal = $("result-modal");
+    const titles = { win: "Победа!", loss: "Вы — дурак", draw: "Ничья" };
+    $("result-kicker").textContent = state.result.type === "win" ? "Карты закончились" : "Партия завершена";
+    $("result-title").textContent = titles[state.result.type];
+    $("result-copy").textContent = state.result.copy;
+    $("result-wins").textContent = state.stats.wins;
+    $("result-games").textContent = state.stats.games;
+    modal.hidden = false;
   }
 
   function profile() { return AI_LEVELS[state.config.botLevel - 1]; }
@@ -467,7 +512,7 @@
   function render() {
     $("round-label").textContent = `Раунд ${state.round}`;
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
-    $("trump-card").textContent = `Козырь ${state.trumpCard ? cardLabel(state.trumpCard) : ""}`;
+    $("win-counter").textContent = `Победы: ${state.stats.wins}`;
     $("status").textContent = statusText();
     $("rule-summary").textContent = ruleSummary();
     renderOpponents();
@@ -480,11 +525,14 @@
   }
 
   $("setup-form").addEventListener("submit", event => { event.preventDefault(); startGame(); });
-  $("new-game").addEventListener("click", () => { clearTimeout(state.botTimer); $("game-screen").hidden = true; $("setup-screen").hidden = false; });
+  $("new-game").addEventListener("click", () => { clearTimeout(state.botTimer); $("result-modal").hidden = true; $("game-screen").hidden = true; $("setup-screen").hidden = false; });
+  $("play-again").addEventListener("click", startGame);
+  $("back-to-setup").addEventListener("click", () => { $("result-modal").hidden = true; $("game-screen").hidden = true; $("setup-screen").hidden = false; });
   $("pass-button").addEventListener("click", () => pass(humanIndex()));
   $("take-button").addEventListener("click", () => takeTable(humanIndex()));
   $("transfer-button").addEventListener("click", () => {
     const card = state.players[humanIndex()].hand.find(item => item.id === state.selectedCardId);
     if (card) transfer(humanIndex(), card);
   });
+  restoreStats();
 })();
