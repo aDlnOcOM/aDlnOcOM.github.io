@@ -45,6 +45,7 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .game-screen { display: grid; gap: 18px 26px; }
 .game-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .game-header h1 { font-size: clamp(30px, 6vw, 46px); }
+.rule-summary { margin: -9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .header-actions, .hand-heading, .action-bar { display: flex; align-items: center; gap: 10px; }
 .info-chip, .trump-card { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 5px 9px; color: var(--muted); background: var(--surface); border: 1px solid #3a527a; border-radius: 999px; font-size: 12px; font-weight: 750; }
 .trump-card { min-width: 54px; color: var(--accent); font-size: 17px; }

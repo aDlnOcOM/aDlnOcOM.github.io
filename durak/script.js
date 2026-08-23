@@ -403,6 +403,13 @@
     return `${playerName(state.active)} может подкинуть карту или пасовать.`;
   }
 
+  function ruleSummary() {
+    const variant = state.config.variant === "transfer" ? "переводной" : "подкидной";
+    const throwers = state.config.throwerScope === "all" ? "подкидывают все" : "подкидывают соседи";
+    const mode = state.config.fairPlay === "tricks" ? "с хитростями" : "честная игра";
+    return `${state.config.deckSize} карт · ${variant} · ${throwers} · ${mode} · ИИ ${state.config.botLevel}: ${profile().name}`;
+  }
+
   function renderOpponents() {
     const area = $("opponents");
     area.innerHTML = "";
@@ -462,6 +469,7 @@
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
     $("trump-card").textContent = `Козырь ${state.trumpCard ? cardLabel(state.trumpCard) : ""}`;
     $("status").textContent = statusText();
+    $("rule-summary").textContent = ruleSummary();
     renderOpponents();
     renderTable();
     renderHand();
