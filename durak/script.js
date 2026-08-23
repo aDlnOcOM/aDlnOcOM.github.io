@@ -42,7 +42,9 @@
     log: [],
     botTimer: null,
     stats: { games: 0, wins: 0, losses: 0, draws: 0 },
-    result: null
+    result: null,
+    nextPlace: 1,
+    roundExits: []
   };
 
   const $ = id => document.getElementById(id);
@@ -68,7 +70,8 @@
   function playerName(index) { return state.players[index]?.name || "Игрок"; }
   function humanIndex() { return 0; }
   function isHuman(index) { return index === humanIndex(); }
-  function activePlayers() { return state.players.map((player, index) => ({ player, index })).filter(({ player }) => player.hand.length > 0); }
+  function activePlayers() { return state.players.map((player, index) => ({ player, index })).filter(({ player }) => !player.out && player.hand.length > 0); }
+  function placeLabel(place) { return `${place}-е место`; }
 
   function sortHand(hand) {
     return [...hand].sort((first, second) => {
@@ -119,6 +122,7 @@
   function drawToLimit(startIndex) {
     for (let offset = 0; offset < state.players.length; offset += 1) {
       const player = state.players[(startIndex + offset) % state.players.length];
+      if (player.out) continue;
       while (player.hand.length < state.handLimit && state.deck.length) drawCard(player);
       player.hand = sortHand(player.hand);
     }
@@ -137,7 +141,7 @@
   function nextPlayerWithCards(fromIndex) {
     for (let step = 1; step <= state.players.length; step += 1) {
       const index = (fromIndex + step) % state.players.length;
-      if (state.players[index].hand.length) return index;
+      if (!state.players[index].out && state.players[index].hand.length) return index;
     }
     return fromIndex;
   }
@@ -152,7 +156,9 @@
     state.players = Array.from({ length: state.config.playerCount }, (_, index) => ({
       id: index,
       name: index === 0 ? "Вы" : `Бот ${index}`,
-      hand: []
+      hand: [],
+      out: false,
+      place: null
     }));
     state.table = [];
     state.discard = [];
@@ -160,6 +166,8 @@
     state.round = 1;
     state.selectedCardId = null;
     state.result = null;
+    state.nextPlace = 1;
+    state.roundExits = [];
     drawToLimit(0);
     state.attacker = lowestTrumpOwner();
     state.defender = nextPlayerWithCards(state.attacker);
@@ -211,6 +219,17 @@
     const hand = state.players[index].hand;
     const position = hand.findIndex(card => card.id === cardId);
     return position >= 0 ? hand.splice(position, 1)[0] : null;
+  }
+
+  function registerExit(index) {
+    const player = state.players[index];
+    if (state.deck.length || player.out || player.hand.length) return false;
+    player.out = true;
+    player.place = state.nextPlace;
+    state.nextPlace += 1;
+    state.roundExits.push(index);
+    log(`${playerName(index)} выходит из партии: ${placeLabel(player.place)}.`);
+    return true;
   }
 
   function visibleRect(rect, fallback) {
@@ -275,6 +294,7 @@
     animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
+    registerExit(index);
     state.table.push({ attack: played, defense: null });
     state.selectedCardId = null;
     log(`${playerName(index)} подкидывает ${cardLabel(played)}.`);
@@ -290,6 +310,7 @@
     animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
+    registerExit(index);
     attack.defense = played;
     state.selectedCardId = null;
     log(`${playerName(index)} отбивается картой ${cardLabel(played)}.`);
@@ -302,6 +323,7 @@
     animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
+    registerExit(index);
     const previousDefender = state.defender;
     state.table.push({ attack: played, defense: null });
     state.attacker = previousDefender;
@@ -367,8 +389,10 @@
       state.attacker = nextPlayerWithCards(state.defender);
     }
     state.table = [];
+    if (state.players[state.attacker].out) state.attacker = nextPlayerWithCards(state.attacker);
     drawToLimit(state.attacker);
     if (checkGameOver()) return;
+    state.roundExits = [];
     state.defender = nextPlayerWithCards(state.attacker);
     state.active = state.attacker;
     state.phase = "attack";
@@ -380,12 +404,24 @@
 
   function checkGameOver() {
     if (state.deck.length) return false;
+    if (state.config.finishRule === "draw" && state.roundExits.length > 1) {
+      const names = state.roundExits.map(playerName).join(" и ");
+      finishGame({ type: "draw", copy: `${names} завершили раунд без карт одновременно.` });
+      return true;
+    }
+    const human = state.players[humanIndex()];
+    if (human.out) {
+      const winner = human.place <= 3;
+      finishGame({
+        type: winner ? "win" : "loss",
+        copy: winner ? `У вас закончились карты. Вы заняли ${placeLabel(human.place)}!` : `Вы заняли ${placeLabel(human.place)}. В этой партии в зачёт идут только первые три места.`
+      });
+      return true;
+    }
     const remaining = activePlayers();
     if (remaining.length > 1) return false;
-    if (!remaining.length) finishGame({ type: "draw", copy: "Колода пуста, и у всех игроков одновременно закончились карты." });
-    else if (state.config.finishRule === "draw" && state.players.filter(player => player.hand.length === 0).length > 1) finishGame({ type: "draw", copy: "Несколько игроков закончили партию одновременно." });
-    else if (remaining[0].index === humanIndex()) finishGame({ type: "loss", copy: "У соперников закончились карты, а у вас остались. В этой партии вы — дурак." });
-    else finishGame({ type: "win", copy: "У вас закончились карты раньше соперников. Отличная партия!" });
+    if (!remaining.length) finishGame({ type: "draw", copy: "После окончания колоды карт не осталось ни у одного игрока." });
+    else finishGame({ type: "loss", copy: "Все соперники вышли из партии, а карты остались только у вас. Вы — дурак." });
     return true;
   }
 
@@ -523,9 +559,10 @@
     state.players.slice(1).forEach((player, index) => {
       const actualIndex = index + 1;
       const item = document.createElement("div");
-      item.className = `opponent${actualIndex === state.active ? " active" : ""}${actualIndex === state.defender ? " defender" : ""}`;
+      item.className = `opponent${player.out ? " out" : ""}${actualIndex === state.active ? " active" : ""}${actualIndex === state.defender ? " defender" : ""}`;
       item.dataset.playerIndex = actualIndex;
-      item.innerHTML = `<span class="opponent-name">${player.name}</span><span class="opponent-meta">${player.hand.length} карт · ИИ ${state.config.botLevel}</span>`;
+      const status = player.out ? `${placeLabel(player.place)} · вышел из игры` : `${player.hand.length} карт · ИИ ${state.config.botLevel}`;
+      item.innerHTML = `<span class="opponent-name">${player.name}</span><span class="opponent-meta">${status}</span>`;
       area.appendChild(item);
     });
   }
@@ -546,13 +583,19 @@
   function renderHand() {
     const hand = $("human-hand");
     hand.innerHTML = "";
-    state.players[humanIndex()].hand.forEach(card => {
+    const human = state.players[humanIndex()];
+    if (human.out) {
+      hand.innerHTML = `<p class="out-message">Вы вышли из партии · ${placeLabel(human.place)}</p>`;
+      $("hand-counter").textContent = placeLabel(human.place);
+      return;
+    }
+    human.hand.forEach(card => {
       const playable = humanCanUse(card);
       const element = cardElement(card, { button: true, playable, selected: state.selectedCardId === card.id, disabled: !playable });
       element.addEventListener("click", () => onHumanCard(card));
       hand.appendChild(element);
     });
-    $("hand-counter").textContent = `${state.players[humanIndex()].hand.length} карт`;
+    $("hand-counter").textContent = `${human.hand.length} карт`;
   }
 
   function renderActions() {
@@ -587,6 +630,8 @@
     $("round-label").textContent = `Раунд ${state.round}`;
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
     $("win-counter").textContent = `Победы: ${state.stats.wins}`;
+    const humanPlace = state.players[humanIndex()]?.place;
+    $("place-counter").textContent = humanPlace ? `Место: ${humanPlace}` : "Место: —";
     renderTrumpCard();
     $("status").textContent = statusText();
     $("rule-summary").textContent = ruleSummary();

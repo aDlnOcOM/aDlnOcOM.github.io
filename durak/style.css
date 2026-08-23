@@ -59,6 +59,7 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .opponent { min-width: 126px; padding: 10px 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid #314866; border-radius: 13px; }
 .opponent.active { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent); }
 .opponent.defender { border-color: var(--danger); }
+.opponent.out { opacity: .56; filter: saturate(.65); }
 .opponent-name { display: block; font-size: 13px; font-weight: 800; }
 .opponent-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 
@@ -86,6 +87,7 @@ button.card { text-align: left; }
 .human-hand .card.playable:hover { transform: translateY(-14px); box-shadow: 0 12px 18px rgba(0,0,0,.25); }
 .human-hand .card.selected { transform: translateY(-18px); outline: 3px solid var(--accent); z-index: 2; }
 .human-hand .card:disabled { cursor: default; opacity: .55; }
+.out-message { margin: auto; color: var(--success); font-size: 14px; font-weight: 800; }
 
 .action-bar { justify-content: center; }
 .action-bar button { min-width: 112px; color: var(--text); background: var(--surface-soft); border: 1px solid #46638d; }
