@@ -77,6 +77,9 @@ button.card { text-align: left; }
 .card-rank { font-size: 19px; }
 .card-suit { align-self: center; font-size: 38px; }
 .card-corner { align-self: flex-end; font-size: 18px; transform: rotate(180deg); }
+.card-flight { position: fixed; z-index: 30; margin: 0; pointer-events: none; transform-origin: center; transition: none; will-change: transform, opacity, filter; }
+.card-flight[data-origin="human"] { box-shadow: 0 12px 22px rgba(0,0,0,.32), 0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent); }
+.card-flight[data-origin="bot"] { box-shadow: 0 12px 22px rgba(0,0,0,.32), 0 0 0 2px color-mix(in srgb, var(--danger) 30%, transparent); }
 .human-hand { display: flex; align-items: end; justify-content: center; min-height: 126px; padding: 12px; overflow-x: auto; }
 .human-hand .card { flex: 0 0 auto; margin-left: -24px; }
 .human-hand .card:first-child { margin-left: 0; }

@@ -47,6 +47,7 @@
 
   const $ = id => document.getElementById(id);
   const nextFrame = callback => window.requestAnimationFrame ? window.requestAnimationFrame(callback) : setTimeout(callback, 0);
+  const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   function createDeck(size) {
     return RANKS[size].flatMap(rank => SUITS.map(suit => ({ id: `${rank}-${suit}`, rank, suit })));
@@ -212,8 +213,66 @@
     return position >= 0 ? hand.splice(position, 1)[0] : null;
   }
 
+  function visibleRect(rect, fallback) {
+    const isVisible = rect && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight;
+    return isVisible ? rect : fallback;
+  }
+
+  function cardFlightSource(card, index) {
+    if (isHuman(index)) {
+      const cardNode = [...$("human-hand").querySelectorAll("[data-card-id]")].find(node => node.dataset.cardId === card.id);
+      return visibleRect(cardNode?.getBoundingClientRect(), $("human-hand").getBoundingClientRect());
+    }
+    const opponent = $("opponents").querySelector(`[data-player-index="${index}"]`);
+    return visibleRect(opponent?.getBoundingClientRect(), $("opponents").getBoundingClientRect());
+  }
+
+  function cardFlightTarget() {
+    const table = $("table").getBoundingClientRect();
+    const offset = ((state.table.length % 4) - 1.5) * 24;
+    return {
+      x: table.left + table.width / 2 + offset,
+      y: table.top + table.height / 2 + (state.table.length % 2 ? 11 : -11)
+    };
+  }
+
+  function animatePlayedCard(card, index) {
+    if (reducedMotion()) return;
+    const source = cardFlightSource(card, index);
+    if (!source) return;
+    const target = cardFlightTarget();
+    const startX = source.left + source.width / 2;
+    const startY = source.top + source.height / 2;
+    const flight = cardElement(card);
+    const scale = Math.min(1, Math.max(.72, source.width / 76));
+    const rotation = isHuman(index) ? -7 : 7;
+    flight.classList.add("card-flight");
+    flight.dataset.origin = isHuman(index) ? "human" : "bot";
+    flight.setAttribute("aria-hidden", "true");
+    flight.style.left = `${startX - 38}px`;
+    flight.style.top = `${startY - 54}px`;
+    flight.style.transform = `scale(${scale}) rotate(${rotation}deg)`;
+    document.body.appendChild(flight);
+
+    const finish = () => flight.remove();
+    const frames = [
+      { transform: `scale(${scale}) rotate(${rotation}deg)`, opacity: .98, filter: "brightness(1)" },
+      { transform: `translate(${(target.x - startX) * .45}px, ${(target.y - startY) * .15 - 42}px) scale(${scale * 1.08}) rotate(${rotation * .5}deg)`, opacity: 1, offset: .48 },
+      { transform: `translate(${target.x - startX}px, ${target.y - startY}px) scale(${scale * .88}) rotate(0deg)`, opacity: .92, filter: "brightness(1.08)" }
+    ];
+    if (typeof flight.animate === "function") {
+      const animation = flight.animate(frames, { duration: 420, easing: "cubic-bezier(.2,.78,.18,1)", fill: "forwards" });
+      animation.addEventListener("finish", finish, { once: true });
+      animation.addEventListener("cancel", finish, { once: true });
+    } else {
+      nextFrame(() => { flight.style.transform = frames[2].transform; flight.style.opacity = "0"; });
+      setTimeout(finish, 440);
+    }
+  }
+
   function playAttack(index, card) {
     if (index !== state.active || !canAttack(card)) return;
+    animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
     state.table.push({ attack: played, defense: null });
@@ -228,6 +287,7 @@
   function playDefense(index, card) {
     const attack = firstUncovered();
     if (index !== state.defender || state.phase !== "defend" || !attack || !canDefend(card, attack.attack)) return;
+    animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
     attack.defense = played;
@@ -239,6 +299,7 @@
 
   function transfer(index, card) {
     if (index !== state.defender || !canTransfer(card, index)) return;
+    animatePlayedCard(card, index);
     const played = removeCard(index, card.id);
     if (!played) return;
     const previousDefender = state.defender;
@@ -422,6 +483,7 @@
     if (options.button) element.type = "button";
     if (options.disabled) element.disabled = true;
     element.setAttribute("aria-label", cardLabel(card));
+    element.dataset.cardId = card.id;
     element.innerHTML = `<span class="card-rank">${card.rank}</span><span class="card-suit">${card.suit}</span><span class="card-corner">${card.rank}</span>`;
     return element;
   }
@@ -462,6 +524,7 @@
       const actualIndex = index + 1;
       const item = document.createElement("div");
       item.className = `opponent${actualIndex === state.active ? " active" : ""}${actualIndex === state.defender ? " defender" : ""}`;
+      item.dataset.playerIndex = actualIndex;
       item.innerHTML = `<span class="opponent-name">${player.name}</span><span class="opponent-meta">${player.hand.length} карт · ИИ ${state.config.botLevel}</span>`;
       area.appendChild(item);
     });
