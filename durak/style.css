@@ -49,8 +49,10 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .header-actions, .hand-heading, .action-bar { display: flex; align-items: center; gap: 10px; }
 .info-chip { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 5px 9px; color: var(--muted); background: var(--surface); border: 1px solid #3a527a; border-radius: 999px; font-size: 12px; font-weight: 750; }
 .trump-card { display: grid; grid-template-columns: auto 34px; align-items: center; gap: 5px; min-width: 92px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
-.trump-card-face { display: grid; place-items: center; width: 34px; height: 45px; color: var(--card-text); background: linear-gradient(135deg, white, #dce6f4); border: 1px solid #c5d0e1; border-radius: 5px; box-shadow: 0 4px 7px rgba(0,0,0,.22); font-size: 18px; font-weight: 900; line-height: 1; }
+.trump-card-face { display: grid; place-items: center; width: 34px; height: 45px; color: var(--card-text); background: linear-gradient(135deg, white, #dce6f4); border: 1px solid #c5d0e1; border-radius: 5px; box-shadow: 0 4px 7px rgba(0,0,0,.22); font-size: 18px; font-weight: 900; line-height: .85; }
 .trump-card-face.red { color: var(--red); }
+.trump-rank, .trump-suit { display: block; }
+.trump-suit { font-size: 16px; }
 .icon-button { width: 36px; height: 36px; color: var(--text); background: var(--surface-soft); border: 1px solid #46638d; border-radius: 10px; }
 
 .opponents { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }

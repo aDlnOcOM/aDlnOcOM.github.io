@@ -509,10 +509,22 @@
     hint.textContent = playable.length ? `Хитрость: доступно ходов — ${playable.length}.` : "Хитрость: подходящей карты нет.";
   }
 
+  function renderTrumpCard() {
+    const container = $("trump-card");
+    if (!state.trumpCard) {
+      container.textContent = "Козырь";
+      return;
+    }
+    const red = RED_SUITS.has(state.trumpCard.suit) ? " red" : "";
+    container.setAttribute("aria-label", `Козырь: ${cardLabel(state.trumpCard)}`);
+    container.innerHTML = `<span>Козырь</span><span class="trump-card-face${red}"><span class="trump-rank">${state.trumpCard.rank}</span><span class="trump-suit">${state.trumpCard.suit}</span></span>`;
+  }
+
   function render() {
     $("round-label").textContent = `Раунд ${state.round}`;
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
     $("win-counter").textContent = `Победы: ${state.stats.wins}`;
+    renderTrumpCard();
     $("status").textContent = statusText();
     $("rule-summary").textContent = ruleSummary();
     renderOpponents();
