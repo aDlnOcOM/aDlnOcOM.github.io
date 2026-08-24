@@ -626,12 +626,21 @@
     container.innerHTML = `<span>Козырь</span><span class="trump-card-face${red}"><span class="trump-rank">${state.trumpCard.rank}</span><span class="trump-suit">${state.trumpCard.suit}</span></span>`;
   }
 
+  function renderDeckStack() {
+    const stack = $("deck-stack");
+    const empty = state.deck.length === 0;
+    stack.classList.toggle("empty", empty);
+    stack.setAttribute("aria-label", empty ? "Колода пуста" : `В колоде ${state.deck.length} карт`);
+    stack.innerHTML = empty ? `<span class="deck-empty">Колода<br>пуста</span>` : `<span class="deck-back" aria-hidden="true"><span class="deck-count">${state.deck.length}</span></span>`;
+  }
+
   function render() {
     $("round-label").textContent = `Раунд ${state.round}`;
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
     $("win-counter").textContent = `Победы: ${state.stats.wins}`;
     const humanPlace = state.players[humanIndex()]?.place;
     $("place-counter").textContent = humanPlace ? `Место: ${humanPlace}` : "Место: —";
+    renderDeckStack();
     renderTrumpCard();
     $("status").textContent = statusText();
     $("rule-summary").textContent = ruleSummary();

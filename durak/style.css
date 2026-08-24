@@ -48,11 +48,11 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .rule-summary { margin: -9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .header-actions, .hand-heading, .action-bar { display: flex; align-items: center; gap: 10px; }
 .info-chip { display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 5px 9px; color: var(--muted); background: var(--surface); border: 1px solid #3a527a; border-radius: 999px; font-size: 12px; font-weight: 750; }
-.trump-card { display: grid; grid-template-columns: auto 34px; align-items: center; gap: 5px; min-width: 92px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
-.trump-card-face { display: grid; place-items: center; width: 34px; height: 45px; color: var(--card-text); background: linear-gradient(135deg, white, #dce6f4); border: 1px solid #c5d0e1; border-radius: 5px; box-shadow: 0 4px 7px rgba(0,0,0,.22); font-size: 18px; font-weight: 900; line-height: .85; }
+.trump-card { display: grid; grid-template-rows: auto 1fr; justify-items: center; gap: 5px; width: 76px; color: color-mix(in srgb, white 75%, transparent); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.trump-card-face { display: grid; place-items: center; width: 76px; height: 108px; color: var(--card-text); background: linear-gradient(135deg, white, #dce6f4); border: 1px solid #c5d0e1; border-radius: 9px; box-shadow: 0 5px 10px rgba(0,0,0,.25); font-size: 31px; font-weight: 900; line-height: .85; }
 .trump-card-face.red { color: var(--red); }
 .trump-rank, .trump-suit { display: block; }
-.trump-suit { font-size: 16px; }
+.trump-suit { font-size: 27px; }
 .icon-button { width: 36px; height: 36px; color: var(--text); background: var(--surface-soft); border: 1px solid #46638d; border-radius: 10px; }
 
 .opponents { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
@@ -64,10 +64,21 @@ select { width: 100%; min-height: 43px; padding: 9px 11px; color: var(--text); b
 .opponent-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 
 .table-area { position: relative; display: grid; min-height: min(40vw, 360px); padding: clamp(16px, 3vw, 32px); overflow: hidden; background: radial-gradient(circle at center, #247452, var(--table)); border: 2px solid var(--table-edge); border-radius: 26px; box-shadow: inset 0 0 50px rgba(0,0,0,.18), 0 18px 46px var(--shadow); }
+.stock-zone { position: absolute; z-index: 2; bottom: clamp(16px, 3vw, 28px); left: clamp(14px, 2.5vw, 28px); display: flex; align-items: end; gap: 13px; }
+.deck-stack { position: relative; display: grid; place-items: center; width: 76px; height: 131px; }
+.deck-stack::before, .deck-stack::after { content: ""; position: absolute; width: 76px; height: 108px; border: 1px solid #b8c8dc; border-radius: 9px; background: #1e3857; box-shadow: 0 4px 8px rgba(0,0,0,.22); }
+.deck-stack::before { transform: translate(7px, -4px); }
+.deck-stack::after { transform: translate(3px, -2px); }
+.deck-back { position: relative; z-index: 1; display: grid; place-items: center; width: 76px; height: 108px; color: #f9f5df; background: repeating-linear-gradient(45deg, #254867 0 5px, #1b304b 5px 10px); border: 2px solid #d9b95c; border-radius: 9px; box-shadow: 0 7px 12px rgba(0,0,0,.28); font-size: 24px; font-weight: 900; }
+.deck-back::before { content: ""; position: absolute; inset: 6px; border: 1px solid color-mix(in srgb, #fff 66%, transparent); border-radius: 4px; }
+.deck-count { position: relative; z-index: 1; display: grid; place-items: center; min-width: 33px; min-height: 33px; padding: 4px; background: #10233a; border: 1px solid #f0d274; border-radius: 50%; }
+.deck-stack.empty::before, .deck-stack.empty::after { display: none; }
+.deck-stack.empty { height: 131px; border: 1px dashed color-mix(in srgb, white 42%, transparent); border-radius: 9px; }
+.deck-empty { color: color-mix(in srgb, white 65%, transparent); font-size: 11px; font-weight: 800; text-align: center; }
 .status, .hint { z-index: 1; margin: 0; text-align: center; }
 .status { align-self: start; font-weight: 800; }
 .hint { justify-self: center; padding: 6px 10px; color: #17392b; background: color-mix(in srgb, var(--success) 85%, white); border-radius: 999px; font-size: 12px; font-weight: 800; }
-.table { display: flex; flex-wrap: wrap; place-content: center; gap: 12px 18px; min-height: 150px; }
+.table { display: flex; flex-wrap: wrap; place-content: center; gap: 12px 18px; min-height: 150px; padding-left: clamp(0px, 14vw, 170px); }
 .table-empty { align-self: end; color: color-mix(in srgb, white 70%, transparent); text-align: center; font-size: 13px; }
 .battle-pair { position: relative; width: 84px; height: 119px; }
 .battle-pair .card + .card { position: absolute; right: -11px; bottom: -9px; z-index: 1; }
@@ -116,12 +127,11 @@ button.card { text-align: left; }
   .wide-control { grid-column: auto; }
   .game-header { align-items: start; }
   .header-actions { flex-wrap: wrap; justify-content: end; }
-  .trump-card { grid-template-columns: auto 29px; min-width: 78px; }
-  .trump-card-face { width: 29px; height: 38px; font-size: 15px; }
   .opponents { justify-content: start; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
   .opponent { min-width: 136px; }
   .table-area { min-height: 310px; padding: 18px 10px; border-radius: 18px; }
-  .table { gap: 10px 13px; }
+  .stock-zone { bottom: 13px; left: 10px; gap: 8px; transform: scale(.72); transform-origin: bottom left; }
+  .table { gap: 10px 13px; min-height: 220px; padding: 0 0 100px; }
   .battle-pair { width: 68px; height: 100px; }
   .card { width: 62px; height: 90px; padding: 6px; }
   .card-rank, .card-corner { font-size: 16px; }
