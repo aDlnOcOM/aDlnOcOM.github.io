@@ -289,6 +289,42 @@
     }
   }
 
+  function animateTableCleanup() {
+    if (reducedMotion()) return;
+    const target = $("discard-stack").getBoundingClientRect();
+    const targetX = target.left + target.width / 2;
+    const targetY = target.top + target.height / 2;
+    [...$("table").querySelectorAll(".card")].forEach((source, index) => {
+      const sourceRect = source.getBoundingClientRect();
+      if (!sourceRect.width || !sourceRect.height) return;
+      const startX = sourceRect.left + sourceRect.width / 2;
+      const startY = sourceRect.top + sourceRect.height / 2;
+      const flight = source.cloneNode(true);
+      const scale = Math.min(1, Math.max(.72, sourceRect.width / 76));
+      flight.classList.add("card-flight", "card-cleanup-flight");
+      flight.dataset.origin = "cleanup";
+      flight.setAttribute("aria-hidden", "true");
+      flight.style.left = `${startX - 38}px`;
+      flight.style.top = `${startY - 54}px`;
+      document.body.appendChild(flight);
+
+      const finish = () => flight.remove();
+      const frames = [
+        { transform: `scale(${scale}) rotate(${index % 2 ? 4 : -4}deg)`, opacity: .98 },
+        { transform: `translate(${(targetX - startX) * .62}px, ${(targetY - startY) * .36 - 16}px) scale(${scale * .88}) rotate(${index % 2 ? -6 : 6}deg)`, opacity: 1, offset: .58 },
+        { transform: `translate(${targetX - startX}px, ${targetY - startY}px) scale(${scale * .55}) rotateY(88deg)`, opacity: .2 }
+      ];
+      if (typeof flight.animate === "function") {
+        const animation = flight.animate(frames, { duration: 390, delay: index * 75, easing: "cubic-bezier(.24,.76,.22,1)", fill: "forwards" });
+        animation.addEventListener("finish", finish, { once: true });
+        animation.addEventListener("cancel", finish, { once: true });
+      } else {
+        nextFrame(() => { flight.style.transform = frames[2].transform; flight.style.opacity = "0"; });
+        setTimeout(finish, 460 + index * 75);
+      }
+    });
+  }
+
   function playAttack(index, card) {
     if (index !== state.active || !canAttack(card)) return;
     animatePlayedCard(card, index);
@@ -314,6 +350,7 @@
     attack.defense = played;
     state.selectedCardId = null;
     log(`${playerName(index)} отбивается картой ${cardLabel(played)}.`);
+    render();
     if (state.table.length >= maximumAttacks()) finishRound(true);
     else beginThrowing();
   }
@@ -386,6 +423,8 @@
   function finishRound(defended) {
     if (defended) {
       state.discard.push(...allTableCards());
+      renderDiscardStack();
+      animateTableCleanup();
       state.attacker = nextPlayerWithCards(state.defender);
     }
     state.table = [];
@@ -634,6 +673,14 @@
     stack.innerHTML = empty ? `<span class="deck-empty">Колода<br>пуста</span>` : `<span class="deck-back" aria-hidden="true"><span class="deck-count">${state.deck.length}</span></span>`;
   }
 
+  function renderDiscardStack() {
+    const stack = $("discard-stack");
+    const empty = state.discard.length === 0;
+    stack.classList.toggle("empty", empty);
+    stack.setAttribute("aria-label", empty ? "Стопка бито пуста" : `В стопке бито ${state.discard.length} карт`);
+    stack.innerHTML = empty ? `<span class="discard-empty">Пока<br>пусто</span>` : `<span class="discard-back" aria-hidden="true"><span class="discard-count">${state.discard.length}</span></span>`;
+  }
+
   function render() {
     $("round-label").textContent = `Раунд ${state.round}`;
     $("deck-counter").textContent = `Колода: ${state.deck.length}`;
@@ -641,6 +688,7 @@
     const humanPlace = state.players[humanIndex()]?.place;
     $("place-counter").textContent = humanPlace ? `Место: ${humanPlace}` : "Место: —";
     renderDeckStack();
+    renderDiscardStack();
     renderTrumpCard();
     $("status").textContent = statusText();
     $("rule-summary").textContent = ruleSummary();
