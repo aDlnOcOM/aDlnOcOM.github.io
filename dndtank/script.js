@@ -135,6 +135,163 @@
   });
   ui.difficulty.addEventListener("change", updateMenu);
 
+  const obstacles = [
+    { x: 160, y: 120, width: 142, height: 46 }, { x: 626, y: 112, width: 115, height: 58 },
+    { x: 388, y: 238, width: 86, height: 108 }, { x: 106, y: 438, width: 135, height: 42 },
+    { x: 676, y: 424, width: 165, height: 45 }, { x: 760, y: 265, width: 64, height: 105 },
+  ];
+  const game = {
+    active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [],
+    keys: new Set(), aim: { x: arena.width * .5, y: arena.height * .5 }, lastTime: 0,
+    round: 0, animationFrame: 0, shake: 0,
+  };
+
+  function createTank(spec, x, y, enemy = false) {
+    const source = enemy ? { ...spec, barrels: spec.alex ? 3 : spec.body === "twin" ? 2 : 1, bullet: spec.alex ? "nova" : "plasma", bulletSpeed: spec.alex ? 390 : 315 } : spec;
+    return {
+      ...source, x, y, enemy, maxHp: source.hp, hp: source.hp, angle: enemy ? Math.PI : 0,
+      bodyAngle: enemy ? Math.PI : 0, radius: source.body === "heavy" || source.body === "super" ? 29 : 24,
+      cooldown: 0, hurt: 0, lastShot: 0, strafeSign: Math.random() > .5 ? 1 : -1,
+    };
+  }
+
+  function drawArenaBackground() {
+    const horizon = 184;
+    const gradient = ctx.createLinearGradient(0, 0, 0, arena.height);
+    gradient.addColorStop(0, "#17034b");
+    gradient.addColorStop(.46, "#381074");
+    gradient.addColorStop(.465, "#1b073e");
+    gradient.addColorStop(1, "#070015");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, arena.width, arena.height);
+
+    ctx.save();
+    ctx.translate(arena.width * .5, 94);
+    const sun = ctx.createLinearGradient(0, -72, 0, 72);
+    sun.addColorStop(0, "#ffd86d");
+    sun.addColorStop(.5, "#ff69bd");
+    sun.addColorStop(1, "#b234e6");
+    ctx.fillStyle = sun;
+    ctx.beginPath();
+    ctx.arc(0, 0, 77, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(41, 7, 84, .5)";
+    ctx.lineWidth = 4;
+    for (let y = -29; y < 74; y += 14) {
+      ctx.beginPath();
+      ctx.moveTo(-76, y); ctx.lineTo(76, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = "#160331";
+    ctx.beginPath();
+    ctx.moveTo(0, horizon); ctx.lineTo(128, 88); ctx.lineTo(242, horizon); ctx.lineTo(382, 106); ctx.lineTo(511, horizon); ctx.lineTo(679, 78); ctx.lineTo(839, horizon); ctx.lineTo(960, 111); ctx.lineTo(960, horizon + 20); ctx.lineTo(0, horizon + 20); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(72,246,255,.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, horizon); ctx.lineTo(arena.width, horizon); ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, horizon, arena.width, arena.height - horizon); ctx.clip();
+    ctx.strokeStyle = "rgba(255,84,184,.28)";
+    ctx.lineWidth = 1;
+    for (let y = horizon + 14; y < arena.height + 90; y += 24) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(arena.width, y); ctx.stroke();
+    }
+    for (let x = -300; x < arena.width + 310; x += 66) {
+      ctx.beginPath(); ctx.moveTo(arena.width * .5, horizon); ctx.lineTo(x, arena.height); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawObstacle(obstacle) {
+    ctx.save();
+    ctx.shadowColor = "#a657ff";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#21064b";
+    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(112,248,255,.75)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(obstacle.x + 1, obstacle.y + 1, obstacle.width - 2, obstacle.height - 2);
+    ctx.fillStyle = "rgba(255,84,184,.33)";
+    ctx.fillRect(obstacle.x + 8, obstacle.y + 8, obstacle.width - 16, 5);
+    ctx.restore();
+  }
+
+  function drawTank(tank, alpha = 1) {
+    const color = tank.color || "#ff64bd";
+    const width = tank.body === "heavy" || tank.body === "super" || tank.body === "sturmtiger" ? 51 : 43;
+    const length = tank.body === "rail" ? 62 : tank.body === "super" ? 54 : 49;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(tank.x, tank.y);
+    ctx.rotate(tank.bodyAngle || tank.angle);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = tank.hurt > 0 ? 28 : 13;
+    ctx.fillStyle = "#100323";
+    ctx.fillRect(-length / 2, -width / 2 - 5, length, 10);
+    ctx.fillRect(-length / 2, width / 2 - 5, length, 10);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha * .78;
+    ctx.fillRect(-length / 2 + 5, -width / 2 + 6, length - 10, width - 12);
+    ctx.fillStyle = "#2b0b58";
+    ctx.fillRect(-length / 2 + 10, -width / 2 + 11, length - 20, width - 22);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-length / 2 + 6, -width / 2 + 7, length - 12, width - 14);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(tank.x, tank.y);
+    ctx.rotate(tank.angle);
+    const turret = tank.body === "super" ? 29 : tank.body === "heavy" ? 26 : 22;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = "#25064d";
+    ctx.beginPath(); ctx.arc(0, 0, turret, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.shadowBlur = 0;
+    const gap = 8;
+    for (let barrel = 0; barrel < tank.barrels; barrel += 1) {
+      const offset = (barrel - (tank.barrels - 1) / 2) * gap;
+      ctx.fillStyle = color;
+      ctx.fillRect(turret - 4, offset - 3, tank.body === "rail" ? 57 : tank.body === "sturmtiger" ? 37 : 38, 6);
+      ctx.fillStyle = "#ffe8ff";
+      ctx.fillRect(turret + 22, offset - 1.5, tank.body === "rail" ? 34 : 12, 3);
+    }
+    ctx.fillStyle = tank.enemy ? "#ffdee9" : "#d9fbff";
+    ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShowcase() {
+    const player = createTank(getTank(), 268, 365);
+    const enemy = createTank(difficulties[ui.difficulty.value], 708, 305, true);
+    enemy.angle = Math.PI * .82;
+    drawTank(player, .92);
+    drawTank(enemy, .92);
+  }
+
+  function render() {
+    drawArenaBackground();
+    obstacles.forEach(drawObstacle);
+    if (game.active) {
+      drawTank(game.player);
+      drawTank(game.enemy);
+    } else {
+      drawShowcase();
+    }
+  }
+
+  function animationLoop(timestamp) {
+    game.lastTime = game.lastTime || timestamp;
+    render();
+    game.animationFrame = requestAnimationFrame(animationLoop);
+  }
+
   updateMenu();
   renderGarage();
+  game.animationFrame = requestAnimationFrame(animationLoop);
 })();
