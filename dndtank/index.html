@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#160a39" />
+    <title>Денди танчики — Vaporwave</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="menu-panel" aria-label="Меню игры">
+        <div class="brand-lockup">
+          <p class="eyebrow">ARCADE // 198X</p>
+          <h1>Денди<br /><span>танчики</span></h1>
+          <p class="tagline">Неоновый танковый рейд</p>
+        </div>
+
+        <div class="wallet" aria-live="polite">
+          <span class="wallet-label">Банк</span>
+          <strong id="coins">0</strong>
+          <span class="coin-symbol">◈</span>
+        </div>
+
+        <div class="menu-grid">
+          <label class="field-label" for="difficulty">
+            <span>Уровень противника</span>
+            <select id="difficulty">
+              <option value="easy">Лёгкий · 1 ◈</option>
+              <option value="medium">Средний · 10 ◈</option>
+              <option value="hard">Сложный · 75 ◈</option>
+              <option value="extreme">Экстремальный · 200 ◈</option>
+              <option value="alex">Алекс · 1000 ◈</option>
+            </select>
+          </label>
+          <div class="chosen-tank" id="chosenTank" aria-live="polite"></div>
+        </div>
+
+        <div class="menu-actions">
+          <button class="primary-button" id="playButton" type="button">В бой <span>↗</span></button>
+          <button class="secondary-button" id="garageButton" type="button">Гараж танков</button>
+        </div>
+
+        <p class="controls-hint"><kbd>WASD</kbd> движение <kbd>Мышь</kbd> башня <kbd>ЛКМ</kbd> огонь</p>
+      </section>
+
+      <section class="arena-panel" aria-label="Игровая арена">
+        <div class="arena-header">
+          <div><span class="hud-label">Противник</span><strong id="enemyName">Кадет-соперник</strong></div>
+          <div class="round-pill">РАУНД <strong id="roundNumber">01</strong></div>
+          <div class="player-hud"><span class="hud-label">Ваш танк</span><strong id="playerName">Стартовый</strong></div>
+        </div>
+        <div class="game-stage" id="gameStage">
+          <canvas id="gameCanvas" width="960" height="620" aria-label="Поле боя"></canvas>
+          <div class="stage-overlay" id="stageOverlay">
+            <p class="eyebrow">ВЫБЕРИТЕ РЕЖИМ</p>
+            <h2>АРЕНА<br /><span>ГОТОВА</span></h2>
+            <p>Откройте гараж, выберите танк<br />и отправляйтесь за монетами.</p>
+          </div>
+          <div class="battle-status" id="battleStatus" aria-live="polite"></div>
+          <div class="crosshair" aria-hidden="true"></div>
+        </div>
+        <div class="arena-footer">
+          <div class="health-row"><span>КОРПУС</span><div class="meter"><i id="playerHealth"></i></div><strong id="playerHealthText">100 / 100</strong></div>
+          <div class="health-row enemy-health"><span>ВРАГ</span><div class="meter"><i id="enemyHealth"></i></div><strong id="enemyHealthText">—</strong></div>
+          <div class="reload-row"><span>ПЕРЕЗАРЯДКА</span><div class="reload-meter"><i id="reloadMeter"></i></div></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="garage-dialog" id="garageDialog">
+      <div class="dialog-header">
+        <div><p class="eyebrow">ВЫБОР КОРПУСА</p><h2>Гараж</h2></div>
+        <button class="icon-button" id="closeGarage" type="button" aria-label="Закрыть гараж">×</button>
+      </div>
+      <p class="dialog-copy">Каждый корпус меняет ритм боя: броню, мобильность, число стволов, боезапас и вид снаряда.</p>
+      <div class="tank-grid" id="tankGrid"></div>
+    </dialog>
+
+    <dialog class="result-dialog" id="resultDialog">
+      <p class="eyebrow" id="resultEyebrow">АРЕНА ЗАВЕРШЕНА</p>
+      <h2 id="resultTitle">ПОБЕДА</h2>
+      <p id="resultText"></p>
+      <button class="primary-button" id="resultButton" type="button">Вернуться в ангар</button>
+    </dialog>
+
+    <script src="script.js"></script>
+  </body>
+</html>
