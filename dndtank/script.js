@@ -337,12 +337,128 @@
     flashStatus(`${difficulty.label.toUpperCase()} // НАЧАЛО`);
   }
 
+  function pointInsideObstacle(x, y) {
+    return obstacles.some((obstacle) => x > obstacle.x && x < obstacle.x + obstacle.width && y > obstacle.y && y < obstacle.y + obstacle.height);
+  }
+
+  function spawnParticles(x, y, color, amount = 8, speed = 90) {
+    for (let index = 0; index < amount; index += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = speed * (.35 + Math.random());
+      game.particles.push({ x, y, vx: Math.cos(angle) * velocity, vy: Math.sin(angle) * velocity, color, life: .28 + Math.random() * .35, maxLife: .65, size: 2 + Math.random() * 4 });
+    }
+  }
+
+  function fireTank(tank, forcedAngle = tank.angle) {
+    if (tank.cooldown > 0) return false;
+    const spread = tank.bullet === "flame" ? .21 : tank.bullet === "nova" ? .075 : .028;
+    const count = tank.bullet === "flame" ? 5 : tank.barrels;
+    const range = tank.bullet === "flame" ? .64 : tank.bullet === "rail" ? .78 : 1;
+    const projectileSize = tank.bullet === "rocket" || tank.bullet === "shell" ? 8 : tank.bullet === "nova" ? 6 : 4;
+    const muzzle = tank.radius + (tank.body === "rail" ? 43 : 26);
+    tank.cooldown = tank.reload;
+    tank.lastShot = performance.now();
+    for (let index = 0; index < count; index += 1) {
+      const offset = (index - (count - 1) / 2) * (tank.bullet === "flame" ? .09 : spread);
+      const angle = forcedAngle + offset + (Math.random() - .5) * spread;
+      const speed = tank.bulletSpeed * (.88 + Math.random() * .12);
+      game.projectiles.push({
+        owner: tank.enemy ? "enemy" : "player", x: tank.x + Math.cos(angle) * muzzle, y: tank.y + Math.sin(angle) * muzzle,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, angle, damage: tank.damage * (count > 1 && tank.bullet !== "flame" ? .92 : 1),
+        radius: projectileSize, type: tank.bullet, color: tank.color, life: (tank.bullet === "rail" ? 1.2 : 2.4) * range,
+        explosion: tank.bullet === "rocket" ? 58 : tank.bullet === "shell" ? 37 : tank.bullet === "nova" ? 28 : 0,
+      });
+    }
+    spawnParticles(tank.x + Math.cos(forcedAngle) * muzzle, tank.y + Math.sin(forcedAngle) * muzzle, tank.color, tank.bullet === "rail" ? 14 : 6, 75);
+    return true;
+  }
+
+  function damageTank(tank, amount, projectile) {
+    tank.hp = Math.max(0, tank.hp - amount);
+    tank.hurt = .16;
+    game.shake = Math.max(game.shake, projectile.explosion ? 10 : 3);
+    spawnParticles(tank.x, tank.y, projectile.color, projectile.explosion ? 18 : 8, projectile.explosion ? 160 : 70);
+    if (tank.hp <= 0) {
+      tank.destroyed = true;
+      spawnParticles(tank.x, tank.y, "#ffe47c", 30, 230);
+    }
+  }
+
+  function explodeProjectile(projectile, directTarget) {
+    spawnParticles(projectile.x, projectile.y, projectile.color, projectile.explosion ? 18 : 5, projectile.explosion ? 150 : 60);
+    if (!projectile.explosion) return;
+    const target = projectile.owner === "player" ? game.enemy : game.player;
+    if (!target || target === directTarget || target.destroyed) return;
+    const distance = Math.hypot(target.x - projectile.x, target.y - projectile.y);
+    if (distance < projectile.explosion + target.radius) damageTank(target, projectile.damage * Math.max(.25, 1 - distance / (projectile.explosion + target.radius)), projectile);
+  }
+
+  function updateProjectiles(delta) {
+    for (let index = game.projectiles.length - 1; index >= 0; index -= 1) {
+      const projectile = game.projectiles[index];
+      projectile.x += projectile.vx * delta;
+      projectile.y += projectile.vy * delta;
+      projectile.life -= delta;
+      const target = projectile.owner === "player" ? game.enemy : game.player;
+      const hitTank = target && !target.destroyed && Math.hypot(projectile.x - target.x, projectile.y - target.y) < target.radius + projectile.radius;
+      if (hitTank) damageTank(target, projectile.damage, projectile);
+      const expired = projectile.life <= 0 || projectile.x < 0 || projectile.x > arena.width || projectile.y < 0 || projectile.y > arena.height || pointInsideObstacle(projectile.x, projectile.y);
+      if (hitTank || expired) {
+        explodeProjectile(projectile, hitTank ? target : null);
+        game.projectiles.splice(index, 1);
+      }
+    }
+    for (let index = game.particles.length - 1; index >= 0; index -= 1) {
+      const particle = game.particles[index];
+      particle.x += particle.vx * delta;
+      particle.y += particle.vy * delta;
+      particle.vx *= .94; particle.vy *= .94; particle.life -= delta;
+      if (particle.life <= 0) game.particles.splice(index, 1);
+    }
+  }
+
+  function drawProjectile(projectile) {
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(projectile.angle);
+    ctx.shadowColor = projectile.color;
+    ctx.shadowBlur = projectile.type === "rail" ? 22 : 12;
+    ctx.fillStyle = projectile.color;
+    if (projectile.type === "rail") ctx.fillRect(-15, -2, 30, 4);
+    else if (projectile.type === "flame") { ctx.rotate(Math.random() * .2); ctx.fillRect(-7, -3, 14, 6); }
+    else { ctx.beginPath(); ctx.arc(0, 0, projectile.radius, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    game.particles.forEach((particle) => {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, particle.life / .24);
+      ctx.fillStyle = particle.color;
+      ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
+      ctx.restore();
+    });
+  }
+
+  function updateBattleHud() {
+    if (!game.player || !game.enemy) return;
+    const playerPercent = game.player.hp / game.player.maxHp * 100;
+    const enemyPercent = game.enemy.hp / game.enemy.maxHp * 100;
+    ui.playerHealth.style.width = `${playerPercent}%`;
+    ui.enemyHealth.style.width = `${enemyPercent}%`;
+    ui.playerHealthText.textContent = `${Math.ceil(game.player.hp)} / ${game.player.maxHp}`;
+    ui.enemyHealthText.textContent = `${Math.ceil(game.enemy.hp)} / ${game.enemy.maxHp}`;
+    ui.reloadMeter.style.width = `${100 - game.player.cooldown / game.player.reload * 100}%`;
+  }
+
   function render() {
     drawArenaBackground();
     obstacles.forEach(drawObstacle);
     if (game.active) {
       drawTank(game.player);
       drawTank(game.enemy);
+      game.projectiles.forEach(drawProjectile);
+      drawParticles();
     } else {
       drawShowcase();
     }
@@ -352,7 +468,11 @@
     game.lastTime = game.lastTime || timestamp;
     const delta = Math.min(.034, (timestamp - game.lastTime) / 1000);
     game.lastTime = timestamp;
-    if (game.active && !game.ended) updatePlayer(delta);
+    if (game.active && !game.ended) {
+      updatePlayer(delta);
+      updateProjectiles(delta);
+      updateBattleHud();
+    }
     render();
     game.animationFrame = requestAnimationFrame(animationLoop);
   }
@@ -365,6 +485,10 @@
   });
   window.addEventListener("keyup", (event) => game.keys.delete(event.code));
   canvas.addEventListener("pointermove", setAim);
+  canvas.addEventListener("pointerdown", (event) => {
+    setAim(event);
+    if (game.active && !game.ended) fireTank(game.player);
+  });
   document.querySelector("#playButton").addEventListener("click", startBattle);
 
   updateMenu();
