@@ -274,6 +274,69 @@
     drawTank(enemy, .92);
   }
 
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function collidesAt(tank, x, y) {
+    if (x < tank.radius + 15 || x > arena.width - tank.radius - 15 || y < tank.radius + 15 || y > arena.height - tank.radius - 15) return true;
+    return obstacles.some((obstacle) => {
+      const nearX = clamp(x, obstacle.x, obstacle.x + obstacle.width);
+      const nearY = clamp(y, obstacle.y, obstacle.y + obstacle.height);
+      return Math.hypot(x - nearX, y - nearY) < tank.radius + 3;
+    });
+  }
+
+  function moveTank(tank, dx, dy) {
+    if (!collidesAt(tank, tank.x + dx, tank.y)) tank.x += dx;
+    if (!collidesAt(tank, tank.x, tank.y + dy)) tank.y += dy;
+  }
+
+  function updatePlayer(delta) {
+    const player = game.player;
+    if (!player) return;
+    let dx = (game.keys.has("KeyD") ? 1 : 0) - (game.keys.has("KeyA") ? 1 : 0);
+    let dy = (game.keys.has("KeyS") ? 1 : 0) - (game.keys.has("KeyW") ? 1 : 0);
+    if (dx || dy) {
+      const magnitude = Math.hypot(dx, dy);
+      dx = (dx / magnitude) * player.speed * delta;
+      dy = (dy / magnitude) * player.speed * delta;
+      moveTank(player, dx, dy);
+      player.bodyAngle = Math.atan2(dy, dx);
+    }
+    player.angle = Math.atan2(game.aim.y - player.y, game.aim.x - player.x);
+    player.cooldown = Math.max(0, player.cooldown - delta * 1000);
+    player.hurt = Math.max(0, player.hurt - delta);
+  }
+
+  function setAim(event) {
+    const bounds = canvas.getBoundingClientRect();
+    game.aim.x = (event.clientX - bounds.left) * (arena.width / bounds.width);
+    game.aim.y = (event.clientY - bounds.top) * (arena.height / bounds.height);
+  }
+
+  function startBattle() {
+    const selectedTank = getTank();
+    const difficulty = difficulties[ui.difficulty.value];
+    game.active = true;
+    game.ended = false;
+    game.round += 1;
+    game.projectiles = [];
+    game.particles = [];
+    game.player = createTank(selectedTank, 110, arena.height - 104);
+    game.enemy = createTank(difficulty, arena.width - 112, 94, true);
+    game.aim = { x: arena.width * .62, y: arena.height * .42 };
+    ui.stageOverlay.classList.add("hidden");
+    ui.playerName.textContent = selectedTank.name;
+    ui.enemyName.textContent = difficulty.enemy;
+    ui.enemyHealthText.textContent = `${difficulty.hp} / ${difficulty.hp}`;
+    ui.playerHealthText.textContent = `${selectedTank.hp} / ${selectedTank.hp}`;
+    ui.playerHealth.style.width = "100%";
+    ui.enemyHealth.style.width = "100%";
+    ui.reloadMeter.style.width = "0%";
+    flashStatus(`${difficulty.label.toUpperCase()} // НАЧАЛО`);
+  }
+
   function render() {
     drawArenaBackground();
     obstacles.forEach(drawObstacle);
@@ -287,9 +350,22 @@
 
   function animationLoop(timestamp) {
     game.lastTime = game.lastTime || timestamp;
+    const delta = Math.min(.034, (timestamp - game.lastTime) / 1000);
+    game.lastTime = timestamp;
+    if (game.active && !game.ended) updatePlayer(delta);
     render();
     game.animationFrame = requestAnimationFrame(animationLoop);
   }
+
+  window.addEventListener("keydown", (event) => {
+    if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
+      event.preventDefault();
+      game.keys.add(event.code);
+    }
+  });
+  window.addEventListener("keyup", (event) => game.keys.delete(event.code));
+  canvas.addEventListener("pointermove", setAim);
+  document.querySelector("#playButton").addEventListener("click", startBattle);
 
   updateMenu();
   renderGarage();
