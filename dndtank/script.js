@@ -508,6 +508,41 @@
     ui.reloadMeter.style.width = `${100 - game.player.cooldown / game.player.reload * 100}%`;
   }
 
+  function finishBattle(victory) {
+    if (game.ended) return;
+    game.ended = true;
+    game.projectiles = [];
+    const difficulty = difficulties[ui.difficulty.value];
+    if (victory) {
+      save.coins += difficulty.reward;
+      save.victories += 1;
+      persistSave();
+      updateMenu();
+      flashStatus(`ПОБЕДА +${difficulty.reward} ◈`);
+    } else {
+      flashStatus("КОРПУС УНИЧТОЖЕН");
+    }
+    window.setTimeout(() => {
+      ui.resultEyebrow.textContent = victory ? `${difficulty.label.toUpperCase()} ПРОЙДЕН` : "ПОРАЖЕНИЕ";
+      ui.resultTitle.textContent = victory ? "ПОБЕДА" : "РЕМОНТ";
+      ui.resultText.textContent = victory
+        ? `Противник уничтожен. В банк зачислено ${difficulty.reward} ◈. Всего побед: ${save.victories}.`
+        : "Ваша машина разбита. Подберите другой корпус, используйте укрытия и попробуйте снова.";
+      ui.resultButton.textContent = victory ? "Забрать награду" : "Вернуться в ангар";
+      ui.result.showModal();
+    }, 620);
+  }
+
+  function returnToHangar() {
+    ui.result.close();
+    game.active = false;
+    game.ended = false;
+    game.player = null;
+    game.enemy = null;
+    ui.stageOverlay.classList.remove("hidden");
+    ui.stageOverlay.innerHTML = "<p class=\"eyebrow\">ГАРАЖ // ГОТОВ</p><h2>АРЕНА<br /><span>ЖДЁТ</span></h2><p>Выберите уровень и снова<br />заберите неоновую награду.</p>";
+  }
+
   function render() {
     drawArenaBackground();
     obstacles.forEach(drawObstacle);
@@ -530,6 +565,7 @@
       updateEnemy(delta);
       updateProjectiles(delta);
       updateBattleHud();
+      if (game.enemy.destroyed || game.player.destroyed) finishBattle(Boolean(game.enemy.destroyed && !game.player.destroyed));
     }
     render();
     game.animationFrame = requestAnimationFrame(animationLoop);
@@ -548,6 +584,7 @@
     if (game.active && !game.ended) fireTank(game.player);
   });
   document.querySelector("#playButton").addEventListener("click", startBattle);
+  ui.resultButton.addEventListener("click", returnToHangar);
 
   updateMenu();
   renderGarage();
