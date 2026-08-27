@@ -303,10 +303,67 @@
       dy = (dy / magnitude) * player.speed * delta;
       moveTank(player, dx, dy);
       player.bodyAngle = Math.atan2(dy, dx);
+      player.vx = dx / delta;
+      player.vy = dy / delta;
+    } else {
+      player.vx = 0;
+      player.vy = 0;
     }
     player.angle = Math.atan2(game.aim.y - player.y, game.aim.x - player.x);
     player.cooldown = Math.max(0, player.cooldown - delta * 1000);
     player.hurt = Math.max(0, player.hurt - delta);
+  }
+
+  function angleDifference(from, to) {
+    return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  }
+
+  function lineOfSight(from, to) {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const samples = Math.max(2, Math.ceil(distance / 24));
+    for (let step = 1; step < samples; step += 1) {
+      const factor = step / samples;
+      if (pointInsideObstacle(from.x + (to.x - from.x) * factor, from.y + (to.y - from.y) * factor)) return false;
+    }
+    return true;
+  }
+
+  function updateEnemy(delta) {
+    const enemy = game.enemy;
+    const player = game.player;
+    if (!enemy || !player || player.destroyed) return;
+    const difficulty = difficulties[ui.difficulty.value];
+    enemy.cooldown = Math.max(0, enemy.cooldown - delta * 1000);
+    enemy.hurt = Math.max(0, enemy.hurt - delta);
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const vectorX = dx / distance;
+    const vectorY = dy / distance;
+    const preferredRange = difficulty.alex ? 310 : difficulty.label === "Экстремальный" ? 345 : difficulty.label === "Сложный" ? 300 : 250;
+    const motionBias = difficulty.alex ? .92 : difficulty.label === "Экстремальный" ? .77 : difficulty.label === "Сложный" ? .54 : .26;
+    let forward = distance > preferredRange + 48 ? 1 : distance < preferredRange - 56 ? -1 : 0;
+    if (difficulty.alex && player.cooldown > player.reload * .62) forward = 1;
+    const strafe = (difficulty.alex ? .7 : difficulty.label === "Экстремальный" ? .55 : difficulty.label === "Сложный" ? .34 : .14) * enemy.strafeSign;
+    let moveX = (vectorX * forward - vectorY * strafe) * enemy.speed * delta * (1 + motionBias * .17);
+    let moveY = (vectorY * forward + vectorX * strafe) * enemy.speed * delta * (1 + motionBias * .17);
+    const beforeX = enemy.x;
+    const beforeY = enemy.y;
+    moveTank(enemy, moveX, moveY);
+    if (Math.hypot(enemy.x - beforeX, enemy.y - beforeY) < 1) {
+      enemy.strafeSign *= -1;
+      moveTank(enemy, -moveY, moveX);
+    }
+    if (Math.random() < delta * (difficulty.alex ? .95 : .31)) enemy.strafeSign *= -1;
+    const lead = difficulty.alex ? .48 : difficulty.label === "Экстремальный" ? .27 : difficulty.label === "Сложный" ? .16 : 0;
+    const targetX = player.x + (player.vx || 0) * lead;
+    const targetY = player.y + (player.vy || 0) * lead;
+    const rawAngle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+    const wobble = Math.sin(performance.now() / (difficulty.alex ? 170 : 370)) * difficulty.aim;
+    enemy.angle = rawAngle + wobble + (Math.random() - .5) * difficulty.aim;
+    enemy.bodyAngle += angleDifference(enemy.bodyAngle, rawAngle) * Math.min(1, delta * (difficulty.alex ? 6 : 3));
+    const canFire = distance < difficulty.fireRange && lineOfSight(enemy, player);
+    if (canFire) fireTank(enemy, enemy.angle);
   }
 
   function setAim(event) {
@@ -470,6 +527,7 @@
     game.lastTime = timestamp;
     if (game.active && !game.ended) {
       updatePlayer(delta);
+      updateEnemy(delta);
       updateProjectiles(delta);
       updateBattleHud();
     }
