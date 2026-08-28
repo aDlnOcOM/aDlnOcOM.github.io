@@ -176,9 +176,15 @@
     { x: 388, y: 238, width: 86, height: 108 }, { x: 106, y: 438, width: 135, height: 42 },
     { x: 676, y: 424, width: 165, height: 45 }, { x: 760, y: 265, width: 64, height: 105 },
   ];
+  const directions = {
+    up: { x: 0, y: -1, angle: -Math.PI / 2, key: "KeyW" },
+    right: { x: 1, y: 0, angle: 0, key: "KeyD" },
+    down: { x: 0, y: 1, angle: Math.PI / 2, key: "KeyS" },
+    left: { x: -1, y: 0, angle: Math.PI, key: "KeyA" },
+  };
   const game = {
     active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [],
-    keys: new Set(), aim: { x: arena.width * .5, y: arena.height * .5 }, lastTime: 0,
+    keys: new Set(), keyOrder: [], lastTime: 0,
     round: 0, animationFrame: 0, shake: 0,
   };
 
@@ -191,8 +197,9 @@
     } : spec;
     return {
       ...source, x, y, enemy, maxHp: source.hp, hp: source.hp, angle: enemy ? Math.PI : 0,
-      bodyAngle: enemy ? Math.PI : 0, radius: source.body === "heavy" || source.body === "super" ? 29 : 24,
-      cooldown: 0, hurt: 0, lastShot: 0, strafeSign: Math.random() > .5 ? 1 : -1,
+      bodyAngle: enemy ? Math.PI : 0, direction: enemy ? "left" : "right",
+      radius: ["heavy", "super", "sturmtiger"].includes(source.body) ? 29 : 24,
+      cooldown: 0, hurt: 0, lastShot: 0, aiTurnTimer: 0, aiRouteIndex: 0, aiTacticTimer: 0,
     };
   }
 
@@ -333,90 +340,128 @@
     if (!collidesAt(tank, tank.x, tank.y + dy)) tank.y += dy;
   }
 
+  function setTankDirection(tank, direction) {
+    const vector = directions[direction];
+    if (!vector) return;
+    tank.direction = direction;
+    tank.angle = vector.angle;
+    tank.bodyAngle = vector.angle;
+  }
+
+  function canMoveInDirection(tank, direction, distance = 16) {
+    const vector = directions[direction];
+    return Boolean(vector) && !collidesAt(tank, tank.x + vector.x * distance, tank.y + vector.y * distance);
+  }
+
+  function moveTankInDirection(tank, direction, distance) {
+    const vector = directions[direction];
+    if (!vector || !canMoveInDirection(tank, direction, Math.max(4, distance))) return false;
+    moveTank(tank, vector.x * distance, vector.y * distance);
+    return true;
+  }
+
+  function directionToward(from, target) {
+    const dx = target.x - from.x;
+    const dy = target.y - from.y;
+    return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : (dy >= 0 ? "down" : "up");
+  }
+
+  function playerInputDirection() {
+    for (let index = game.keyOrder.length - 1; index >= 0; index -= 1) {
+      const key = game.keyOrder[index];
+      if (!game.keys.has(key)) continue;
+      return Object.keys(directions).find((direction) => directions[direction].key === key);
+    }
+    return null;
+  }
+
   function updatePlayer(delta) {
     const player = game.player;
     if (!player) return;
-    let dx = (game.keys.has("KeyD") ? 1 : 0) - (game.keys.has("KeyA") ? 1 : 0);
-    let dy = (game.keys.has("KeyS") ? 1 : 0) - (game.keys.has("KeyW") ? 1 : 0);
-    if (dx || dy) {
-      const magnitude = Math.hypot(dx, dy);
-      dx = (dx / magnitude) * player.speed * delta;
-      dy = (dy / magnitude) * player.speed * delta;
-      moveTank(player, dx, dy);
-      player.bodyAngle = Math.atan2(dy, dx);
-      player.vx = dx / delta;
-      player.vy = dy / delta;
+    const direction = playerInputDirection();
+    if (direction) {
+      const vector = directions[direction];
+      setTankDirection(player, direction);
+      const moved = moveTankInDirection(player, direction, player.speed * delta);
+      player.vx = moved ? vector.x * player.speed : 0;
+      player.vy = moved ? vector.y * player.speed : 0;
     } else {
       player.vx = 0;
       player.vy = 0;
     }
-    player.angle = Math.atan2(game.aim.y - player.y, game.aim.x - player.x);
     player.cooldown = Math.max(0, player.cooldown - delta * 1000);
     player.hurt = Math.max(0, player.hurt - delta);
   }
 
-  function angleDifference(from, to) {
-    return Math.atan2(Math.sin(to - from), Math.cos(to - from));
-  }
-
-  function lineOfSight(from, to) {
-    const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    const samples = Math.max(2, Math.ceil(distance / 24));
+  function axisLineOfSight(from, to, direction) {
+    const vector = directions[direction];
+    const perpendicular = vector.x ? Math.abs(to.y - from.y) : Math.abs(to.x - from.x);
+    if (perpendicular > Math.max(16, to.radius * .8)) return false;
+    const distance = vector.x ? Math.abs(to.x - from.x) : Math.abs(to.y - from.y);
+    const samples = Math.max(2, Math.ceil(distance / 12));
     for (let step = 1; step < samples; step += 1) {
-      const factor = step / samples;
-      if (pointInsideObstacle(from.x + (to.x - from.x) * factor, from.y + (to.y - from.y) * factor)) return false;
+      const fraction = step / samples;
+      if (pointInsideObstacle(from.x + (to.x - from.x) * fraction, from.y + (to.y - from.y) * fraction)) return false;
     }
     return true;
+  }
+
+  function chooseBotDirection(tank, target) {
+    const dx = target.x - tank.x;
+    const dy = target.y - tank.y;
+    const horizontal = dx >= 0 ? "right" : "left";
+    const vertical = dy >= 0 ? "down" : "up";
+    const primary = Math.abs(dx) >= Math.abs(dy) ? [horizontal, vertical] : [vertical, horizontal];
+    const fallback = [tank.direction, "up", "right", "down", "left"];
+    const options = [...new Set([...primary, ...fallback])];
+    return options.find((direction) => canMoveInDirection(tank, direction)) || tank.direction;
+  }
+
+  function alexTacticalTarget(enemy, player, delta) {
+    const lanes = {
+      siege: [{ x: 892, y: 78 }, { x: 892, y: 548 }, { x: 610, y: 548 }, { x: 610, y: 78 }],
+      flank: [{ x: 870, y: 178 }, { x: 870, y: 540 }, { x: 555, y: 540 }, { x: 555, y: 178 }],
+      sniper: [{ x: 870, y: 78 }, { x: 870, y: 548 }, { x: 90, y: 548 }, { x: 90, y: 78 }],
+      assault: [{ x: player.x, y: clamp(player.y - 135, 72, 548) }, { x: clamp(player.x + 165, 72, 888), y: player.y }, { x: player.x, y: clamp(player.y + 135, 72, 548) }, { x: clamp(player.x - 165, 72, 888), y: player.y }],
+    };
+    const route = lanes[enemy.tactic] || lanes.assault;
+    enemy.aiTacticTimer -= delta;
+    const current = route[enemy.aiRouteIndex % route.length];
+    if (enemy.aiTacticTimer <= 0 || Math.hypot(enemy.x - current.x, enemy.y - current.y) < 30) {
+      enemy.aiRouteIndex = (enemy.aiRouteIndex + 1) % route.length;
+      enemy.aiTacticTimer = enemy.tactic === "assault" ? .7 : 1.35;
+    }
+    return route[enemy.aiRouteIndex % route.length];
   }
 
   function updateEnemy(delta) {
     const enemy = game.enemy;
     const player = game.player;
     if (!enemy || !player || player.destroyed) return;
-    const difficulty = difficulties[ui.difficulty.value];
     enemy.cooldown = Math.max(0, enemy.cooldown - delta * 1000);
     enemy.hurt = Math.max(0, enemy.hurt - delta);
-    const hasSight = lineOfSight(enemy, player);
-    const routeTarget = hasSight ? player : {
-      x: enemy.x > arena.width / 2 ? arena.width - 62 : 62,
-      y: enemy.y < arena.height / 2 ? arena.height - 62 : 62,
-    };
-    const dx = routeTarget.x - enemy.x;
-    const dy = routeTarget.y - enemy.y;
-    const distance = Math.hypot(dx, dy) || 1;
     const playerDistance = Math.hypot(player.x - enemy.x, player.y - enemy.y) || 1;
-    const vectorX = dx / distance;
-    const vectorY = dy / distance;
-    const preferredRange = difficulty.alex ? 310 : difficulty.label === "Экстремальный" ? 345 : difficulty.label === "Сложный" ? 300 : 250;
-    const motionBias = difficulty.alex ? .92 : difficulty.label === "Экстремальный" ? .77 : difficulty.label === "Сложный" ? .54 : .26;
-    let forward = hasSight ? (playerDistance > preferredRange + 48 ? 1 : playerDistance < preferredRange - 56 ? -1 : 0) : 1;
-    if (hasSight && difficulty.alex && player.cooldown > player.reload * .62) forward = 1;
-    const strafe = (difficulty.alex ? .7 : difficulty.label === "Экстремальный" ? .55 : difficulty.label === "Сложный" ? .34 : .14) * enemy.strafeSign;
-    let moveX = (vectorX * forward - vectorY * strafe) * enemy.speed * delta * (1 + motionBias * .17);
-    let moveY = (vectorY * forward + vectorX * strafe) * enemy.speed * delta * (1 + motionBias * .17);
-    const beforeX = enemy.x;
-    const beforeY = enemy.y;
-    moveTank(enemy, moveX, moveY);
-    if (Math.hypot(enemy.x - beforeX, enemy.y - beforeY) < 1) {
-      enemy.strafeSign *= -1;
-      moveTank(enemy, -moveY, moveX);
+    const desiredRange = Math.min(enemy.range * .7, enemy.tactic === "siege" ? 410 : enemy.tactic === "sniper" ? 560 : 330);
+    let routeTarget = enemy.alex ? alexTacticalTarget(enemy, player, delta) : player;
+    if (!enemy.alex && playerDistance < desiredRange) {
+      routeTarget = { x: enemy.x - Math.sign(player.x - enemy.x || 1) * 130, y: enemy.y - Math.sign(player.y - enemy.y || 1) * 130 };
     }
-    if (Math.random() < delta * (difficulty.alex ? .95 : .31)) enemy.strafeSign *= -1;
-    const lead = difficulty.alex ? .48 : difficulty.label === "Экстремальный" ? .27 : difficulty.label === "Сложный" ? .16 : 0;
-    const targetX = player.x + (player.vx || 0) * lead;
-    const targetY = player.y + (player.vy || 0) * lead;
-    const rawAngle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
-    const wobble = Math.sin(performance.now() / (difficulty.alex ? 170 : 370)) * difficulty.aim;
-    enemy.angle = rawAngle + wobble + (Math.random() - .5) * difficulty.aim;
-    enemy.bodyAngle += angleDifference(enemy.bodyAngle, rawAngle) * Math.min(1, delta * (difficulty.alex ? 6 : 3));
-    const canFire = playerDistance < difficulty.fireRange && hasSight;
-    if (canFire) fireTank(enemy, enemy.angle);
-  }
-
-  function setAim(event) {
-    const bounds = canvas.getBoundingClientRect();
-    game.aim.x = (event.clientX - bounds.left) * (arena.width / bounds.width);
-    game.aim.y = (event.clientY - bounds.top) * (arena.height / bounds.height);
+    enemy.aiTurnTimer -= delta;
+    if (enemy.aiTurnTimer <= 0 || !canMoveInDirection(enemy, enemy.direction)) {
+      setTankDirection(enemy, chooseBotDirection(enemy, routeTarget));
+      enemy.aiTurnTimer = enemy.alex ? .18 : .42;
+    }
+    const mustKeepMoving = enemy.alex || playerDistance > desiredRange || !axisLineOfSight(enemy, player, directionToward(enemy, player));
+    if (mustKeepMoving) {
+      const moved = moveTankInDirection(enemy, enemy.direction, enemy.speed * delta);
+      if (!moved) enemy.aiTurnTimer = 0;
+    }
+    const fireDirection = directionToward(enemy, player);
+    const canFire = playerDistance <= enemy.range && axisLineOfSight(enemy, player, fireDirection);
+    if (canFire) {
+      setTankDirection(enemy, fireDirection);
+      fireTank(enemy);
+    }
   }
 
   function startBattle() {
@@ -430,7 +475,6 @@
     game.particles = [];
     game.player = createTank(selectedTank, 110, arena.height - 104);
     game.enemy = createTank(enemyBuild, arena.width - 112, 94, true);
-    game.aim = { x: arena.width * .62, y: arena.height * .42 };
     ui.stageOverlay.classList.add("hidden");
     ui.playerName.textContent = selectedTank.name;
     ui.enemyName.textContent = enemyBuild.enemyName || difficulty.enemy;
@@ -439,7 +483,7 @@
     ui.playerHealth.style.width = "100%";
     ui.enemyHealth.style.width = "100%";
     ui.reloadMeter.style.width = "0%";
-    flashStatus(`${difficulty.label.toUpperCase()} // НАЧАЛО`);
+    flashStatus(enemyBuild.tacticName ? `АЛЕКС // ${enemyBuild.tacticName.toUpperCase()}` : `${difficulty.label.toUpperCase()} // НАЧАЛО`);
   }
 
   function pointInsideObstacle(x, y) {
@@ -454,27 +498,26 @@
     }
   }
 
-  function fireTank(tank, forcedAngle = tank.angle) {
+  function fireTank(tank) {
     if (tank.cooldown > 0) return false;
-    const spread = tank.bullet === "flame" ? .21 : tank.bullet === "nova" ? .075 : .028;
-    const count = tank.bullet === "flame" ? 5 : tank.barrels;
-    const range = tank.bullet === "flame" ? .64 : tank.bullet === "rail" ? .78 : 1;
+    const count = tank.bullet === "flame" ? 4 : tank.barrels;
     const projectileSize = tank.bullet === "rocket" || tank.bullet === "shell" ? 8 : tank.bullet === "nova" ? 6 : 4;
     const muzzle = tank.radius + (tank.body === "rail" ? 43 : 26);
+    const direction = directions[tank.direction];
+    const lateral = { x: -direction.y, y: direction.x };
     tank.cooldown = tank.reload;
     tank.lastShot = performance.now();
     for (let index = 0; index < count; index += 1) {
-      const offset = (index - (count - 1) / 2) * (tank.bullet === "flame" ? .09 : spread);
-      const angle = forcedAngle + offset + (Math.random() - .5) * spread;
-      const speed = tank.bulletSpeed * (.88 + Math.random() * .12);
+      const offset = (index - (count - 1) / 2) * (tank.bullet === "flame" ? 8 : 9);
+      const speed = tank.bulletSpeed;
       game.projectiles.push({
-        owner: tank.enemy ? "enemy" : "player", x: tank.x + Math.cos(angle) * muzzle, y: tank.y + Math.sin(angle) * muzzle,
-        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, angle, damage: tank.damage * (count > 1 && tank.bullet !== "flame" ? .92 : 1),
-        radius: projectileSize, type: tank.bullet, color: tank.color, life: (tank.bullet === "rail" ? 1.2 : 2.4) * range,
-        explosion: tank.bullet === "rocket" ? 58 : tank.bullet === "shell" ? 37 : tank.bullet === "nova" ? 28 : 0,
+        owner: tank.enemy ? "enemy" : "player", x: tank.x + direction.x * muzzle + lateral.x * offset, y: tank.y + direction.y * muzzle + lateral.y * offset,
+        vx: direction.x * speed, vy: direction.y * speed, angle: tank.angle, damage: tank.damage * (count > 1 && tank.bullet !== "flame" ? .92 : 1),
+        radius: projectileSize, type: tank.bullet, color: tank.color, life: tank.range / speed,
+        explosion: tank.bullet === "rocket" ? tileSize : tank.bullet === "shell" ? 37 : tank.bullet === "nova" ? 28 : 0,
       });
     }
-    spawnParticles(tank.x + Math.cos(forcedAngle) * muzzle, tank.y + Math.sin(forcedAngle) * muzzle, tank.color, tank.bullet === "rail" ? 14 : 6, 75);
+    spawnParticles(tank.x + direction.x * muzzle, tank.y + direction.y * muzzle, tank.color, tank.bullet === "rail" ? 14 : 6, 75);
     return true;
   }
 
@@ -623,16 +666,22 @@
     if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
       event.preventDefault();
       game.keys.add(event.code);
+      game.keyOrder = game.keyOrder.filter((key) => key !== event.code);
+      game.keyOrder.push(event.code);
+    }
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (game.active && !game.ended) fireTank(game.player);
     }
   });
-  window.addEventListener("keyup", (event) => game.keys.delete(event.code));
-  canvas.addEventListener("pointermove", setAim);
-  canvas.addEventListener("pointerdown", (event) => {
-    setAim(event);
+  window.addEventListener("keyup", (event) => {
+    game.keys.delete(event.code);
+    game.keyOrder = game.keyOrder.filter((key) => key !== event.code);
+  });
+  canvas.addEventListener("pointerdown", () => {
     if (game.active && !game.ended) fireTank(game.player);
   });
-  canvas.addEventListener("click", (event) => {
-    setAim(event);
+  canvas.addEventListener("click", () => {
     if (game.active && !game.ended) fireTank(game.player);
   });
   document.querySelector("#playButton").addEventListener("click", startBattle);
