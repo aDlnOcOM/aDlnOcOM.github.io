@@ -336,15 +336,21 @@
     const difficulty = difficulties[ui.difficulty.value];
     enemy.cooldown = Math.max(0, enemy.cooldown - delta * 1000);
     enemy.hurt = Math.max(0, enemy.hurt - delta);
-    const dx = player.x - enemy.x;
-    const dy = player.y - enemy.y;
+    const hasSight = lineOfSight(enemy, player);
+    const routeTarget = hasSight ? player : {
+      x: enemy.x > arena.width / 2 ? arena.width - 62 : 62,
+      y: enemy.y < arena.height / 2 ? arena.height - 62 : 62,
+    };
+    const dx = routeTarget.x - enemy.x;
+    const dy = routeTarget.y - enemy.y;
     const distance = Math.hypot(dx, dy) || 1;
+    const playerDistance = Math.hypot(player.x - enemy.x, player.y - enemy.y) || 1;
     const vectorX = dx / distance;
     const vectorY = dy / distance;
     const preferredRange = difficulty.alex ? 310 : difficulty.label === "Экстремальный" ? 345 : difficulty.label === "Сложный" ? 300 : 250;
     const motionBias = difficulty.alex ? .92 : difficulty.label === "Экстремальный" ? .77 : difficulty.label === "Сложный" ? .54 : .26;
-    let forward = distance > preferredRange + 48 ? 1 : distance < preferredRange - 56 ? -1 : 0;
-    if (difficulty.alex && player.cooldown > player.reload * .62) forward = 1;
+    let forward = hasSight ? (playerDistance > preferredRange + 48 ? 1 : playerDistance < preferredRange - 56 ? -1 : 0) : 1;
+    if (hasSight && difficulty.alex && player.cooldown > player.reload * .62) forward = 1;
     const strafe = (difficulty.alex ? .7 : difficulty.label === "Экстремальный" ? .55 : difficulty.label === "Сложный" ? .34 : .14) * enemy.strafeSign;
     let moveX = (vectorX * forward - vectorY * strafe) * enemy.speed * delta * (1 + motionBias * .17);
     let moveY = (vectorY * forward + vectorX * strafe) * enemy.speed * delta * (1 + motionBias * .17);
@@ -363,7 +369,7 @@
     const wobble = Math.sin(performance.now() / (difficulty.alex ? 170 : 370)) * difficulty.aim;
     enemy.angle = rawAngle + wobble + (Math.random() - .5) * difficulty.aim;
     enemy.bodyAngle += angleDifference(enemy.bodyAngle, rawAngle) * Math.min(1, delta * (difficulty.alex ? 6 : 3));
-    const canFire = distance < difficulty.fireRange && lineOfSight(enemy, player);
+    const canFire = playerDistance < difficulty.fireRange && hasSight;
     if (canFire) fireTank(enemy, enemy.angle);
   }
 
