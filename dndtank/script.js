@@ -515,12 +515,16 @@
 
   function collidesAt(tank, x, y) {
     if (x < tank.radius + 15 || x > arena.width - tank.radius - 15 || y < tank.radius + 15 || y > arena.height - tank.radius - 15) return true;
-    return arenaBlocks.some((block) => {
+    const collidesWithBlock = arenaBlocks.some((block) => {
       const rectangle = blockRect(block);
       const nearX = clamp(x, rectangle.x, rectangle.x + rectangle.width);
       const nearY = clamp(y, rectangle.y, rectangle.y + rectangle.height);
       return Math.hypot(x - nearX, y - nearY) < tank.radius + 3;
     });
+    if (collidesWithBlock) return true;
+    const otherTank = tank === game.player ? game.enemy : game.player;
+    if (!otherTank || otherTank.destroyed) return false;
+    return Math.hypot(x - otherTank.x, y - otherTank.y) < tank.radius + otherTank.radius + 4;
   }
 
   function moveTank(tank, dx, dy) {
