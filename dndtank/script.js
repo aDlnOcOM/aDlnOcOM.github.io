@@ -171,11 +171,155 @@
   });
   ui.difficulty.addEventListener("change", updateMenu);
 
-  const obstacles = [
-    { x: 160, y: 120, width: 142, height: 46 }, { x: 626, y: 112, width: 115, height: 58 },
-    { x: 388, y: 238, width: 86, height: 108 }, { x: 106, y: 438, width: 135, height: 42 },
-    { x: 676, y: 424, width: 165, height: 45 }, { x: 760, y: 265, width: 64, height: 105 },
-  ];
+  const grid = { columns: 20, rows: 12, size: tileSize, top: 22 };
+  const spawnCells = { player: { column: 1, row: 10 }, enemy: { column: 18, row: 1 } };
+  const wallTypes = {
+    monolith: { label: "Монолит", hitPoints: Infinity, color: "#5f6c9c", edge: "#b8d5ff" },
+    fortified: { label: "Крепкая стена", hitPoints: 4, color: "#9664bc", edge: "#f0adff" },
+    regular: { label: "Обычная стена", hitPoints: 2, color: "#bc557f", edge: "#ff9ec4" },
+  };
+  let arenaBlocks = [];
+  let blockLookup = new Map();
+
+  function cellKey(column, row) {
+    return `${column}:${row}`;
+  }
+
+  function randomInteger(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function cellCenter(cell) {
+    return { x: cell.column * grid.size + grid.size / 2, y: grid.top + cell.row * grid.size + grid.size / 2 };
+  }
+
+  function blockRect(block) {
+    return { x: block.column * grid.size, y: grid.top + block.row * grid.size, width: grid.size, height: grid.size };
+  }
+
+  function clearRouteSegment(start, end, clearCells) {
+    const columnStep = Math.sign(end.column - start.column);
+    const rowStep = Math.sign(end.row - start.row);
+    const distance = Math.max(Math.abs(end.column - start.column), Math.abs(end.row - start.row));
+    for (let index = 0; index <= distance; index += 1) {
+      clearCells.add(cellKey(start.column + columnStep * index, start.row + rowStep * index));
+    }
+  }
+
+  function clearRoute(route, clearCells) {
+    for (let index = 0; index < route.length - 1; index += 1) clearRouteSegment(route[index], route[index + 1], clearCells);
+  }
+
+  function generateGuaranteedRoutes() {
+    const player = spawnCells.player;
+    const enemy = spawnCells.enemy;
+    const firstBend = randomInteger(7, 8);
+    const secondBend = randomInteger(3, 4);
+    const middleColumn = randomInteger(8, 9);
+    const lowerBend = randomInteger(4, 5);
+    const sideColumn = randomInteger(5, 6);
+    const thirdColumn = randomInteger(11, 12);
+    const finalColumn = randomInteger(15, 16);
+    return [
+      [player, { column: 1, row: firstBend }, { column: 4, row: firstBend }, { column: 4, row: secondBend }, { column: middleColumn, row: secondBend }, { column: middleColumn, row: 1 }, enemy],
+      [player, { column: 1, row: lowerBend }, { column: sideColumn, row: lowerBend }, { column: sideColumn, row: 2 }, { column: thirdColumn, row: 2 }, { column: thirdColumn, row: 1 }, enemy],
+      [player, { column: 3, row: 10 }, { column: 3, row: 9 }, { column: 8, row: 9 }, { column: 8, row: 6 }, { column: finalColumn, row: 6 }, { column: finalColumn, row: 1 }, enemy],
+    ];
+  }
+
+  function generateArena() {
+    const routes = generateGuaranteedRoutes();
+    const clearCells = new Set();
+    routes.forEach((route) => clearRoute(route, clearCells));
+    [...clearCells].forEach((key) => {
+      const [column, row] = key.split(":").map(Number);
+      for (let columnOffset = -1; columnOffset <= 1; columnOffset += 1) {
+        for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
+          const nearbyColumn = column + columnOffset;
+          const nearbyRow = row + rowOffset;
+          if (nearbyColumn >= 0 && nearbyColumn < grid.columns && nearbyRow >= 0 && nearbyRow < grid.rows) clearCells.add(cellKey(nearbyColumn, nearbyRow));
+        }
+      }
+    });
+    [spawnCells.player, spawnCells.enemy].forEach((spawn) => {
+      for (let column = spawn.column - 1; column <= spawn.column + 1; column += 1) {
+        for (let row = spawn.row - 1; row <= spawn.row + 1; row += 1) clearCells.add(cellKey(column, row));
+      }
+    });
+    arenaBlocks = [];
+    blockLookup = new Map();
+    for (let row = 0; row < grid.rows; row += 1) {
+      for (let column = 0; column < grid.columns; column += 1) {
+        if (clearCells.has(cellKey(column, row)) || Math.random() > .31) continue;
+        const roll = Math.random();
+        const type = roll < .16 ? "monolith" : roll < .47 ? "fortified" : "regular";
+        const definition = wallTypes[type];
+        const block = { column, row, type, hitPoints: definition.hitPoints, maxHitPoints: definition.hitPoints };
+        arenaBlocks.push(block);
+        blockLookup.set(cellKey(column, row), block);
+      }
+    }
+    game.routes = routes;
+  }
+
+  function getBlockAtPosition(x, y) {
+    const column = Math.floor(x / grid.size);
+    const row = Math.floor((y - grid.top) / grid.size);
+    return blockLookup.get(cellKey(column, row)) || null;
+  }
+
+  function getCellFromPosition(x, y) {
+    return {
+      column: clamp(Math.floor(x / grid.size), 0, grid.columns - 1),
+      row: clamp(Math.floor((y - grid.top) / grid.size), 0, grid.rows - 1),
+    };
+  }
+
+  function findOpenPath(from, to) {
+    const start = getCellFromPosition(from.x, from.y);
+    const target = getCellFromPosition(to.x, to.y);
+    const startKey = cellKey(start.column, start.row);
+    const targetKey = cellKey(target.column, target.row);
+    const queue = [start];
+    const previous = new Map([[startKey, null]]);
+    const offsets = [{ column: 0, row: -1 }, { column: 1, row: 0 }, { column: 0, row: 1 }, { column: -1, row: 0 }];
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index];
+      const currentKey = cellKey(current.column, current.row);
+      if (currentKey === targetKey) break;
+      offsets.forEach((offset) => {
+        const column = current.column + offset.column;
+        const row = current.row + offset.row;
+        const key = cellKey(column, row);
+        if (column < 0 || column >= grid.columns || row < 0 || row >= grid.rows || previous.has(key) || blockLookup.has(key)) return;
+        previous.set(key, currentKey);
+        queue.push({ column, row });
+      });
+    }
+    if (!previous.has(targetKey)) return [];
+    const path = [];
+    let cursor = targetKey;
+    while (cursor && cursor !== startKey) {
+      const [column, row] = cursor.split(":").map(Number);
+      path.unshift({ column, row });
+      cursor = previous.get(cursor);
+    }
+    return path;
+  }
+
+  function nextBotWaypoint(enemy, target, delta) {
+    enemy.aiPathTimer = (enemy.aiPathTimer || 0) - delta;
+    if (enemy.aiPathTimer <= 0 || !Array.isArray(enemy.aiPath) || enemy.aiPath.length === 0) {
+      enemy.aiPath = findOpenPath(enemy, target);
+      enemy.aiPathTimer = enemy.alex ? .24 : .52;
+    }
+    while (enemy.aiPath.length > 0) {
+      const waypoint = cellCenter(enemy.aiPath[0]);
+      if (Math.hypot(enemy.x - waypoint.x, enemy.y - waypoint.y) > 10) return waypoint;
+      enemy.aiPath.shift();
+    }
+    return target;
+  }
   const directions = {
     up: { x: 0, y: -1, angle: -Math.PI / 2, key: "KeyW" },
     right: { x: 1, y: 0, angle: 0, key: "KeyD" },
@@ -251,18 +395,32 @@
     ctx.restore();
   }
 
-  function drawObstacle(obstacle) {
+  function drawBlock(block) {
+    const rectangle = blockRect(block);
+    const definition = wallTypes[block.type];
     ctx.save();
-    ctx.shadowColor = "#a657ff";
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = "#21064b";
-    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    ctx.shadowColor = definition.edge;
+    ctx.shadowBlur = block.type === "monolith" ? 9 : 14;
+    ctx.fillStyle = "#17062e";
+    ctx.fillRect(rectangle.x + 2, rectangle.y + 2, rectangle.width - 4, rectangle.height - 4);
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = "rgba(112,248,255,.75)";
+    ctx.fillStyle = definition.color;
+    ctx.globalAlpha = block.type === "monolith" ? .76 : .68;
+    ctx.fillRect(rectangle.x + 6, rectangle.y + 6, rectangle.width - 12, rectangle.height - 12);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = definition.edge;
     ctx.lineWidth = 2;
-    ctx.strokeRect(obstacle.x + 1, obstacle.y + 1, obstacle.width - 2, obstacle.height - 2);
-    ctx.fillStyle = "rgba(255,84,184,.33)";
-    ctx.fillRect(obstacle.x + 8, obstacle.y + 8, obstacle.width - 16, 5);
+    ctx.strokeRect(rectangle.x + 3, rectangle.y + 3, rectangle.width - 6, rectangle.height - 6);
+    if (block.type === "monolith") {
+      ctx.strokeStyle = "rgba(218,235,255,.45)";
+      ctx.beginPath(); ctx.moveTo(rectangle.x + 10, rectangle.y + 10); ctx.lineTo(rectangle.x + 38, rectangle.y + 38); ctx.moveTo(rectangle.x + 38, rectangle.y + 10); ctx.lineTo(rectangle.x + 10, rectangle.y + 38); ctx.stroke();
+    } else {
+      const segments = block.maxHitPoints;
+      for (let segment = 0; segment < segments; segment += 1) {
+        ctx.fillStyle = segment < Math.ceil(block.hitPoints) ? definition.edge : "rgba(0,0,0,.38)";
+        ctx.fillRect(rectangle.x + 8 + segment * 8, rectangle.y + rectangle.height - 11, 5, 4);
+      }
+    }
     ctx.restore();
   }
 
@@ -337,9 +495,9 @@
   }
 
   function drawShowcase() {
-    const player = createTank(getTank(), 268, 365);
-    const enemy = createTank(difficulties[ui.difficulty.value], 708, 305, true);
-    enemy.angle = Math.PI * .82;
+    const player = createTank(getTank(), cellCenter(spawnCells.player).x, cellCenter(spawnCells.player).y);
+    const enemy = createTank(difficulties[ui.difficulty.value], cellCenter(spawnCells.enemy).x, cellCenter(spawnCells.enemy).y, true);
+    setTankDirection(enemy, "left");
     drawTank(player, .92);
     drawTank(enemy, .92);
   }
@@ -350,9 +508,10 @@
 
   function collidesAt(tank, x, y) {
     if (x < tank.radius + 15 || x > arena.width - tank.radius - 15 || y < tank.radius + 15 || y > arena.height - tank.radius - 15) return true;
-    return obstacles.some((obstacle) => {
-      const nearX = clamp(x, obstacle.x, obstacle.x + obstacle.width);
-      const nearY = clamp(y, obstacle.y, obstacle.y + obstacle.height);
+    return arenaBlocks.some((block) => {
+      const rectangle = blockRect(block);
+      const nearX = clamp(x, rectangle.x, rectangle.x + rectangle.width);
+      const nearY = clamp(y, rectangle.y, rectangle.y + rectangle.height);
       return Math.hypot(x - nearX, y - nearY) < tank.radius + 3;
     });
   }
@@ -468,9 +627,10 @@
     if (!enemy.alex && playerDistance < desiredRange) {
       routeTarget = { x: enemy.x - Math.sign(player.x - enemy.x || 1) * 130, y: enemy.y - Math.sign(player.y - enemy.y || 1) * 130 };
     }
+    const waypoint = nextBotWaypoint(enemy, routeTarget, delta);
     enemy.aiTurnTimer -= delta;
     if (enemy.aiTurnTimer <= 0 || !canMoveInDirection(enemy, enemy.direction)) {
-      setTankDirection(enemy, chooseBotDirection(enemy, routeTarget));
+      setTankDirection(enemy, chooseBotDirection(enemy, waypoint));
       enemy.aiTurnTimer = enemy.alex ? .18 : .42;
     }
     const mustKeepMoving = enemy.alex || playerDistance > desiredRange || !axisLineOfSight(enemy, player, directionToward(enemy, player));
@@ -496,8 +656,11 @@
     game.projectiles = [];
     game.particles = [];
     game.explosions = [];
-    game.player = createTank(selectedTank, 110, arena.height - 104);
-    game.enemy = createTank(enemyBuild, arena.width - 112, 94, true);
+    generateArena();
+    const playerSpawn = cellCenter(spawnCells.player);
+    const enemySpawn = cellCenter(spawnCells.enemy);
+    game.player = createTank(selectedTank, playerSpawn.x, playerSpawn.y);
+    game.enemy = createTank(enemyBuild, enemySpawn.x, enemySpawn.y, true);
     ui.stageOverlay.classList.add("hidden");
     ui.playerName.textContent = selectedTank.name;
     ui.enemyName.textContent = enemyBuild.enemyName || difficulty.enemy;
@@ -510,7 +673,7 @@
   }
 
   function pointInsideObstacle(x, y) {
-    return obstacles.some((obstacle) => x > obstacle.x && x < obstacle.x + obstacle.width && y > obstacle.y && y < obstacle.y + obstacle.height);
+    return Boolean(getBlockAtPosition(x, y));
   }
 
   function spawnParticles(x, y, color, amount = 8, speed = 90) {
@@ -536,7 +699,7 @@
       game.projectiles.push({
         owner: tank.enemy ? "enemy" : "player", x: tank.x + direction.x * muzzle + lateral.x * offset, y: tank.y + direction.y * muzzle + lateral.y * offset,
         vx: direction.x * speed, vy: direction.y * speed, angle: tank.angle, damage: tank.damage * (count > 1 && tank.bullet !== "flame" ? .92 : 1),
-        radius: projectileSize, type: tank.bullet, color: tank.color, life: tank.range / speed,
+        radius: projectileSize, type: tank.bullet, color: tank.color, life: tank.range / speed, wallPower: Math.max(.35, tank.damage / tankCatalog[0].damage),
         explosion: tank.bullet === "rocket" ? tileSize : tank.bullet === "shell" ? 37 : tank.bullet === "nova" ? 28 : 0,
       });
     }
@@ -555,10 +718,37 @@
     }
   }
 
-  function explodeProjectile(projectile, directTarget) {
+  function removeBlock(block) {
+    blockLookup.delete(cellKey(block.column, block.row));
+    arenaBlocks = arenaBlocks.filter((candidate) => candidate !== block);
+  }
+
+  function damageBlock(block, projectile, multiplier = 1) {
+    if (!block || block.type === "monolith") return;
+    block.hitPoints -= projectile.wallPower * multiplier;
+    const rectangle = blockRect(block);
+    spawnParticles(rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2, wallTypes[block.type].edge, 5, 58);
+    if (block.hitPoints <= 0) {
+      spawnParticles(rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2, projectile.color, 16, 130);
+      removeBlock(block);
+    }
+  }
+
+  function damageBlocksInBlast(projectile, ignoredBlock) {
+    if (!projectile.explosion) return;
+    arenaBlocks.slice().forEach((block) => {
+      if (block === ignoredBlock || block.type === "monolith") return;
+      const center = cellCenter(block);
+      const distance = Math.hypot(center.x - projectile.x, center.y - projectile.y);
+      if (distance <= projectile.explosion + grid.size * .7) damageBlock(block, projectile, Math.max(.3, 1 - distance / (projectile.explosion + grid.size)));
+    });
+  }
+
+  function explodeProjectile(projectile, directTarget, directBlock = null) {
     spawnParticles(projectile.x, projectile.y, projectile.color, projectile.explosion ? 18 : 5, projectile.explosion ? 150 : 60);
     if (!projectile.explosion) return;
     game.explosions.push({ x: projectile.x, y: projectile.y, radius: projectile.explosion, color: projectile.color, life: .42, maxLife: .42 });
+    damageBlocksInBlast(projectile, directBlock);
     const target = projectile.owner === "player" ? game.enemy : game.player;
     if (!target || target === directTarget || target.destroyed) return;
     const distance = Math.hypot(target.x - projectile.x, target.y - projectile.y);
@@ -574,9 +764,11 @@
       const target = projectile.owner === "player" ? game.enemy : game.player;
       const hitTank = target && !target.destroyed && Math.hypot(projectile.x - target.x, projectile.y - target.y) < target.radius + projectile.radius;
       if (hitTank) damageTank(target, projectile.damage, projectile);
-      const expired = projectile.life <= 0 || projectile.x < 0 || projectile.x > arena.width || projectile.y < 0 || projectile.y > arena.height || pointInsideObstacle(projectile.x, projectile.y);
-      if (hitTank || expired) {
-        explodeProjectile(projectile, hitTank ? target : null);
+      const hitBlock = !hitTank ? getBlockAtPosition(projectile.x, projectile.y) : null;
+      if (hitBlock) damageBlock(hitBlock, projectile);
+      const expired = projectile.life <= 0 || projectile.x < 0 || projectile.x > arena.width || projectile.y < 0 || projectile.y > arena.height;
+      if (hitTank || hitBlock || expired) {
+        explodeProjectile(projectile, hitTank ? target : null, hitBlock);
         game.projectiles.splice(index, 1);
       }
     }
@@ -678,7 +870,7 @@
 
   function render() {
     drawArenaBackground();
-    obstacles.forEach(drawObstacle);
+    arenaBlocks.forEach(drawBlock);
     if (game.active) {
       drawTank(game.player);
       drawTank(game.enemy);
@@ -730,6 +922,7 @@
   document.querySelector("#playButton").addEventListener("click", startBattle);
   ui.resultButton.addEventListener("click", returnToHangar);
 
+  generateArena();
   updateMenu();
   renderGarage();
   game.animationFrame = requestAnimationFrame(animationLoop);
