@@ -80,7 +80,6 @@ h1 span, .stage-overlay h2 span { color: var(--pink); }
 .diagonal-title { position: relative; display: grid; width: max-content; gap: 0; line-height: .73; }
 .diagonal-title .title-vapor { color: var(--ink); }
 .diagonal-title .title-tanks { margin-top: .12em; color: var(--pink); transform: translateX(.54em); }
-.diagonal-title::after { position: absolute; top: 48%; left: 45%; width: 1.13em; height: 4px; border-radius: 99px; content: ""; background: linear-gradient(90deg, var(--cyan), var(--pink)); box-shadow: 0 0 15px rgba(72,246,255,.65); transform: rotate(-48deg); }
 .tagline { margin: 18px 0 0; color: var(--muted); font-size: .98rem; }
 
 .wallet { display: flex; align-items: baseline; gap: 8px; margin: 39px 0 24px; padding: 16px 18px; border-radius: 14px; background: rgba(255,255,255,.055); }
