@@ -70,6 +70,21 @@
     return tankCatalog.find((tank) => tank.id === id) || tankCatalog[0];
   }
 
+  function createAlexBuild() {
+    const topTanks = tankCatalog.slice(-4);
+    const base = topTanks[Math.floor(Math.random() * topTanks.length)];
+    return {
+      ...base,
+      alex: true,
+      enemyName: `АЛЕКС // ${base.name.toUpperCase()}`,
+      hp: Math.round(base.hp * 1.65),
+      speed: Math.max(140, Math.round(base.speed * 1.25)),
+      reload: Math.max(420, Math.round(base.reload * .33)),
+      damage: Math.round(base.damage * 1.3),
+      color: "#ff376d",
+    };
+  }
+
   function updateMenu() {
     const tank = getTank();
     ui.coins.textContent = save.coins.toLocaleString("ru-RU");
@@ -148,7 +163,12 @@
   };
 
   function createTank(spec, x, y, enemy = false) {
-    const source = enemy ? { ...spec, barrels: spec.alex ? 3 : spec.body === "twin" ? 2 : 1, bullet: spec.alex ? "nova" : "plasma", bulletSpeed: spec.alex ? 390 : 315 } : spec;
+    const source = enemy ? {
+      ...spec,
+      barrels: spec.barrels ?? (spec.alex ? 3 : spec.body === "twin" ? 2 : 1),
+      bullet: spec.bullet ?? (spec.alex ? "nova" : "plasma"),
+      bulletSpeed: spec.bulletSpeed ?? (spec.alex ? 390 : 315),
+    } : spec;
     return {
       ...source, x, y, enemy, maxHp: source.hp, hp: source.hp, angle: enemy ? Math.PI : 0,
       bodyAngle: enemy ? Math.PI : 0, radius: source.body === "heavy" || source.body === "super" ? 29 : 24,
@@ -382,18 +402,19 @@
   function startBattle() {
     const selectedTank = getTank();
     const difficulty = difficulties[ui.difficulty.value];
+    const enemyBuild = difficulty.alex ? createAlexBuild() : difficulty;
     game.active = true;
     game.ended = false;
     game.round += 1;
     game.projectiles = [];
     game.particles = [];
     game.player = createTank(selectedTank, 110, arena.height - 104);
-    game.enemy = createTank(difficulty, arena.width - 112, 94, true);
+    game.enemy = createTank(enemyBuild, arena.width - 112, 94, true);
     game.aim = { x: arena.width * .62, y: arena.height * .42 };
     ui.stageOverlay.classList.add("hidden");
     ui.playerName.textContent = selectedTank.name;
-    ui.enemyName.textContent = difficulty.enemy;
-    ui.enemyHealthText.textContent = `${difficulty.hp} / ${difficulty.hp}`;
+    ui.enemyName.textContent = enemyBuild.enemyName || difficulty.enemy;
+    ui.enemyHealthText.textContent = `${enemyBuild.hp} / ${enemyBuild.hp}`;
     ui.playerHealthText.textContent = `${selectedTank.hp} / ${selectedTank.hp}`;
     ui.playerHealth.style.width = "100%";
     ui.enemyHealth.style.width = "100%";
