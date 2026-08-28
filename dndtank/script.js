@@ -46,6 +46,7 @@
     resultEyebrow: document.querySelector("#resultEyebrow"),
     resultTitle: document.querySelector("#resultTitle"),
     resultText: document.querySelector("#resultText"),
+    resultButton: document.querySelector("#resultButton"),
   };
 
   const defaultSave = { coins: 0, selected: "starter", unlocked: ["starter"], victories: 0 };
@@ -580,6 +581,10 @@
   window.addEventListener("keyup", (event) => game.keys.delete(event.code));
   canvas.addEventListener("pointermove", setAim);
   canvas.addEventListener("pointerdown", (event) => {
+    setAim(event);
+    if (game.active && !game.ended) fireTank(game.player);
+  });
+  canvas.addEventListener("click", (event) => {
     setAim(event);
     if (game.active && !game.ended) fireTank(game.player);
   });
