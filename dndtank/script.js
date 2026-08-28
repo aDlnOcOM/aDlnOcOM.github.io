@@ -183,7 +183,7 @@
     left: { x: -1, y: 0, angle: Math.PI, key: "KeyA" },
   };
   const game = {
-    active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [],
+    active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [], explosions: [],
     keys: new Set(), keyOrder: [], lastTime: 0,
     round: 0, animationFrame: 0, shake: 0,
   };
@@ -266,10 +266,24 @@
     ctx.restore();
   }
 
+  function tankProfile(body) {
+    const profiles = {
+      light: { width: 43, length: 49, turret: 22, barrel: 38 },
+      twin: { width: 46, length: 53, turret: 24, barrel: 38 },
+      heavy: { width: 53, length: 61, turret: 27, barrel: 40 },
+      flame: { width: 42, length: 51, turret: 21, barrel: 42 },
+      sturmtiger: { width: 55, length: 65, turret: 29, barrel: 31 },
+      object: { width: 50, length: 60, turret: 27, barrel: 44 },
+      rail: { width: 39, length: 62, turret: 20, barrel: 66 },
+      super: { width: 55, length: 64, turret: 31, barrel: 42 },
+    };
+    return profiles[body] || profiles.light;
+  }
+
   function drawTank(tank, alpha = 1) {
     const color = tank.color || "#ff64bd";
-    const width = tank.body === "heavy" || tank.body === "super" || tank.body === "sturmtiger" ? 51 : 43;
-    const length = tank.body === "rail" ? 62 : tank.body === "super" ? 54 : 49;
+    const profile = tankProfile(tank.body);
+    const { width, length, turret, barrel: barrelLength } = profile;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(tank.x, tank.y);
@@ -282,7 +296,13 @@
     ctx.shadowBlur = 0;
     ctx.fillStyle = color;
     ctx.globalAlpha = alpha * .78;
-    ctx.fillRect(-length / 2 + 5, -width / 2 + 6, length - 10, width - 12);
+    if (tank.body === "object") {
+      ctx.beginPath(); ctx.moveTo(-length / 2 + 4, -width / 2 + 5); ctx.lineTo(length / 2 - 4, -width / 2 + 11); ctx.lineTo(length / 2 - 4, width / 2 - 7); ctx.lineTo(-length / 2 + 4, width / 2 - 5); ctx.closePath(); ctx.fill();
+    } else if (tank.body === "sturmtiger") {
+      ctx.fillRect(-length / 2 + 3, -width / 2 + 5, length - 6, width - 10);
+    } else {
+      ctx.fillRect(-length / 2 + 5, -width / 2 + 6, length - 10, width - 12);
+    }
     ctx.fillStyle = "#2b0b58";
     ctx.fillRect(-length / 2 + 10, -width / 2 + 11, length - 20, width - 22);
     ctx.strokeStyle = color;
@@ -294,21 +314,23 @@
     ctx.globalAlpha = alpha;
     ctx.translate(tank.x, tank.y);
     ctx.rotate(tank.angle);
-    const turret = tank.body === "super" ? 29 : tank.body === "heavy" ? 26 : 22;
     ctx.shadowColor = color;
     ctx.shadowBlur = 15;
     ctx.fillStyle = "#25064d";
-    ctx.beginPath(); ctx.arc(0, 0, turret, 0, Math.PI * 2); ctx.fill();
+    if (tank.body === "sturmtiger") ctx.fillRect(-turret, -turret + 5, turret * 2, turret * 2 - 10);
+    else if (tank.body === "object") { ctx.beginPath(); ctx.moveTo(-turret, turret - 2); ctx.lineTo(-turret + 10, -turret); ctx.lineTo(turret - 7, -turret); ctx.lineTo(turret, turret - 2); ctx.closePath(); ctx.fill(); }
+    else { ctx.beginPath(); ctx.arc(0, 0, turret, 0, Math.PI * 2); ctx.fill(); }
     ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
     ctx.shadowBlur = 0;
-    const gap = 8;
+    const gap = tank.body === "super" ? 10 : 8;
     for (let barrel = 0; barrel < tank.barrels; barrel += 1) {
       const offset = (barrel - (tank.barrels - 1) / 2) * gap;
       ctx.fillStyle = color;
-      ctx.fillRect(turret - 4, offset - 3, tank.body === "rail" ? 57 : tank.body === "sturmtiger" ? 37 : 38, 6);
+      ctx.fillRect(turret - 4, offset - (tank.body === "sturmtiger" ? 6 : 3), barrelLength, tank.body === "sturmtiger" ? 12 : 6);
       ctx.fillStyle = "#ffe8ff";
-      ctx.fillRect(turret + 22, offset - 1.5, tank.body === "rail" ? 34 : 12, 3);
+      ctx.fillRect(turret + barrelLength - 8, offset - 1.5, tank.body === "rail" ? 16 : 8, 3);
     }
+    if (tank.body === "flame") { ctx.fillStyle = "#ffe86f"; ctx.beginPath(); ctx.moveTo(turret + barrelLength + 6, 0); ctx.lineTo(turret + barrelLength - 5, -8); ctx.lineTo(turret + barrelLength - 5, 8); ctx.closePath(); ctx.fill(); }
     ctx.fillStyle = tank.enemy ? "#ffdee9" : "#d9fbff";
     ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
@@ -473,6 +495,7 @@
     game.round += 1;
     game.projectiles = [];
     game.particles = [];
+    game.explosions = [];
     game.player = createTank(selectedTank, 110, arena.height - 104);
     game.enemy = createTank(enemyBuild, arena.width - 112, 94, true);
     ui.stageOverlay.classList.add("hidden");
@@ -535,6 +558,7 @@
   function explodeProjectile(projectile, directTarget) {
     spawnParticles(projectile.x, projectile.y, projectile.color, projectile.explosion ? 18 : 5, projectile.explosion ? 150 : 60);
     if (!projectile.explosion) return;
+    game.explosions.push({ x: projectile.x, y: projectile.y, radius: projectile.explosion, color: projectile.color, life: .42, maxLife: .42 });
     const target = projectile.owner === "player" ? game.enemy : game.player;
     if (!target || target === directTarget || target.destroyed) return;
     const distance = Math.hypot(target.x - projectile.x, target.y - projectile.y);
@@ -563,6 +587,10 @@
       particle.vx *= .94; particle.vy *= .94; particle.life -= delta;
       if (particle.life <= 0) game.particles.splice(index, 1);
     }
+    for (let index = game.explosions.length - 1; index >= 0; index -= 1) {
+      game.explosions[index].life -= delta;
+      if (game.explosions[index].life <= 0) game.explosions.splice(index, 1);
+    }
   }
 
   function drawProjectile(projectile) {
@@ -584,6 +612,20 @@
       ctx.globalAlpha = Math.min(1, particle.life / .24);
       ctx.fillStyle = particle.color;
       ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
+      ctx.restore();
+    });
+  }
+
+  function drawExplosions() {
+    game.explosions.forEach((explosion) => {
+      const progress = 1 - explosion.life / explosion.maxLife;
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+      ctx.strokeStyle = explosion.color;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = explosion.color;
+      ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.arc(explosion.x, explosion.y, explosion.radius * (.3 + progress * .7), 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     });
   }
@@ -641,6 +683,7 @@
       drawTank(game.player);
       drawTank(game.enemy);
       game.projectiles.forEach(drawProjectile);
+      drawExplosions();
       drawParticles();
     } else {
       drawShowcase();
