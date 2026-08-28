@@ -13,7 +13,7 @@
     { id: "twin", name: "Двойной импульс", price: 10, hp: 120, speed: 148, reload: 2750, damage: 21, range: 450, barrels: 2, bullet: "plasma", bulletSpeed: 330, color: "#ff68c4", body: "twin", description: "Две пушки дают плотный неоновый залп." },
     { id: "heavy", name: "Тяжёлый калибр", price: 100, hp: 230, speed: 94, reload: 3500, damage: 82, range: 530, barrels: 1, bullet: "shell", bulletSpeed: 255, color: "#ffb85c", body: "heavy", description: "Медленный бронекорпус с разрушительным снарядом." },
     { id: "heavyTwin", name: "Двойная броня", price: 100, hp: 210, speed: 88, reload: 3150, damage: 43, range: 510, barrels: 2, bullet: "shell", bulletSpeed: 265, color: "#a886ff", body: "heavy", description: "Две тяжёлые пушки и крепкая лобовая броня." },
-    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 90, damage: 10, range: 205, barrels: 1, bullet: "flame", bulletSpeed: 230, fuel: 100, fuelRate: 2, fuelReload: 15000, flameArc: 10, color: "#ff6a47", body: "flame", description: "Непрерывный огнемёт: дуга 10°, бак 100 ед. и заправка за 15 с." },
+    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 500, damage: 10, range: 205, barrels: 1, bullet: "flame", bulletSpeed: 230, fuel: 100, fuelPerBurst: 4, flameElements: 10, fuelReload: 15000, flameArc: 10, color: "#ff6a47", body: "flame", description: "Непрерывный огнемёт: 10 элементов в дуге 10° за 4 топлива." },
     { id: "sturmtiger", name: "Штурмтигер", price: 200, hp: 270, speed: 75, reload: 4600, damage: 142, range: 420, barrels: 1, bullet: "rocket", bulletSpeed: 225, color: "#ffdb65", body: "sturmtiger", description: "Ракетная мортира: взрыв ровно в радиусе одного тайла." },
     { id: "object295", name: "Объект 295", price: 500, hp: 315, speed: 84, reload: 2250, damage: 58, range: 580, barrels: 2, bullet: "ion", bulletSpeed: 340, color: "#6fffd0", body: "object", description: "Экспериментальная плазма и максимальная живучесть." },
     { id: "rail", name: "Рельсотрон", price: 1000, hp: 135, speed: 128, reload: 3050, damage: 176, range: 820, barrels: 1, bullet: "rail", bulletSpeed: 690, color: "#f2eaff", body: "rail", description: "Сверхбыстрый рельсовый разряд почти без времени полёта." },
@@ -102,7 +102,7 @@
   function updateMenu() {
     const tank = getTank();
     ui.coins.textContent = save.coins.toLocaleString("ru-RU");
-    const tankRhythm = tank.bullet === "flame" ? `бак ${tank.fuel} · заправка ${tank.fuelReload / 1000} с` : formatReload(tank.reload);
+    const tankRhythm = tank.bullet === "flame" ? `${tank.flameElements} огней / ${tank.fuelPerBurst} топл. · бак ${tank.fuel}` : formatReload(tank.reload);
     ui.chosenTank.innerHTML = `<span>Выбранный корпус</span><strong>${tank.name}</strong><span>${tank.hp} HP · дальность ${tank.range} · ${tankRhythm}</span>`;
     ui.playerName.textContent = tank.name;
     const difficulty = difficulties[ui.difficulty.value];
@@ -136,7 +136,7 @@
       return `<article class="tank-card ${owned ? "" : "locked"} ${selected ? "selected" : ""}" data-tank="${tank.id}">
         <span class="tank-price">${tank.price === 0 ? "Бесплатно" : `${tank.price} ◈`}</span>
         <h3>${tank.name}</h3><p>${tank.description}</p>
-        <p class="tank-stat">${tank.hp} HP · дальность ${tank.range} · ${tank.bullet === "flame" ? `бак ${tank.fuel} · 15 с` : formatReload(tank.reload)}</p>
+        <p class="tank-stat">${tank.hp} HP · дальность ${tank.range} · ${tank.bullet === "flame" ? `${tank.flameElements} огней / ${tank.fuelPerBurst} топл.` : formatReload(tank.reload)}</p>
         ${tankGlyph(tank)}<button class="tank-action" type="button">${action}</button>
       </article>`;
     }).join("");
@@ -589,13 +589,8 @@
       if (player.fuel >= player.maxFuel) player.refilling = false;
       return;
     }
-    if (!game.firing || player.fuel <= 0) return;
-    player.fuel = Math.max(0, player.fuel - player.fuelRate * delta);
-    if (player.cooldown <= 0) fireTank(player);
-    if (player.fuel === 0) {
-      player.refilling = true;
-      flashStatus("ПИРОН-9 // ЗАПРАВКА БАКА");
-    }
+    if (!game.firing || player.cooldown > 0) return;
+    fireTank(player);
   }
 
   function axisLineOfSight(from, to, direction) {
@@ -712,7 +707,17 @@
 
   function fireTank(tank) {
     if (tank.cooldown > 0) return false;
-    const count = tank.bullet === "flame" ? 4 : tank.barrels;
+    if (tank.bullet === "flame" && !tank.enemy) {
+      if (tank.fuel < tank.fuelPerBurst) {
+        tank.fuel = 0;
+        tank.refilling = true;
+        flashStatus("ПИРОН-9 // ЗАПРАВКА БАКА");
+        return false;
+      }
+      tank.fuel -= tank.fuelPerBurst;
+      if (tank.fuel === 0) tank.refilling = true;
+    }
+    const count = tank.bullet === "flame" ? tank.flameElements : tank.barrels;
     const projectileSize = tank.bullet === "rocket" || tank.bullet === "shell" ? 8 : tank.bullet === "nova" ? 6 : 4;
     const muzzle = tank.radius + (tank.body === "rail" ? 43 : 26);
     const baseDirection = directions[tank.direction];
