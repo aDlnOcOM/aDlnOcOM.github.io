@@ -6,25 +6,26 @@
   const ctx = canvas.getContext("2d");
   const arena = { width: canvas.width, height: canvas.height };
   const storageKey = "dndtank-save-v1";
+  const tileSize = 48;
 
   const tankCatalog = [
-    { id: "starter", name: "Стартовый", price: 0, hp: 100, speed: 156, reload: 5000, damage: 30, barrels: 1, bullet: "plasma", bulletSpeed: 310, color: "#57f5ff", body: "light", description: "Простая машина. Один точный выстрел раз в 5 секунд." },
-    { id: "twin", name: "Двойной импульс", price: 10, hp: 120, speed: 148, reload: 2750, damage: 21, barrels: 2, bullet: "plasma", bulletSpeed: 330, color: "#ff68c4", body: "twin", description: "Две пушки дают плотный неоновый залп." },
-    { id: "heavy", name: "Тяжёлый калибр", price: 100, hp: 230, speed: 94, reload: 3500, damage: 82, barrels: 1, bullet: "shell", bulletSpeed: 255, color: "#ffb85c", body: "heavy", description: "Медленный бронекорпус с разрушительным снарядом." },
-    { id: "heavyTwin", name: "Двойная броня", price: 100, hp: 210, speed: 88, reload: 3150, damage: 43, barrels: 2, bullet: "shell", bulletSpeed: 265, color: "#a886ff", body: "heavy", description: "Две тяжёлые пушки и крепкая лобовая броня." },
-    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 620, damage: 10, barrels: 1, bullet: "flame", bulletSpeed: 230, color: "#ff6a47", body: "flame", description: "Огнемётный танк: короткие, но частые языки пламени." },
-    { id: "sturmtiger", name: "Штурмтигер", price: 200, hp: 270, speed: 75, reload: 4600, damage: 142, barrels: 1, bullet: "rocket", bulletSpeed: 225, color: "#ffdb65", body: "sturmtiger", description: "Ракетная мортира. Один залп меняет карту." },
-    { id: "object295", name: "Объект 295", price: 500, hp: 315, speed: 84, reload: 2250, damage: 58, barrels: 2, bullet: "ion", bulletSpeed: 340, color: "#6fffd0", body: "object", description: "Экспериментальная плазма и максимальная живучесть." },
-    { id: "rail", name: "Рельсотрон", price: 1000, hp: 135, speed: 128, reload: 3050, damage: 176, barrels: 1, bullet: "rail", bulletSpeed: 690, color: "#f2eaff", body: "rail", description: "Сверхбыстрый рельсовый разряд почти без времени полёта." },
-    { id: "super", name: "Супертанк", price: 5000, hp: 470, speed: 74, reload: 1650, damage: 68, barrels: 3, bullet: "nova", bulletSpeed: 320, color: "#ff52df", body: "super", description: "Три башни, крепчайшая броня и штурмовой темп." },
+    { id: "starter", name: "Стартовый", price: 0, hp: 100, speed: 156, reload: 5000, damage: 30, range: 410, barrels: 1, bullet: "plasma", bulletSpeed: 310, color: "#57f5ff", body: "light", description: "Простая машина. Один точный выстрел раз в 5 секунд." },
+    { id: "twin", name: "Двойной импульс", price: 10, hp: 120, speed: 148, reload: 2750, damage: 21, range: 450, barrels: 2, bullet: "plasma", bulletSpeed: 330, color: "#ff68c4", body: "twin", description: "Две пушки дают плотный неоновый залп." },
+    { id: "heavy", name: "Тяжёлый калибр", price: 100, hp: 230, speed: 94, reload: 3500, damage: 82, range: 530, barrels: 1, bullet: "shell", bulletSpeed: 255, color: "#ffb85c", body: "heavy", description: "Медленный бронекорпус с разрушительным снарядом." },
+    { id: "heavyTwin", name: "Двойная броня", price: 100, hp: 210, speed: 88, reload: 3150, damage: 43, range: 510, barrels: 2, bullet: "shell", bulletSpeed: 265, color: "#a886ff", body: "heavy", description: "Две тяжёлые пушки и крепкая лобовая броня." },
+    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 620, damage: 10, range: 205, barrels: 1, bullet: "flame", bulletSpeed: 230, color: "#ff6a47", body: "flame", description: "Огнемётный танк: короткие, но частые языки пламени." },
+    { id: "sturmtiger", name: "Штурмтигер", price: 200, hp: 270, speed: 75, reload: 4600, damage: 142, range: 420, barrels: 1, bullet: "rocket", bulletSpeed: 225, color: "#ffdb65", body: "sturmtiger", description: "Ракетная мортира: взрыв ровно в радиусе одного тайла." },
+    { id: "object295", name: "Объект 295", price: 500, hp: 315, speed: 84, reload: 2250, damage: 58, range: 580, barrels: 2, bullet: "ion", bulletSpeed: 340, color: "#6fffd0", body: "object", description: "Экспериментальная плазма и максимальная живучесть." },
+    { id: "rail", name: "Рельсотрон", price: 1000, hp: 135, speed: 128, reload: 3050, damage: 176, range: 820, barrels: 1, bullet: "rail", bulletSpeed: 690, color: "#f2eaff", body: "rail", description: "Сверхбыстрый рельсовый разряд почти без времени полёта." },
+    { id: "super", name: "Супертанк", price: 5000, hp: 470, speed: 74, reload: 1650, damage: 68, range: 460, barrels: 3, bullet: "nova", bulletSpeed: 320, color: "#ff52df", body: "super", description: "Три башни, крепчайшая броня и штурмовой темп." },
   ];
 
   const difficulties = {
-    easy: { label: "Лёгкий", enemy: "Кадет-соперник", reward: 1, hp: 70, speed: 64, reload: 3100, damage: 10, aim: .52, fireRange: 440, color: "#a883ff", body: "light" },
-    medium: { label: "Средний", enemy: "Неоновый охотник", reward: 10, hp: 135, speed: 96, reload: 1950, damage: 17, aim: .28, fireRange: 560, color: "#ff70bd", body: "twin" },
-    hard: { label: "Сложный", enemy: "Синт-танк «Волна»", reward: 75, hp: 225, speed: 120, reload: 1280, damage: 28, aim: .13, fireRange: 680, color: "#ffb85c", body: "heavy" },
-    extreme: { label: "Экстремальный", enemy: "Архонт арены", reward: 200, hp: 360, speed: 137, reload: 830, damage: 40, aim: .06, fireRange: 760, color: "#6fffd0", body: "object" },
-    alex: { label: "Алекс", enemy: "АЛЕКС // НЕУМОЛИМЫЙ", reward: 1000, hp: 570, speed: 150, reload: 560, damage: 57, aim: .018, fireRange: 900, color: "#ff376d", body: "super", alex: true },
+    easy: { label: "Лёгкий", enemy: "Кадет-соперник", reward: 1, hp: 70, speed: 64, reload: 3100, damage: 10, range: 340, color: "#a883ff", body: "light" },
+    medium: { label: "Средний", enemy: "Неоновый охотник", reward: 10, hp: 135, speed: 96, reload: 1950, damage: 17, range: 420, color: "#ff70bd", body: "twin" },
+    hard: { label: "Сложный", enemy: "Синт-танк «Волна»", reward: 75, hp: 225, speed: 120, reload: 1280, damage: 28, range: 510, color: "#ffb85c", body: "heavy" },
+    extreme: { label: "Экстремальный", enemy: "Архонт арены", reward: 200, hp: 360, speed: 137, reload: 830, damage: 40, range: 570, color: "#6fffd0", body: "object" },
+    alex: { label: "Алекс", enemy: "АЛЕКС // НЕУМОЛИМЫЙ", reward: 1000, hp: 570, speed: 150, reload: 560, damage: 57, range: 820, color: "#ff376d", body: "super", alex: true },
   };
 
   const ui = {
@@ -73,14 +74,23 @@
   function createAlexBuild() {
     const topTanks = tankCatalog.slice(-4);
     const base = topTanks[Math.floor(Math.random() * topTanks.length)];
+    const tactics = {
+      sturmtiger: { tactic: "siege", tacticName: "осадный маршрут", rangeBonus: 65 },
+      object295: { tactic: "flank", tacticName: "фланговый маршрут", rangeBonus: 90 },
+      rail: { tactic: "sniper", tacticName: "снайперский маршрут", rangeBonus: 120 },
+      super: { tactic: "assault", tacticName: "штурмовой маршрут", rangeBonus: 50 },
+    };
+    const tacticalProfile = tactics[base.id];
     return {
       ...base,
+      ...tacticalProfile,
       alex: true,
       enemyName: `АЛЕКС // ${base.name.toUpperCase()}`,
       hp: Math.round(base.hp * 1.65),
       speed: Math.max(140, Math.round(base.speed * 1.25)),
       reload: Math.max(420, Math.round(base.reload * .33)),
       damage: Math.round(base.damage * 1.3),
+      range: Math.min(880, base.range + tacticalProfile.rangeBonus),
       color: "#ff376d",
     };
   }
@@ -88,7 +98,7 @@
   function updateMenu() {
     const tank = getTank();
     ui.coins.textContent = save.coins.toLocaleString("ru-RU");
-    ui.chosenTank.innerHTML = `<span>Выбранный корпус</span><strong>${tank.name}</strong><span>${tank.hp} HP · ${tank.barrels} ${tank.barrels === 1 ? "ствол" : "ствола"} · ${formatReload(tank.reload)}</span>`;
+    ui.chosenTank.innerHTML = `<span>Выбранный корпус</span><strong>${tank.name}</strong><span>${tank.hp} HP · дальность ${tank.range} · ${formatReload(tank.reload)}</span>`;
     ui.playerName.textContent = tank.name;
     const difficulty = difficulties[ui.difficulty.value];
     ui.enemyName.textContent = difficulty.enemy;
@@ -99,8 +109,18 @@
   }
 
   function tankGlyph(tank) {
-    const barrels = Array.from({ length: tank.barrels }, (_, index) => `<rect x="${52 + index * 9 - (tank.barrels - 1) * 4.5}" y="21" width="7" height="31" rx="2" fill="${tank.color}" />`).join("");
-    return `<svg class="tank-silhouette" viewBox="0 0 120 72" aria-hidden="true"><rect x="16" y="44" width="88" height="19" rx="7" fill="#21113e" stroke="${tank.color}" stroke-width="2"/><rect x="29" y="32" width="62" height="24" rx="7" fill="${tank.color}" opacity=".75"/><rect x="43" y="24" width="34" height="25" rx="9" fill="#391467" stroke="${tank.color}" stroke-width="2"/>${barrels}<circle cx="34" cy="63" r="7" fill="#0c041e" stroke="${tank.color}"/><circle cx="86" cy="63" r="7" fill="#0c041e" stroke="${tank.color}"/></svg>`;
+    const color = tank.color;
+    const glyphs = {
+      light: `<rect x="18" y="47" width="76" height="15" rx="6" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M31 47h49l8 9H24z" fill="${color}" opacity=".8"/><rect x="50" y="35" width="23" height="17" rx="5" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="70" y="40" width="30" height="6" rx="2" fill="${color}"/>`,
+      twin: `<rect x="15" y="47" width="84" height="16" rx="6" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M27 47h57l9 10H21z" fill="${color}" opacity=".78"/><rect x="48" y="33" width="28" height="20" rx="6" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="72" y="37" width="30" height="5" rx="2" fill="${color}"/><rect x="72" y="45" width="30" height="5" rx="2" fill="${color}"/>`,
+      heavy: `<rect x="10" y="43" width="100" height="22" rx="7" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M23 43h69l12 11H16z" fill="${color}" opacity=".78"/><path d="M43 29h38l9 20H35z" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="77" y="36" width="34" height="8" rx="2" fill="${color}"/>`,
+      flame: `<rect x="16" y="48" width="80" height="14" rx="6" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M31 47h49l10 9H25z" fill="${color}" opacity=".78"/><circle cx="59" cy="42" r="15" fill="#351061" stroke="${color}" stroke-width="2"/><path d="M71 38h31l7 4-7 4H71z" fill="${color}"/><path d="M102 37l12 5-12 5z" fill="#ffe86f"/>`,
+      sturmtiger: `<rect x="8" y="42" width="104" height="23" rx="7" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M18 42h80l9 12H12z" fill="${color}" opacity=".8"/><rect x="33" y="26" width="48" height="25" rx="4" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="76" y="32" width="27" height="13" rx="3" fill="${color}"/><circle cx="94" cy="38" r="4" fill="#ffe86f"/>`,
+      object: `<rect x="10" y="46" width="100" height="18" rx="7" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M20 46h73l12 10H15z" fill="${color}" opacity=".78"/><path d="M38 45l11-18h29l12 18z" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="73" y="32" width="33" height="5" rx="2" fill="${color}"/><rect x="73" y="40" width="33" height="5" rx="2" fill="${color}"/>`,
+      rail: `<rect x="18" y="48" width="78" height="14" rx="6" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M32 47h47l10 9H26z" fill="${color}" opacity=".78"/><rect x="48" y="35" width="26" height="17" rx="5" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="69" y="40" width="46" height="5" rx="1" fill="${color}"/><rect x="98" y="36" width="17" height="13" rx="2" fill="#eafaff"/>`,
+      super: `<rect x="6" y="42" width="108" height="23" rx="8" fill="#120321" stroke="${color}" stroke-width="2"/><path d="M17 42h83l10 12H10z" fill="${color}" opacity=".8"/><path d="M36 45l8-22h38l10 22z" fill="#351061" stroke="${color}" stroke-width="2"/><rect x="77" y="29" width="32" height="4" rx="2" fill="${color}"/><rect x="77" y="37" width="32" height="4" rx="2" fill="${color}"/><rect x="77" y="45" width="32" height="4" rx="2" fill="${color}"/>`,
+    };
+    return `<svg class="tank-silhouette" viewBox="0 0 120 72" aria-hidden="true">${glyphs[tank.body] || glyphs.light}</svg>`;
   }
 
   function renderGarage() {
@@ -111,7 +131,7 @@
       return `<article class="tank-card ${owned ? "" : "locked"} ${selected ? "selected" : ""}" data-tank="${tank.id}">
         <span class="tank-price">${tank.price === 0 ? "Бесплатно" : `${tank.price} ◈`}</span>
         <h3>${tank.name}</h3><p>${tank.description}</p>
-        <p class="tank-stat">${tank.hp} HP · ${tank.speed} скорость · ${formatReload(tank.reload)}</p>
+        <p class="tank-stat">${tank.hp} HP · дальность ${tank.range} · ${formatReload(tank.reload)}</p>
         ${tankGlyph(tank)}<button class="tank-action" type="button">${action}</button>
       </article>`;
     }).join("");
