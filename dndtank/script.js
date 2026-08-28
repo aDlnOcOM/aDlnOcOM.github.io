@@ -13,7 +13,7 @@
     { id: "twin", name: "Двойной импульс", price: 10, hp: 120, speed: 148, reload: 2750, damage: 21, range: 450, barrels: 2, bullet: "plasma", bulletSpeed: 330, color: "#ff68c4", body: "twin", description: "Две пушки дают плотный неоновый залп." },
     { id: "heavy", name: "Тяжёлый калибр", price: 100, hp: 230, speed: 94, reload: 3500, damage: 82, range: 530, barrels: 1, bullet: "shell", bulletSpeed: 255, color: "#ffb85c", body: "heavy", description: "Медленный бронекорпус с разрушительным снарядом." },
     { id: "heavyTwin", name: "Двойная броня", price: 100, hp: 210, speed: 88, reload: 3150, damage: 43, range: 510, barrels: 2, bullet: "shell", bulletSpeed: 265, color: "#a886ff", body: "heavy", description: "Две тяжёлые пушки и крепкая лобовая броня." },
-    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 620, damage: 10, range: 205, barrels: 1, bullet: "flame", bulletSpeed: 230, color: "#ff6a47", body: "flame", description: "Огнемётный танк: короткие, но частые языки пламени." },
+    { id: "flame", name: "Пирон-9", price: 50, hp: 130, speed: 138, reload: 90, damage: 10, range: 205, barrels: 1, bullet: "flame", bulletSpeed: 230, fuel: 100, fuelRate: 2, fuelReload: 15000, flameArc: 10, color: "#ff6a47", body: "flame", description: "Непрерывный огнемёт: дуга 10°, бак 100 ед. и заправка за 15 с." },
     { id: "sturmtiger", name: "Штурмтигер", price: 200, hp: 270, speed: 75, reload: 4600, damage: 142, range: 420, barrels: 1, bullet: "rocket", bulletSpeed: 225, color: "#ffdb65", body: "sturmtiger", description: "Ракетная мортира: взрыв ровно в радиусе одного тайла." },
     { id: "object295", name: "Объект 295", price: 500, hp: 315, speed: 84, reload: 2250, damage: 58, range: 580, barrels: 2, bullet: "ion", bulletSpeed: 340, color: "#6fffd0", body: "object", description: "Экспериментальная плазма и максимальная живучесть." },
     { id: "rail", name: "Рельсотрон", price: 1000, hp: 135, speed: 128, reload: 3050, damage: 176, range: 820, barrels: 1, bullet: "rail", bulletSpeed: 690, color: "#f2eaff", body: "rail", description: "Сверхбыстрый рельсовый разряд почти без времени полёта." },
@@ -41,6 +41,10 @@
     enemyHealth: document.querySelector("#enemyHealth"),
     enemyHealthText: document.querySelector("#enemyHealthText"),
     reloadMeter: document.querySelector("#reloadMeter"),
+    fuelRow: document.querySelector("#fuelRow"),
+    fuelLabel: document.querySelector("#fuelLabel"),
+    fuelMeter: document.querySelector("#fuelMeter"),
+    fuelText: document.querySelector("#fuelText"),
     playerName: document.querySelector("#playerName"),
     enemyName: document.querySelector("#enemyName"),
     result: document.querySelector("#resultDialog"),
@@ -98,7 +102,8 @@
   function updateMenu() {
     const tank = getTank();
     ui.coins.textContent = save.coins.toLocaleString("ru-RU");
-    ui.chosenTank.innerHTML = `<span>Выбранный корпус</span><strong>${tank.name}</strong><span>${tank.hp} HP · дальность ${tank.range} · ${formatReload(tank.reload)}</span>`;
+    const tankRhythm = tank.bullet === "flame" ? `бак ${tank.fuel} · заправка ${tank.fuelReload / 1000} с` : formatReload(tank.reload);
+    ui.chosenTank.innerHTML = `<span>Выбранный корпус</span><strong>${tank.name}</strong><span>${tank.hp} HP · дальность ${tank.range} · ${tankRhythm}</span>`;
     ui.playerName.textContent = tank.name;
     const difficulty = difficulties[ui.difficulty.value];
     ui.enemyName.textContent = difficulty.enemy;
@@ -131,7 +136,7 @@
       return `<article class="tank-card ${owned ? "" : "locked"} ${selected ? "selected" : ""}" data-tank="${tank.id}">
         <span class="tank-price">${tank.price === 0 ? "Бесплатно" : `${tank.price} ◈`}</span>
         <h3>${tank.name}</h3><p>${tank.description}</p>
-        <p class="tank-stat">${tank.hp} HP · дальность ${tank.range} · ${formatReload(tank.reload)}</p>
+        <p class="tank-stat">${tank.hp} HP · дальность ${tank.range} · ${tank.bullet === "flame" ? `бак ${tank.fuel} · 15 с` : formatReload(tank.reload)}</p>
         ${tankGlyph(tank)}<button class="tank-action" type="button">${action}</button>
       </article>`;
     }).join("");
@@ -250,9 +255,10 @@
     blockLookup = new Map();
     for (let row = 0; row < grid.rows; row += 1) {
       for (let column = 0; column < grid.columns; column += 1) {
-        if (clearCells.has(cellKey(column, row)) || Math.random() > .31) continue;
+        if (clearCells.has(cellKey(column, row))) continue;
         const roll = Math.random();
-        const type = roll < .16 ? "monolith" : roll < .47 ? "fortified" : "regular";
+        if (roll >= .77) continue;
+        const type = roll < .02 ? "monolith" : Math.random() < .5 ? "fortified" : "regular";
         const definition = wallTypes[type];
         const block = { column, row, type, hitPoints: definition.hitPoints, maxHitPoints: definition.hitPoints };
         arenaBlocks.push(block);
@@ -327,7 +333,7 @@
     left: { x: -1, y: 0, angle: Math.PI, key: "KeyA" },
   };
   const game = {
-    active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [], explosions: [],
+    active: false, ended: false, player: null, enemy: null, projectiles: [], particles: [], explosions: [], firing: false,
     keys: new Set(), keyOrder: [], lastTime: 0,
     round: 0, animationFrame: 0, shake: 0,
   };
@@ -343,7 +349,8 @@
       ...source, x, y, enemy, maxHp: source.hp, hp: source.hp, angle: enemy ? Math.PI : 0,
       bodyAngle: enemy ? Math.PI : 0, direction: enemy ? "left" : "right",
       radius: ["heavy", "super", "sturmtiger"].includes(source.body) ? 29 : 24,
-      cooldown: 0, hurt: 0, lastShot: 0, aiTurnTimer: 0, aiRouteIndex: 0, aiTacticTimer: 0,
+      cooldown: 0, hurt: 0, lastShot: 0, fuel: source.fuel || 0, maxFuel: source.fuel || 0, refilling: false,
+      aiTurnTimer: 0, aiRouteIndex: 0, aiTacticTimer: 0,
     };
   }
 
@@ -572,6 +579,23 @@
     }
     player.cooldown = Math.max(0, player.cooldown - delta * 1000);
     player.hurt = Math.max(0, player.hurt - delta);
+    updateFlamethrower(player, delta);
+  }
+
+  function updateFlamethrower(player, delta) {
+    if (player.bullet !== "flame") return;
+    if (player.refilling) {
+      player.fuel = Math.min(player.maxFuel, player.fuel + player.maxFuel / (player.fuelReload / 1000) * delta);
+      if (player.fuel >= player.maxFuel) player.refilling = false;
+      return;
+    }
+    if (!game.firing || player.fuel <= 0) return;
+    player.fuel = Math.max(0, player.fuel - player.fuelRate * delta);
+    if (player.cooldown <= 0) fireTank(player);
+    if (player.fuel === 0) {
+      player.refilling = true;
+      flashStatus("ПИРОН-9 // ЗАПРАВКА БАКА");
+    }
   }
 
   function axisLineOfSight(from, to, direction) {
@@ -652,6 +676,7 @@
     const enemyBuild = difficulty.alex ? createAlexBuild() : difficulty;
     game.active = true;
     game.ended = false;
+    game.firing = false;
     game.round += 1;
     game.projectiles = [];
     game.particles = [];
@@ -669,6 +694,7 @@
     ui.playerHealth.style.width = "100%";
     ui.enemyHealth.style.width = "100%";
     ui.reloadMeter.style.width = "0%";
+    ui.fuelRow.hidden = selectedTank.bullet !== "flame";
     flashStatus(enemyBuild.tacticName ? `АЛЕКС // ${enemyBuild.tacticName.toUpperCase()}` : `${difficulty.label.toUpperCase()} // НАЧАЛО`);
   }
 
@@ -689,21 +715,24 @@
     const count = tank.bullet === "flame" ? 4 : tank.barrels;
     const projectileSize = tank.bullet === "rocket" || tank.bullet === "shell" ? 8 : tank.bullet === "nova" ? 6 : 4;
     const muzzle = tank.radius + (tank.body === "rail" ? 43 : 26);
-    const direction = directions[tank.direction];
-    const lateral = { x: -direction.y, y: direction.x };
+    const baseDirection = directions[tank.direction];
     tank.cooldown = tank.reload;
     tank.lastShot = performance.now();
     for (let index = 0; index < count; index += 1) {
+      const flameSpread = tank.bullet === "flame" ? (tank.flameArc * Math.PI / 180) * (index - (count - 1) / 2) / (count - 1) : 0;
+      const direction = tank.bullet === "flame" ? { x: Math.cos(tank.angle + flameSpread), y: Math.sin(tank.angle + flameSpread) } : baseDirection;
+      const lateral = { x: -direction.y, y: direction.x };
       const offset = (index - (count - 1) / 2) * (tank.bullet === "flame" ? 8 : 9);
       const speed = tank.bulletSpeed;
+      const projectileDamage = tank.bullet === "flame" ? tank.damage / count : tank.damage * (count > 1 ? .92 : 1);
       game.projectiles.push({
         owner: tank.enemy ? "enemy" : "player", x: tank.x + direction.x * muzzle + lateral.x * offset, y: tank.y + direction.y * muzzle + lateral.y * offset,
-        vx: direction.x * speed, vy: direction.y * speed, angle: tank.angle, damage: tank.damage * (count > 1 && tank.bullet !== "flame" ? .92 : 1),
-        radius: projectileSize, type: tank.bullet, color: tank.color, life: tank.range / speed, wallPower: Math.max(.35, tank.damage / tankCatalog[0].damage),
+        vx: direction.x * speed, vy: direction.y * speed, angle: tank.angle + flameSpread, damage: projectileDamage,
+        radius: projectileSize, type: tank.bullet, color: tank.color, life: tank.range / speed, wallPower: Math.max(.12, projectileDamage / tankCatalog[0].damage),
         explosion: tank.bullet === "rocket" ? tileSize : tank.bullet === "shell" ? 37 : tank.bullet === "nova" ? 28 : 0,
       });
     }
-    spawnParticles(tank.x + direction.x * muzzle, tank.y + direction.y * muzzle, tank.color, tank.bullet === "rail" ? 14 : 6, 75);
+    spawnParticles(tank.x + baseDirection.x * muzzle, tank.y + baseDirection.y * muzzle, tank.color, tank.bullet === "rail" ? 14 : 6, 75);
     return true;
   }
 
@@ -831,6 +860,14 @@
     ui.playerHealthText.textContent = `${Math.ceil(game.player.hp)} / ${game.player.maxHp}`;
     ui.enemyHealthText.textContent = `${Math.ceil(game.enemy.hp)} / ${game.enemy.maxHp}`;
     ui.reloadMeter.style.width = `${100 - game.player.cooldown / game.player.reload * 100}%`;
+    if (game.player.bullet === "flame") {
+      ui.fuelRow.hidden = false;
+      ui.fuelMeter.style.width = `${game.player.fuel / game.player.maxFuel * 100}%`;
+      ui.fuelText.textContent = `${Math.ceil(game.player.fuel)} / ${game.player.maxFuel}`;
+      ui.fuelLabel.textContent = game.player.refilling ? "ЗАПРАВКА" : "ТОПЛИВО";
+    } else {
+      ui.fuelRow.hidden = true;
+    }
   }
 
   function finishBattle(victory) {
@@ -864,6 +901,7 @@
     game.ended = false;
     game.player = null;
     game.enemy = null;
+    game.firing = false;
     ui.stageOverlay.classList.remove("hidden");
     ui.stageOverlay.innerHTML = "<p class=\"eyebrow\">ГАРАЖ // ГОТОВ</p><h2>АРЕНА<br /><span>ЖДЁТ</span></h2><p>Выберите уровень и снова<br />заберите неоновую награду.</p>";
   }
@@ -897,6 +935,12 @@
     game.animationFrame = requestAnimationFrame(animationLoop);
   }
 
+  function beginPlayerFire() {
+    if (!game.active || game.ended || !game.player) return;
+    game.firing = true;
+    if (game.player.bullet !== "flame") fireTank(game.player);
+  }
+
   window.addEventListener("keydown", (event) => {
     if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
       event.preventDefault();
@@ -906,19 +950,17 @@
     }
     if (event.code === "Space") {
       event.preventDefault();
-      if (game.active && !game.ended) fireTank(game.player);
+      beginPlayerFire();
     }
   });
   window.addEventListener("keyup", (event) => {
     game.keys.delete(event.code);
     game.keyOrder = game.keyOrder.filter((key) => key !== event.code);
+    if (event.code === "Space") game.firing = false;
   });
-  canvas.addEventListener("pointerdown", () => {
-    if (game.active && !game.ended) fireTank(game.player);
-  });
-  canvas.addEventListener("click", () => {
-    if (game.active && !game.ended) fireTank(game.player);
-  });
+  canvas.addEventListener("pointerdown", beginPlayerFire);
+  window.addEventListener("pointerup", () => { game.firing = false; });
+  window.addEventListener("pointercancel", () => { game.firing = false; });
   document.querySelector("#playButton").addEventListener("click", startBattle);
   ui.resultButton.addEventListener("click", returnToHangar);
 
