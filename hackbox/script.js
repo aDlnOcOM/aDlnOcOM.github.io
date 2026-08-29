@@ -164,38 +164,47 @@
     });
   }
 
+  function paintGeography(data, source) {
+    const svg = element("country-boundaries");
+    svg.innerHTML = "";
+    svg.dataset.source = source;
+    data.features.forEach(feature => {
+      const pathData = geometryToPath(feature.geometry);
+      if (!pathData) return;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.classList.add("country-boundary");
+      path.dataset.countryCode = feature.properties.ISO_A3 === "-99" ? feature.properties.ADM0_A3 : feature.properties.ISO_A3;
+      path.setAttribute("d", pathData);
+      path.setAttribute("fill-rule", "evenodd");
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = feature.properties.NAME_RU || feature.properties.NAME_EN || feature.properties.NAME;
+      path.appendChild(title);
+      svg.appendChild(path);
+    });
+    geographyReady = true;
+    geographyLoading = false;
+    updateBoundaryStates();
+  }
+
   function renderGeography() {
     if (geographyReady) {
       updateBoundaryStates();
+      return;
+    }
+    if (window.HACKBOX_WORLD_GEOJSON) {
+      paintGeography(window.HACKBOX_WORLD_GEOJSON, "embedded");
       return;
     }
     if (geographyLoading) return;
     geographyLoading = true;
     fetch("assets/world-countries.geojson")
       .then(response => response.ok ? response.json() : Promise.reject(new Error("Карта недоступна")))
-      .then(data => {
-        const svg = element("country-boundaries");
-        svg.innerHTML = "";
-        data.features.forEach(feature => {
-          const pathData = geometryToPath(feature.geometry);
-          if (!pathData) return;
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.classList.add("country-boundary");
-          path.dataset.countryCode = feature.properties.ISO_A3 === "-99" ? feature.properties.ADM0_A3 : feature.properties.ISO_A3;
-          path.setAttribute("d", pathData);
-          path.setAttribute("fill-rule", "evenodd");
-          const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-          title.textContent = feature.properties.NAME_RU || feature.properties.NAME_EN || feature.properties.NAME;
-          path.appendChild(title);
-          svg.appendChild(path);
-        });
-        geographyReady = true;
-        geographyLoading = false;
-        updateBoundaryStates();
-      })
+      .then(data => paintGeography(data, "request"))
       .catch(() => {
         geographyLoading = false;
-        element("country-boundaries").setAttribute("aria-label", "Не удалось загрузить географические данные");
+        const svg = element("country-boundaries");
+        svg.setAttribute("aria-label", "Не удалось загрузить географические данные");
+        svg.innerHTML = '<text x="600" y="285" text-anchor="middle">КАРТА НЕДОСТУПНА</text>';
       });
   }
 
