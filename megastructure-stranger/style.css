@@ -188,10 +188,10 @@ h1 {
 
 .tree-stem { background: #42677a; height: 28px; width: 1px; }
 
-.branch-choices { display: grid; gap: 36px; grid-template-columns: repeat(2, minmax(190px, 1fr)); padding-top: 16px; position: relative; width: min(100%, 560px); }
-.branch-choices::before { background: #42677a; content: ""; height: 1px; left: 25%; position: absolute; right: 25%; top: 0; }
+.branch-choices { --branch-axis: calc((100% - 36px) / 4); display: grid; gap: 36px; grid-template-columns: repeat(2, minmax(190px, 1fr)); padding-top: 16px; position: relative; width: min(100%, 560px); }
+.branch-choices::before { background: #42677a; content: ""; height: 1px; left: var(--branch-axis); position: absolute; right: var(--branch-axis); top: 0; }
 .branch-choices::after { background: #42677a; content: ""; height: 16px; left: 50%; position: absolute; top: -16px; width: 1px; }
-.branch-choice-slot { position: relative; }
+.branch-choice-slot { display: flex; justify-content: center; position: relative; }
 .branch-choice-slot::before { background: #42677a; content: ""; height: 16px; left: 50%; position: absolute; top: -16px; width: 1px; }
 
 .hex-node {
@@ -223,10 +223,11 @@ h1 {
 
 .hex-choice { cursor: pointer; min-height: 82px; transition: filter .15s ease, transform .15s ease; }
 .hex-choice:hover:not(:disabled) { filter: brightness(1.22); transform: translateY(-2px); }
-.hex-choice:disabled { cursor: not-allowed; opacity: .48; }
+.hex-choice:disabled { cursor: not-allowed; opacity: .68; }
 .hex-choice.active { background: #263a22; color: #efffc1; }
 .hex-choice.active::before { border-color: var(--acid); box-shadow: inset 0 0 18px rgba(212, 238, 112, .15); }
-.hex-choice.blocked { background: #21191d; color: #9a777a; }
+.hex-choice.active:disabled { opacity: 1; }
+.hex-choice.blocked:disabled { background: #21191d; color: #9a777a; opacity: .38; }
 .hex-node small { color: var(--cyan); display: block; font-family: ui-monospace, Consolas, monospace; font-size: 8px; letter-spacing: .06em; line-height: 1.1; margin-bottom: 5px; text-transform: uppercase; }
 .hex-node strong { display: block; font-size: 11px; line-height: 1.1; }
 .hex-node em { color: var(--muted); display: block; font-family: ui-monospace, Consolas, monospace; font-size: 8px; font-style: normal; line-height: 1.1; margin-top: 5px; }
@@ -235,7 +236,10 @@ h1 {
 .branch-locked { color: #768996; font-family: ui-monospace, Consolas, monospace; font-size: 9px; letter-spacing: .05em; text-align: center; text-transform: uppercase; }
 
 .branch-tier {
-  display: flex;
+  --branch-axis: calc((100% - 36px) / 4);
+  display: grid;
+  gap: 36px;
+  grid-template-columns: repeat(2, minmax(190px, 1fr));
   margin-top: 24px;
   min-height: 52px;
   position: relative;
@@ -243,11 +247,11 @@ h1 {
 }
 
 .branch-tier::before { background: #42677a; content: ""; height: 24px; position: absolute; top: -24px; width: 1px; }
-.branch-tier.left { justify-content: flex-start; }
-.branch-tier.left::before { left: 25%; }
-.branch-tier.right { justify-content: flex-end; }
-.branch-tier.right::before { left: 75%; }
-.branch-tier.waiting { justify-content: center; }
+.branch-tier.left .hex-node { grid-column: 1; justify-self: center; }
+.branch-tier.left::before { left: var(--branch-axis); }
+.branch-tier.right .hex-node { grid-column: 2; justify-self: center; }
+.branch-tier.right::before { left: calc(100% - var(--branch-axis)); }
+.branch-tier.waiting .branch-locked { grid-column: 1 / -1; justify-self: center; }
 .branch-tier.waiting::before { left: 50%; }
 .branch-tier .hex-node { min-height: 64px; min-width: 188px; }
 
