@@ -28,7 +28,7 @@
   const COUNTRIES = COUNTRY_SEEDS.map(([id, code, name, region, longitude, latitude], index) => ({
     id, code, name, region, longitude, latitude,
     x: (longitude + 180) / 3.6,
-    y: (80 - latitude) / 1.45,
+    y: (90 - latitude) / 1.8,
     activity: 1 + (index * 7 + 2) % 5,
     noise: 1 + (index * 3 + 4) % 5,
     defense: 1 + (index * 4 + 1) % 5
@@ -80,6 +80,8 @@
     upgrades: [],
     log: ["Песочница готова. Выбери страну старта на мировой карте."]
   };
+  let geographyLoading = false;
+  let geographyReady = false;
 
   function hasUpgrade(id) {
     return state.upgrades.includes(id);
@@ -133,6 +135,70 @@
     return LINKS.flatMap(([first, second]) => first === id ? [second] : second === id ? [first] : []);
   }
 
+  function projectCoordinate([longitude, latitude]) {
+    return [((longitude + 180) / 360) * 1200, ((90 - latitude) / 180) * 560];
+  }
+
+  function ringToPath(ring) {
+    return ring.map((coordinate, index) => {
+      const [x, y] = projectCoordinate(coordinate);
+      return `${index ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(" ") + " Z";
+  }
+
+  function geometryToPath(geometry) {
+    if (geometry.type === "Polygon") return geometry.coordinates.map(ringToPath).join(" ");
+    if (geometry.type === "MultiPolygon") return geometry.coordinates.flatMap(polygon => polygon.map(ringToPath)).join(" ");
+    return "";
+  }
+
+  function updateBoundaryStates() {
+    const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
+    document.querySelectorAll("#country-boundaries .country-boundary").forEach(path => {
+      const country = countriesByCode.get(path.dataset.countryCode);
+      path.classList.remove("featured", "seed", "infected", "contained", "inspected", "true", "false", "open");
+      if (!country) return;
+      path.classList.toggle("featured", state.countries[country.id] !== "open");
+      path.classList.add(state.countries[country.id]);
+      if (state.inspectedCountry === country.id || (!state.started && state.selectedCountry === country.id)) path.classList.add("inspected");
+    });
+  }
+
+  function renderGeography() {
+    if (geographyReady) {
+      updateBoundaryStates();
+      return;
+    }
+    if (geographyLoading) return;
+    geographyLoading = true;
+    fetch("assets/world-countries.geojson")
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Карта недоступна")))
+      .then(data => {
+        const svg = element("country-boundaries");
+        svg.innerHTML = "";
+        data.features.forEach(feature => {
+          const pathData = geometryToPath(feature.geometry);
+          if (!pathData) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.classList.add("country-boundary");
+          path.dataset.countryCode = feature.properties.ISO_A3 === "-99" ? feature.properties.ADM0_A3 : feature.properties.ISO_A3;
+          path.setAttribute("d", pathData);
+          path.setAttribute("fill-rule", "evenodd");
+          const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+          title.textContent = feature.properties.NAME_RU || feature.properties.NAME_EN || feature.properties.NAME;
+          path.appendChild(title);
+          svg.appendChild(path);
+        });
+        geographyReady = true;
+        geographyLoading = false;
+        updateBoundaryStates();
+      })
+      .catch(() => {
+        geographyLoading = false;
+        element("country-boundaries").setAttribute("aria-label", "Не удалось загрузить географические данные");
+      });
+  }
+
   function renderWorldMap() {
     const layer = element("country-layer");
     layer.innerHTML = "";
@@ -151,6 +217,7 @@
       node.addEventListener("click", () => selectStartCountry(country.id));
       layer.appendChild(node);
     });
+    renderGeography();
   }
 
   function renderCampaign() {

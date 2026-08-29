@@ -1,0 +1,8 @@
+Natural Earth Vector data
+Dataset: ne_110m_admin_0_countries.geojson
+Source: https://www.naturalearthdata.com/ and https://github.com/nvkelso/natural-earth-vector
+Scale: 1:110m
+License: public domain
+
+The data is used only to render a generalized geographic background and country boundaries in HackBox.
+Country gameplay values are fictional balancing values and are not factual assessments of countries or their systems.
