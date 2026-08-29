@@ -13,14 +13,14 @@
       <a class="brand" href="#top" aria-label="HackBox, карта сценария"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
       <div class="global-readouts" aria-label="Сводка сценария">
         <div><span>ЦИКЛ</span><b id="global-turn-top">00</b></div>
-        <div><span>ОТМЕЧЕНО</span><b id="global-coverage">00<span>/72</span></b></div>
+        <div><span>ОТМЕЧЕНО</span><b id="global-coverage">00<span>/177</span></b></div>
         <div><span>ВНИМАНИЕ</span><b id="global-alert">08%</b></div>
       </div>
       <div class="sandbox-state"><i></i><span>ИЗОЛИРОВАННАЯ СИМУЛЯЦИЯ</span></div>
     </header>
 
     <section class="situation-strip" aria-labelledby="scenario-title">
-      <div><p class="eyebrow">ОПЕРАЦИЯ / PANORAMA-72</p><h1 id="scenario-title">Карта сигнала</h1></div>
+      <div><p class="eyebrow">ОПЕРАЦИЯ / PANORAMA-177</p><h1 id="scenario-title">Карта сигнала</h1></div>
       <p>Выбери стартовую страну, выстраивай игровую схему и проводи её через связанную мировую сеть. Реакция контуров и фоновых событий меняется от региона к региону.</p>
       <b id="mission-mode" class="mission-mode">ВЫБОР СТАРТА</b>
     </section>
@@ -29,19 +29,22 @@
       <aside class="country-rail">
         <div class="rail-heading"><span>СТРАНА / ПРОФИЛЬ</span><em id="country-status">НАВЕДИ КУРСОР</em></div>
         <div id="country-profile" class="country-profile" aria-live="polite">
-          <span>СТРАНА СТАРТА</span><b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b>
+          <span>СТРАНА СТАРТА</span><b>НАЖМИ НА СТРАНУ НА КАРТЕ</b>
           <p>Каждая игровая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>
         </div>
         <div class="rail-divider"></div>
-        <p class="rail-note">ДО ЗАПУСКА: выбери одну страну.<br>ПОСЛЕ ЗАПУСКА: нажимай на узлы, чтобы читать их текущий статус.</p>
-        <button id="launch-simulation" class="launch-button" type="button" disabled>Выбери страну старта</button>
+        <p class="rail-note">ДО ЗАПУСКА: нажми на контур страны, проверь профиль и подтверди старт внизу карты.<br>ПОСЛЕ ЗАПУСКА: нажимай на страны, чтобы читать их текущий статус.</p>
       </aside>
 
       <section class="world-stage">
-        <div class="map-topline"><span>ГЕОГРАФИЧЕСКАЯ КАРТА / <b>72</b> СТРАНЫ</span><span id="network-readout">ВЫБЕРИ СТРАНУ СТАРТА</span></div>
+        <div class="map-topline"><span>ГЕОГРАФИЧЕСКАЯ КАРТА / <b id="map-country-count">177</b> СТРАН</span><span id="network-readout">ВЫБЕРИ СТРАНУ СТАРТА</span></div>
         <div id="network-map" class="network-map" aria-label="Географическая карта мира">
           <svg id="country-boundaries" class="world-geography" viewBox="0 0 1200 560" preserveAspectRatio="none" aria-label="Границы стран Natural Earth"></svg>
-          <div id="country-layer" class="country-layer"></div>
+        </div>
+        <div class="map-selection" aria-live="polite">
+          <span>ВЫБРАННАЯ СТРАНА</span>
+          <b id="map-selection-name">НЕ ВЫБРАНА</b>
+          <button id="launch-simulation" class="launch-button" type="button" disabled>ПОДТВЕРДИТЬ СТРАНУ СТАРТА →</button>
         </div>
         <footer class="map-footer"><span><i class="legend-seed"></i>ТВОЙ СИГНАЛ</span><span><i class="legend-open"></i>НЕЙТРАЛЬНАЯ СТРАНА</span><span><i class="legend-locked"></i>ИЗОЛИРОВАННЫЙ КОНТУР</span><span>НАЖМИ НА СТРАНУ ДЛЯ СВОДКИ</span></footer>
       </section>

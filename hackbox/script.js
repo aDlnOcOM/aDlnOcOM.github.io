@@ -25,14 +25,58 @@
     ["aus", "AUS", "Австралия", "Океания", 134, -25], ["nzl", "NZL", "Новая Зеландия", "Океания", 174, -41], ["png", "PNG", "Папуа — Новая Гвинея", "Океания", 144, -6], ["fji", "FJI", "Фиджи", "Океания", 178, -17]
   ];
 
-  const COUNTRIES = COUNTRY_SEEDS.map(([id, code, name, region, longitude, latitude], index) => ({
-    id, code, name, region, longitude, latitude,
-    x: (longitude + 180) / 3.6,
-    y: (90 - latitude) / 1.8,
-    activity: 1 + (index * 7 + 2) % 5,
-    noise: 1 + (index * 3 + 4) % 5,
-    defense: 1 + (index * 4 + 1) % 5
-  }));
+  const CONTINENT_NAMES = {
+    Africa: "Африка",
+    Antarctica: "Антарктика",
+    Asia: "Азия",
+    Europe: "Европа",
+    Oceania: "Океания",
+    "North America": "Северная Америка",
+    "South America": "Южная Америка",
+    "Seven seas (open ocean)": "Открытое море"
+  };
+
+  const geographyFeatureKey = index => `geography-${index}`;
+  const featureCode = properties => properties.ISO_A3 && properties.ISO_A3 !== "-99" ? properties.ISO_A3 : properties.ADM0_A3 && properties.ADM0_A3 !== "-99" ? properties.ADM0_A3 : null;
+
+  const COUNTRIES = (() => {
+    const geography = window.HACKBOX_WORLD_GEOJSON;
+    if (!geography?.features?.length) {
+      return COUNTRY_SEEDS.map(([id, code, name, region, longitude, latitude], index) => ({
+        id, code, name, region, longitude, latitude,
+        x: (longitude + 180) / 3.6,
+        y: (90 - latitude) / 1.8,
+        activity: 1 + (index * 7 + 2) % 5,
+        noise: 1 + (index * 3 + 4) % 5,
+        defense: 1 + (index * 4 + 1) % 5
+      }));
+    }
+
+    const usedCodes = new Map();
+    return geography.features.map((feature, index) => {
+      const properties = feature.properties;
+      const baseCode = featureCode(properties) || `GEO-${index + 1}`;
+      const sameCodeCount = usedCodes.get(baseCode) || 0;
+      usedCodes.set(baseCode, sameCodeCount + 1);
+      const code = sameCodeCount ? `${baseCode}-${sameCodeCount + 1}` : baseCode;
+      const [minimumLongitude, minimumLatitude, maximumLongitude, maximumLatitude] = feature.bbox || [-180, -90, 180, 90];
+      const longitude = Number.isFinite(properties.LABEL_X) ? properties.LABEL_X : (minimumLongitude + maximumLongitude) / 2;
+      const latitude = Number.isFinite(properties.LABEL_Y) ? properties.LABEL_Y : (minimumLatitude + maximumLatitude) / 2;
+      return {
+        id: geographyFeatureKey(index),
+        code,
+        name: properties.NAME_RU || properties.NAME_EN || properties.NAME || `Территория ${index + 1}`,
+        region: CONTINENT_NAMES[properties.CONTINENT] || properties.CONTINENT || "Мир",
+        longitude,
+        latitude,
+        x: (longitude + 180) / 3.6,
+        y: (90 - latitude) / 1.8,
+        activity: 1 + (index * 7 + 2) % 5,
+        noise: 1 + (index * 3 + 4) % 5,
+        defense: 1 + (index * 4 + 1) % 5
+      };
+    });
+  })();
 
   const createWorldLinks = () => {
     const links = new Set();
@@ -62,6 +106,8 @@
   ];
 
   const countriesById = new Map(COUNTRIES.map(country => [country.id, country]));
+  const countriesByFeatureKey = new Map(COUNTRIES.map(country => [country.id, country]));
+  const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
   const state = {
     archetype: "specter",
@@ -122,7 +168,7 @@
     const profile = element("country-profile");
     const country = countriesById.get(state.started ? state.inspectedCountry || state.selectedCountry : state.selectedCountry);
     if (!country) {
-      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b><p>Каждая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>";
+      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>НАЖМИ НА СТРАНУ НА КАРТЕ</b><p>Каждая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>";
       element("country-status").textContent = "ВЫБОР СТАРТА";
       return;
     }
@@ -153,9 +199,8 @@
   }
 
   function updateBoundaryStates() {
-    const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
     document.querySelectorAll("#country-boundaries .country-boundary").forEach(path => {
-      const country = countriesByCode.get(path.dataset.countryCode);
+      const country = countriesById.get(path.dataset.countryId);
       path.classList.remove("featured", "seed", "infected", "contained", "inspected", "true", "false", "open");
       if (!country) return;
       path.classList.toggle("featured", state.countries[country.id] !== "open");
@@ -168,16 +213,31 @@
     const svg = element("country-boundaries");
     svg.innerHTML = "";
     svg.dataset.source = source;
-    data.features.forEach(feature => {
+    data.features.forEach((feature, index) => {
       const pathData = geometryToPath(feature.geometry);
       if (!pathData) return;
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const country = countriesByFeatureKey.get(geographyFeatureKey(index)) || countriesByCode.get(featureCode(feature.properties));
       path.classList.add("country-boundary");
-      path.dataset.countryCode = feature.properties.ISO_A3 === "-99" ? feature.properties.ADM0_A3 : feature.properties.ISO_A3;
       path.setAttribute("d", pathData);
       path.setAttribute("fill-rule", "evenodd");
+      if (country) {
+        path.dataset.countryId = country.id;
+        path.setAttribute("tabindex", "0");
+        path.setAttribute("role", "button");
+        path.setAttribute("aria-label", `Выбрать ${country.name}`);
+        path.addEventListener("click", () => selectStartCountry(country.id));
+        path.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectStartCountry(country.id);
+          }
+        });
+      } else {
+        path.setAttribute("tabindex", "-1");
+      }
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = feature.properties.NAME_RU || feature.properties.NAME_EN || feature.properties.NAME;
+      title.textContent = country ? country.name : feature.properties.NAME_RU || feature.properties.NAME_EN || feature.properties.NAME;
       path.appendChild(title);
       svg.appendChild(path);
     });
@@ -209,34 +269,19 @@
   }
 
   function renderWorldMap() {
-    const layer = element("country-layer");
-    layer.innerHTML = "";
-    COUNTRIES.forEach(country => {
-      const node = document.createElement("button");
-      const nodeState = state.countries[country.id];
-      const selected = state.started ? state.inspectedCountry === country.id : state.selectedCountry === country.id;
-      node.type = "button";
-      node.className = `network-node ${nodeState} ${!state.started && selected ? "start-candidate" : ""} ${state.started && selected ? "inspected" : ""}`;
-      node.style.left = `calc(${country.x}% - 10px)`;
-      node.style.top = `calc(${country.y}% - 10px)`;
-      node.setAttribute("aria-pressed", String(selected));
-      node.setAttribute("aria-label", `${country.name}: активность ${country.activity} из 5, фон ${country.noise} из 5, контур ${country.defense} из 5`);
-      node.title = `${country.name} · активность ${country.activity}/5 · фон ${country.noise}/5 · контур ${country.defense}/5`;
-      node.innerHTML = `<small>${country.code}</small>`;
-      node.addEventListener("click", () => selectStartCountry(country.id));
-      layer.appendChild(node);
-    });
     renderGeography();
   }
 
   function renderCampaign() {
     const influenced = Object.values(state.countries).filter(value => value === "seed" || value === "infected").length;
     const country = countriesById.get(state.selectedCountry);
+    const inspectedCountry = countriesById.get(state.inspectedCountry);
     const campaignLabel = state.active ? "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
     element("turn-count").textContent = String(state.turn).padStart(2, "0");
     element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
     element("global-alert").textContent = `${Math.round(state.alert)}%`;
+    element("map-country-count").textContent = String(COUNTRIES.length);
     element("campaign-state").textContent = campaignLabel;
     element("dock-state").textContent = campaignLabel;
     element("mission-mode").textContent = state.active ? "ОПЕРАЦИЯ АКТИВНА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
@@ -246,8 +291,11 @@
     element("alert-meter").style.width = `${state.alert}%`;
     element("alert-text").textContent = state.alert < 32 ? "Контур заметил слабый фон, но пока не понимает его рисунок." : state.alert < 67 ? "Защитный контур анализирует необычные связи. Тихий дрейф особенно важен." : "Контур готовит изоляцию маршрутов. Следующий цикл может закрыть часть сети.";
     element("advance-turn").disabled = !state.active;
+    element("map-selection-name").textContent = state.started ? `СТАРТ: ${country.name.toUpperCase()}` : country ? country.name.toUpperCase() : "НЕ ВЫБРАНА";
     element("launch-simulation").disabled = state.started || !state.selectedCountry;
-    element("launch-simulation").textContent = state.started ? "Сценарий запущен" : state.selectedCountry ? "Запустить симуляцию →" : "Выбери страну старта";
+    element("launch-simulation").textContent = state.started ? "СТРАНА СТАРТА ПОДТВЕРЖДЕНА" : state.selectedCountry ? `ПОДТВЕРДИТЬ: ${country.name.toUpperCase()} →` : "СНАЧАЛА ВЫБЕРИ СТРАНУ";
+    element("launch-simulation").setAttribute("aria-label", state.started ? "Страна старта подтверждена" : country ? `Подтвердить страну старта: ${country.name}` : "Сначала выбери страну старта");
+    if (state.started && inspectedCountry) element("network-readout").textContent = `ПРОСМОТР: ${inspectedCountry.name.toUpperCase()}`;
     renderCountryProfile();
     renderWorldMap();
   }
