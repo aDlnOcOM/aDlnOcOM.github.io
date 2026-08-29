@@ -16,6 +16,58 @@
     fabric: { name: "Ткань узлов", description: "Формирует более устойчивые, но медленные связи.", speed: -1, resilience: 1 }
   };
 
+  // Описывает только безопасные игровые роли и их поведенческие последствия внутри абстрактной симуляции.
+  const THREAT_TYPES = {
+    observer: {
+      name: "Наблюдатель", role: "Пассивная модель, которая предпочитает медленный темп и низкую заметность.", modifiers: { stealth: 1, speed: -1, resilience: 0, alert: -2 },
+      variants: [
+        { id: "ledger", name: "Тихий журнал", effect: "стабильнее на ранних циклах", modifiers: { resilience: 1 } },
+        { id: "mirror", name: "Зеркальный обзор", effect: "лучше скрывает след сценария", modifiers: { stealth: 1 } },
+        { id: "census", name: "Карта присутствия", effect: "бережёт сигнал при первом расширении", modifiers: { speed: 1 } }
+      ]
+    },
+    relay: {
+      name: "Ретранслятор", role: "Связная модель, для которой важна непрерывность маршрута между отмеченными странами.", modifiers: { stealth: 0, speed: 1, resilience: 0, alert: 0 },
+      variants: [
+        { id: "mesh", name: "Сетчатый ритм", effect: "равномерно удерживает соседние связи", modifiers: { resilience: 1 } },
+        { id: "queue", name: "Очередь импульсов", effect: "ускоряет темп сценария", modifiers: { speed: 1 } },
+        { id: "bridge", name: "Мостовой контур", effect: "снижает стартовую тревогу", modifiers: { stealth: 1, alert: -1 } }
+      ]
+    },
+    disruptor: {
+      name: "Нарушитель", role: "Напористая модель: быстрее меняет состояние карты, но заметнее для ответной реакции.", modifiers: { stealth: -1, speed: 1, resilience: 0, alert: 3 },
+      variants: [
+        { id: "pulse", name: "Короткий импульс", effect: "самый быстрый начальный темп", modifiers: { speed: 1, alert: 1 } },
+        { id: "pressure", name: "Давление нагрузки", effect: "лучше переживает ответную реакцию", modifiers: { resilience: 1 } },
+        { id: "ripple", name: "Волновой сдвиг", effect: "сохраняет часть скрытности", modifiers: { stealth: 1 } }
+      ]
+    },
+    sleeper: {
+      name: "Спящий агент", role: "Отложенная модель, которая экономит заметность в обмен на более медленное развитие.", modifiers: { stealth: 1, speed: -1, resilience: 1, alert: -2 },
+      variants: [
+        { id: "clock", name: "Ритм ожидания", effect: "сильнее снижает раннюю тревогу", modifiers: { stealth: 1, alert: -1 } },
+        { id: "threshold", name: "Пороговая логика", effect: "лучше выдерживает изоляцию", modifiers: { resilience: 1 } },
+        { id: "reserve", name: "Резервный контур", effect: "компенсирует медленный темп", modifiers: { speed: 1 } }
+      ]
+    },
+    mimic: {
+      name: "Мимик", role: "Адаптивная модель, маскирующаяся под обычный ритм симуляции и меняющая темп по ситуации.", modifiers: { stealth: 1, speed: 0, resilience: 0, alert: -1 },
+      variants: [
+        { id: "routine", name: "Обычный ритм", effect: "сбалансированный скрытый профиль", modifiers: { stealth: 1 } },
+        { id: "echo", name: "Эхо привычки", effect: "быстрее накапливает темп", modifiers: { speed: 1 } },
+        { id: "mask", name: "Смена маски", effect: "устойчивее к закрытию маршрута", modifiers: { resilience: 1 } }
+      ]
+    },
+    collector: {
+      name: "Сборщик", role: "Накопительная модель: медленнее входит в сценарий, зато лучше сохраняет ресурс для адаптаций.", modifiers: { stealth: 0, speed: -1, resilience: 1, alert: 0 },
+      variants: [
+        { id: "index", name: "Таблица сигналов", effect: "более устойчивый профиль", modifiers: { resilience: 1 } },
+        { id: "cache", name: "Локальный резерв", effect: "бережнее относится к тревоге", modifiers: { stealth: 1, alert: -1 } },
+        { id: "stream", name: "Поток сводок", effect: "быстрее переходит к следующему циклу", modifiers: { speed: 1 } }
+      ]
+    }
+  };
+
   const COUNTRY_SEEDS = [
     ["can", "CAN", "Канада", "Северная Америка", -106, 56], ["usa", "USA", "США", "Северная Америка", -98, 39], ["mex", "MEX", "Мексика", "Северная Америка", -102, 23], ["gtm", "GTM", "Гватемала", "Северная Америка", -90, 15], ["cub", "CUB", "Куба", "Северная Америка", -79, 22], ["hti", "HTI", "Гаити", "Северная Америка", -72, 19], ["dom", "DOM", "Доминиканская Республика", "Северная Америка", -70, 19], ["jam", "JAM", "Ямайка", "Северная Америка", -77, 18], ["pan", "PAN", "Панама", "Северная Америка", -80, 9], ["cri", "CRI", "Коста-Рика", "Северная Америка", -84, 10], ["blz", "BLZ", "Белиз", "Северная Америка", -88, 17], ["nic", "NIC", "Никарагуа", "Северная Америка", -86, 13],
     ["col", "COL", "Колумбия", "Южная Америка", -74, 4], ["ven", "VEN", "Венесуэла", "Южная Америка", -66, 7], ["ecu", "ECU", "Эквадор", "Южная Америка", -78, -1], ["per", "PER", "Перу", "Южная Америка", -75, -10], ["bol", "BOL", "Боливия", "Южная Америка", -64, -17], ["bra", "BRA", "Бразилия", "Южная Америка", -52, -10], ["pry", "PRY", "Парагвай", "Южная Америка", -58, -23], ["ury", "URY", "Уругвай", "Южная Америка", -56, -33], ["arg", "ARG", "Аргентина", "Южная Америка", -65, -35], ["chl", "CHL", "Чили", "Южная Америка", -71, -30],
@@ -141,7 +193,12 @@
   const countriesByFeatureKey = new Map(COUNTRIES.map(country => [country.id, country]));
   const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
+  const SAVE_KEY = "hackbox-scenario-save-v2";
   const state = {
+    gameCreated: false,
+    scenarioName: "СЕРАЯ ПЕТЛЯ",
+    threatType: "observer",
+    threatVariant: "ledger",
     archetype: "specter",
     applicator: "relay",
     stealth: 3,
@@ -161,6 +218,25 @@
   let geographyLoading = false;
   let geographyReady = false;
 
+  function activeThreatType() {
+    return THREAT_TYPES[state.threatType];
+  }
+
+  function activeThreatVariant() {
+    return activeThreatType().variants.find(variant => variant.id === state.threatVariant) || activeThreatType().variants[0];
+  }
+
+  function threatModifiers() {
+    const type = activeThreatType();
+    const variant = activeThreatVariant();
+    return [type.modifiers, variant.modifiers].reduce((total, modifier) => ({
+      stealth: total.stealth + (modifier.stealth || 0),
+      speed: total.speed + (modifier.speed || 0),
+      resilience: total.resilience + (modifier.resilience || 0),
+      alert: total.alert + (modifier.alert || 0)
+    }), { stealth: 0, speed: 0, resilience: 0, alert: 0 });
+  }
+
   function hasUpgrade(id) {
     return state.upgrades.includes(id);
   }
@@ -168,10 +244,11 @@
   function effectiveStats() {
     const archetype = ARCHETYPES[state.archetype];
     const applicator = APPLICATORS[state.applicator];
+    const threat = threatModifiers();
     return {
-      stealth: clamp(state.stealth + archetype.stealth - (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
-      speed: clamp(state.speed + archetype.speed + applicator.speed, 1, 8),
-      resilience: clamp(state.resilience + archetype.resilience + applicator.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
+      stealth: clamp(state.stealth + archetype.stealth + threat.stealth - (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
+      speed: clamp(state.speed + archetype.speed + applicator.speed + threat.speed, 1, 8),
+      resilience: clamp(state.resilience + archetype.resilience + applicator.resilience + threat.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
     };
   }
 
@@ -185,11 +262,13 @@
     const name = element("strain-name").value.trim().toUpperCase() || "БЕЗЫМЯННАЯ СХЕМА";
     const archetype = ARCHETYPES[state.archetype];
     const applicator = APPLICATORS[state.applicator];
+    const threat = activeThreatType();
+    const variant = activeThreatVariant();
     element("preview-name").textContent = name;
     element("preview-stealth").textContent = String(stats.stealth).padStart(2, "0");
     element("preview-speed").textContent = String(stats.speed).padStart(2, "0");
     element("preview-resilience").textContent = String(stats.resilience).padStart(2, "0");
-    element("preview-description").textContent = `${archetype.description} Аппликатор: ${applicator.name.toLowerCase()}.`;
+    element("preview-description").textContent = `${threat.name} / ${variant.name}: ${threat.role} Архитектура: ${archetype.name.toLowerCase()}; аппликатор: ${applicator.name.toLowerCase()}.`;
     element("strain-id").textContent = `HB-${String(7 + stats.stealth * 3 + stats.speed).padStart(3, "0")}`;
     ["stealth", "speed", "resilience"].forEach(key => {
       element(`${key}-value`).textContent = String(state[key]).padStart(2, "0");
@@ -359,11 +438,142 @@
     element("log-status").textContent = state.active ? "СИГНАЛ ЖИВОЙ" : state.started ? "КОНТУР ОСТАНОВЛЕН" : "ПЕСКИ ГОТОВЫ";
   }
 
+  function readSavedGame() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      return saved?.version === 2 && saved.state?.gameCreated ? saved : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveGame() {
+    if (!state.gameCreated) return;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 2, savedAt: Date.now(), state }));
+    } catch {
+      // Сохранение не является обязательным для запуска локальной симуляции.
+    }
+  }
+
+  function showScreen(name) {
+    element("start-screen").hidden = name !== "start";
+    element("creation-screen").hidden = name !== "creation";
+    element("game-shell").hidden = name !== "game";
+  }
+
+  function renderStartScreen() {
+    const saved = readSavedGame();
+    element("continue-game").disabled = !saved;
+    element("save-hint").textContent = saved ? "Найдено локальное сохранение сценария. Продолжение восстановит карту и выбранную модель." : "Сохранения пока нет. Новая игра начнётся с конструктора модели.";
+  }
+
+  function renderThreatCreator() {
+    const typeGrid = element("threat-type-grid");
+    const type = activeThreatType();
+    typeGrid.innerHTML = "";
+    Object.entries(THREAT_TYPES).forEach(([id, definition], index) => {
+      const button = document.createElement("button");
+      const selected = id === state.threatType;
+      button.type = "button";
+      button.className = `threat-type ${selected ? "selected" : ""}`;
+      button.dataset.threatType = id;
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(selected));
+      button.innerHTML = `<small>${String(index + 1).padStart(2, "0")} / РОЛЬ</small><strong>${definition.name}</strong><em>${definition.role}</em>`;
+      button.addEventListener("click", () => {
+        state.threatType = id;
+        state.threatVariant = definition.variants[0].id;
+        renderThreatCreator();
+      });
+      typeGrid.appendChild(button);
+    });
+
+    const variantGrid = element("threat-variant-grid");
+    variantGrid.innerHTML = "";
+    type.variants.forEach((variant, index) => {
+      const button = document.createElement("button");
+      const selected = variant.id === state.threatVariant;
+      button.type = "button";
+      button.className = `threat-variant ${selected ? "selected" : ""}`;
+      button.dataset.threatVariant = variant.id;
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(selected));
+      button.innerHTML = `<small>ВАРИАНТ ${String(index + 1).padStart(2, "0")}</small><strong>${variant.name}</strong><em>${variant.effect}</em>`;
+      button.addEventListener("click", () => {
+        state.threatVariant = variant.id;
+        renderThreatCreator();
+      });
+      variantGrid.appendChild(button);
+    });
+    const modifiers = threatModifiers();
+    element("variant-count").textContent = `${type.variants.length} ВАРИАНТА`;
+    element("threat-summary").textContent = `${type.name} / ${activeThreatVariant().name}: ${type.role} Игровой баланс: скрытность ${modifiers.stealth >= 0 ? "+" : ""}${modifiers.stealth}, темп ${modifiers.speed >= 0 ? "+" : ""}${modifiers.speed}, устойчивость ${modifiers.resilience >= 0 ? "+" : ""}${modifiers.resilience}.`;
+  }
+
+  function prepareNewGame() {
+    Object.assign(state, {
+      gameCreated: false,
+      scenarioName: "СЕРАЯ ПЕТЛЯ",
+      threatType: "observer",
+      threatVariant: "ledger",
+      archetype: "specter",
+      applicator: "relay",
+      stealth: 3,
+      speed: 3,
+      resilience: 2,
+      selectedCountry: null,
+      inspectedCountry: null,
+      countries: countryStates(),
+      started: false,
+      active: false,
+      turn: 0,
+      signal: 4,
+      alert: 8,
+      upgrades: [],
+      log: ["Новый сценарий подготовлен. Выбери страну старта на мировой карте."]
+    });
+    element("creation-name").value = state.scenarioName;
+    element("strain-name").value = state.scenarioName;
+    renderThreatCreator();
+    showScreen("creation");
+  }
+
+  function createGame() {
+    const name = element("creation-name").value.trim().toUpperCase() || "БЕЗЫМЯННАЯ СХЕМА";
+    state.scenarioName = name;
+    state.gameCreated = true;
+    element("strain-name").value = name;
+    pushLog(`Модель «${activeThreatType().name} / ${activeThreatVariant().name}» собрана. Выбери стартовую страну.`);
+    showScreen("game");
+    renderAll();
+  }
+
+  function continueGame() {
+    const saved = readSavedGame();
+    if (!saved) return;
+    const loaded = saved.state;
+    if (!THREAT_TYPES[loaded.threatType]) return;
+    Object.assign(state, loaded, {
+      threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
+      countries: { ...countryStates(), ...(loaded.countries || {}) },
+      upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
+      log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
+    });
+    const name = state.scenarioName || "СЕРАЯ ПЕТЛЯ";
+    element("creation-name").value = name;
+    element("strain-name").value = name;
+    renderThreatCreator();
+    showScreen("game");
+    renderAll();
+  }
+
   function renderAll() {
     updatePreview();
     renderCampaign();
     renderUpgrades();
     renderLog();
+    saveGame();
   }
 
   function selectStartCountry(id) {
@@ -385,7 +595,7 @@
     state.countries[state.selectedCountry] = "seed";
     state.inspectedCountry = state.selectedCountry;
     const country = countriesById.get(state.selectedCountry);
-    state.alert = clamp(5 + country.defense * .13 - effectiveStats().stealth, 3, 25);
+    state.alert = clamp(5 + country.defense * .13 - effectiveStats().stealth + threatModifiers().alert, 3, 25);
     pushLog(`Сценарий запущен в стране «${country.name}». Первый импульс стабилен.`);
     renderAll();
   }
@@ -503,11 +713,20 @@
     });
   }
 
-  element("strain-name").addEventListener("input", updatePreview);
+  element("strain-name").addEventListener("input", event => {
+    state.scenarioName = event.target.value.trim().toUpperCase() || "СЕРАЯ ПЕТЛЯ";
+    element("creation-name").value = state.scenarioName;
+    updatePreview();
+    saveGame();
+  });
+  element("creation-name").addEventListener("input", event => {
+    state.scenarioName = event.target.value.trim().toUpperCase() || "СЕРАЯ ПЕТЛЯ";
+  });
   ["stealth", "speed", "resilience"].forEach(key => {
     element(`${key}-input`).addEventListener("input", event => {
       state[key] = Number(event.target.value);
       updatePreview();
+      saveGame();
     });
   });
   element("archetype-options").addEventListener("click", event => {
@@ -520,6 +739,7 @@
       option.setAttribute("aria-pressed", String(selected));
     });
     updatePreview();
+    saveGame();
   });
   element("applicator-options").addEventListener("click", event => {
     const button = event.target.closest("[data-applicator]");
@@ -531,12 +751,19 @@
       option.setAttribute("aria-pressed", String(selected));
     });
     updatePreview();
+    saveGame();
   });
+  element("new-game").addEventListener("click", prepareNewGame);
+  element("continue-game").addEventListener("click", continueGame);
+  element("create-game").addEventListener("click", createGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
   document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
 
+  renderThreatCreator();
+  renderStartScreen();
   renderAll();
+  showScreen("start");
 })();
