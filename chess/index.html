@@ -46,12 +46,32 @@
         </label>
       </div>
     </section>
-    <div id="status">Ваш ход</div>
-    <div id="board" role="grid" aria-label="Шахматная доска"></div>
-    <div id="thinking" aria-live="polite"></div>
-    <div id="controls">
-      <button id="switch" type="button">Сменить сторону</button>
-      <button id="restart" type="button">Заново</button>
+    <div class="game-workspace">
+      <section class="board-column" aria-label="Игровое поле">
+        <div id="status">Ваш ход</div>
+        <div id="board" role="grid" aria-label="Шахматная доска"></div>
+        <div id="thinking" aria-live="polite"></div>
+        <div id="controls">
+          <button id="switch" type="button">Сменить сторону</button>
+          <button id="restart" type="button">Заново</button>
+        </div>
+      </section>
+      <aside class="move-history" aria-labelledby="history-title">
+        <div class="history-heading">
+          <h2 id="history-title">История партии</h2>
+          <output id="move-count" aria-live="polite">0 ходов</output>
+        </div>
+        <ol id="move-list" class="move-list" aria-label="Список ходов">
+          <li class="history-empty">Пока ходов нет</li>
+        </ol>
+        <div id="replay-controls" class="replay-controls" aria-label="Просмотр завершённой партии" hidden>
+          <button id="replay-first" type="button" aria-label="К началу партии" title="К началу">«</button>
+          <button id="replay-previous" type="button" aria-label="Предыдущий ход" title="Предыдущий ход">‹</button>
+          <output id="replay-position" aria-live="polite">Финальная позиция</output>
+          <button id="replay-next" type="button" aria-label="Следующий ход" title="Следующий ход">›</button>
+          <button id="replay-last" type="button" aria-label="К финальной позиции" title="К финалу">»</button>
+        </div>
+      </aside>
     </div>
   </main>
   <script src="script.js"></script>
