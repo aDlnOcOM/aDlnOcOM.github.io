@@ -180,7 +180,7 @@
     elapsed: 0,
     lastFrame: performance.now(),
     roomClearTimer: null,
-    selectedGear: "smg"
+    selectedGear: null
   };
 
   function saveProgression() {
@@ -212,7 +212,11 @@
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
     renderLoadout();
     renderImplants();
-    renderEquipmentTree();
+    if (state.selectedGear) {
+      renderEquipmentTree();
+    } else {
+      element("equipment-workbench").hidden = true;
+    }
   }
 
   function renderLoadout() {
@@ -227,6 +231,7 @@
         state.selectedGear = item.id;
         renderLoadout();
         renderEquipmentTree();
+        element("equipment-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
       });
       list.appendChild(entry);
     });
@@ -262,9 +267,14 @@
   }
 
   function renderEquipmentTree() {
+    if (!state.selectedGear) {
+      element("equipment-workbench").hidden = true;
+      return;
+    }
     const gear = EQUIPMENT_TREES[state.selectedGear];
     const selectedItem = STARTER_LOADOUT.find(item => item.id === state.selectedGear);
     const tree = element("equipment-tree");
+    element("equipment-workbench").hidden = false;
     const branchCount = gear.branches.filter(branch => getBranchProgress(state.selectedGear, branch.id).choice).length;
     element("tree-eyebrow").textContent = gear.label;
     element("tree-state").textContent = branchCount ? `${branchCount} ВЕТВ. ВЫБРАНО` : "БАЗОВАЯ СХЕМА";
@@ -278,20 +288,30 @@
       root.className = "hex-node hex-root";
       root.innerHTML = `<small>1 СЛОЙ</small><strong>${branch.base}</strong><em>${branch.id.toUpperCase()}</em>`;
       group.appendChild(root);
+      const stem = document.createElement("div");
+      stem.className = "tree-stem";
+      group.appendChild(stem);
+      const choices = document.createElement("div");
+      choices.className = "branch-choices";
       branch.options.forEach(option => {
         const selected = progress.choice === option.id;
         const blocked = Boolean(progress.choice && !selected);
+        const choiceSlot = document.createElement("div");
+        choiceSlot.className = "branch-choice-slot";
         const choice = document.createElement("button");
         choice.type = "button";
         choice.className = `hex-node hex-choice ${selected ? "active" : ""} ${blocked ? "blocked" : ""}`;
         choice.disabled = selected || blocked || progression.salvage < option.cost;
         choice.innerHTML = `<small>${selected ? "ВЫБРАНО" : `${option.cost} ЛОМА`}</small><strong>${option.name}</strong><em>${option.effect}</em>`;
         choice.addEventListener("click", () => purchaseTreeChoice(state.selectedGear, branch, option));
-        group.appendChild(choice);
+        choiceSlot.appendChild(choice);
+        choices.appendChild(choiceSlot);
       });
+      group.appendChild(choices);
       const tier = document.createElement("div");
-      tier.className = "branch-tier";
       const activeOption = branch.options.find(option => option.id === progress.choice);
+      const activeOptionIndex = branch.options.indexOf(activeOption);
+      tier.className = `branch-tier ${activeOption ? activeOptionIndex === 0 ? "left" : "right" : "waiting"}`;
       if (!activeOption) {
         tier.innerHTML = "<span class=\"branch-locked\">выбери одну из двух дорог</span>";
       } else if (progress.tier) {
@@ -874,6 +894,11 @@
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
   element("abort-run").addEventListener("click", () => finishRun(1));
+  element("close-tree").addEventListener("click", () => {
+    state.selectedGear = null;
+    element("equipment-workbench").hidden = true;
+    renderLoadout();
+  });
   window.addEventListener("keydown", event => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);

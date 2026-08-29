@@ -44,17 +44,6 @@
           <div id="implant-tree" class="implant-tree"></div>
         </section>
 
-        <section class="terminal-panel equipment-panel" aria-labelledby="equipment-tree-title">
-          <div class="panel-heading">
-            <div>
-              <p id="tree-eyebrow" class="eyebrow">оружейный шкаф / ПП Охраны</p>
-              <h2 id="equipment-tree-title">Дерево оснащения</h2>
-            </div>
-            <span id="tree-state" class="terminal-state">0 ВЕТВЕЙ</span>
-          </div>
-          <p id="tree-note" class="tree-note">Выбери предмет в стартовом комплекте, чтобы открыть его нелегальную схему модификации.</p>
-          <div id="equipment-tree" class="equipment-tree"></div>
-        </section>
       </div>
 
       <section class="loadout-panel" aria-labelledby="loadout-title">
@@ -66,6 +55,21 @@
           <span class="terminal-state">7 / 7 СЛОТОВ</span>
         </div>
         <div id="loadout-list" class="loadout-list"></div>
+      </section>
+
+      <section id="equipment-workbench" class="terminal-panel equipment-panel" aria-labelledby="equipment-tree-title" hidden>
+        <div class="panel-heading">
+          <div>
+            <p id="tree-eyebrow" class="eyebrow">оружейный шкаф / ПП Охраны</p>
+            <h2 id="equipment-tree-title">Дерево оснащения</h2>
+          </div>
+          <div class="tree-heading-actions">
+            <span id="tree-state" class="terminal-state">0 ВЕТВЕЙ</span>
+            <button id="close-tree" class="quiet-button" type="button">К экипировке</button>
+          </div>
+        </div>
+        <p id="tree-note" class="tree-note">Выбери предмет в стартовом комплекте, чтобы открыть его нелегальную схему модификации.</p>
+        <div id="equipment-tree" class="equipment-tree"></div>
       </section>
     </section>
 
