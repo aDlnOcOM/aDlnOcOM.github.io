@@ -36,6 +36,41 @@
     "Seven seas (open ocean)": "Открытое море"
   };
 
+  // Создаёт скрытые игровые коэффициенты 0–100: это баланс симуляции, а не реальные рейтинги стран.
+  const REGION_BALANCE = {
+    "Африка": [38, 55, 37],
+    "Антарктика": [6, 9, 8],
+    "Азия": [61, 51, 58],
+    "Европа": [68, 39, 72],
+    "Океания": [52, 36, 60],
+    "Северная Америка": [66, 44, 70],
+    "Южная Америка": [51, 53, 48],
+    "Открытое море": [8, 14, 10],
+    "Мир": [50, 50, 50]
+  };
+
+  const COUNTRY_MODEL_DATA = window.HACKBOX_COUNTRY_MODEL_DATA?.countries || {};
+  const modeledScore = (index, baseline, salt) => clamp(Math.round(baseline + ((index * (11 + salt) + salt * 17) % 31) - 15 + Math.sin((index + salt) * 1.7) * 4), 5, 95);
+  const logarithmicScore = (value, minimum, maximum) => clamp((Math.log10(value) - Math.log10(minimum)) / (Math.log10(maximum) - Math.log10(minimum)) * 100, 0, 100);
+  const countrySimulationProfile = (region, index, code) => {
+    const [activity, noise, defense] = REGION_BALANCE[region] || REGION_BALANCE["Мир"];
+    const fallback = {
+      activity: modeledScore(index, activity, 2),
+      noise: modeledScore(index, noise, 5),
+      defense: modeledScore(index, defense, 8)
+    };
+    const data = COUNTRY_MODEL_DATA[code];
+    if (!data?.population || !data?.gdpPerCapita || !Number.isFinite(data.internetUse)) return fallback;
+    const populationScale = logarithmicScore(data.population, 100000, 1500000000);
+    const incomeScale = logarithmicScore(data.gdpPerCapita, 500, 150000);
+    const connectivityScale = clamp(data.internetUse, 0, 100);
+    return {
+      activity: clamp(Math.round(populationScale * .35 + incomeScale * .25 + connectivityScale * .4), 5, 95),
+      noise: clamp(Math.round(15 + populationScale * .25 + connectivityScale * .35 + (100 - incomeScale) * .15), 5, 95),
+      defense: clamp(Math.round(incomeScale * .6 + connectivityScale * .4), 5, 95)
+    };
+  };
+
   const geographyFeatureKey = index => `geography-${index}`;
   const featureCode = properties => properties.ISO_A3 && properties.ISO_A3 !== "-99" ? properties.ISO_A3 : properties.ADM0_A3 && properties.ADM0_A3 !== "-99" ? properties.ADM0_A3 : null;
 
@@ -46,9 +81,7 @@
         id, code, name, region, longitude, latitude,
         x: (longitude + 180) / 3.6,
         y: (90 - latitude) / 1.8,
-        activity: 1 + (index * 7 + 2) % 5,
-        noise: 1 + (index * 3 + 4) % 5,
-        defense: 1 + (index * 4 + 1) % 5
+        ...countrySimulationProfile(region, index, code)
       }));
     }
 
@@ -62,18 +95,17 @@
       const [minimumLongitude, minimumLatitude, maximumLongitude, maximumLatitude] = feature.bbox || [-180, -90, 180, 90];
       const longitude = Number.isFinite(properties.LABEL_X) ? properties.LABEL_X : (minimumLongitude + maximumLongitude) / 2;
       const latitude = Number.isFinite(properties.LABEL_Y) ? properties.LABEL_Y : (minimumLatitude + maximumLatitude) / 2;
+      const region = CONTINENT_NAMES[properties.CONTINENT] || properties.CONTINENT || "Мир";
       return {
         id: geographyFeatureKey(index),
         code,
         name: properties.NAME_RU || properties.NAME_EN || properties.NAME || `Территория ${index + 1}`,
-        region: CONTINENT_NAMES[properties.CONTINENT] || properties.CONTINENT || "Мир",
+        region,
         longitude,
         latitude,
         x: (longitude + 180) / 3.6,
         y: (90 - latitude) / 1.8,
-        activity: 1 + (index * 7 + 2) % 5,
-        noise: 1 + (index * 3 + 4) % 5,
-        defense: 1 + (index * 4 + 1) % 5
+        ...countrySimulationProfile(region, index, baseCode)
       };
     });
   })();
@@ -168,12 +200,12 @@
     const profile = element("country-profile");
     const country = countriesById.get(state.started ? state.inspectedCountry || state.selectedCountry : state.selectedCountry);
     if (!country) {
-      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>НАЖМИ НА СТРАНУ НА КАРТЕ</b><p>Каждая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>";
+      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>НАЖМИ НА СТРАНУ НА КАРТЕ</b><p>Каждая страна скрыто влияет на ход симуляции. Внутренние параметры недоступны игроку.</p>";
       element("country-status").textContent = "ВЫБОР СТАРТА";
       return;
     }
     const status = state.countries[country.id] === "seed" ? "СТАРТОВЫЙ СИГНАЛ" : state.countries[country.id] === "infected" ? "ОТМЕЧЕНА" : state.countries[country.id] === "contained" ? "ИЗОЛИРОВАНА" : state.started ? "НЕЙТРАЛЬНА" : "КАНДИДАТ НА СТАРТ";
-    profile.innerHTML = `<span>${country.region.toUpperCase()} / ${country.code}</span><b>${country.name.toUpperCase()}</b><p>Игровой профиль. Числа служат только балансом симуляции и не являются оценкой реальных систем страны.</p><div class="country-metrics"><span>АКТИВНОСТЬ<b>${country.activity}/5</b></span><span>ФОН<b>${country.noise}/5</b></span><span>КОНТУР<b>${country.defense}/5</b></span></div>`;
+    profile.innerHTML = `<span>${country.region.toUpperCase()} / ${country.code}</span><b>${country.name.toUpperCase()}</b><p>Имитатор учитывает локальные условия скрыто. Параметры страны не раскрываются игроку.</p>`;
     element("country-status").textContent = status;
   }
 
@@ -353,7 +385,7 @@
     state.countries[state.selectedCountry] = "seed";
     state.inspectedCountry = state.selectedCountry;
     const country = countriesById.get(state.selectedCountry);
-    state.alert = clamp(5 + country.defense * 2 - effectiveStats().stealth, 3, 25);
+    state.alert = clamp(5 + country.defense * .13 - effectiveStats().stealth, 3, 25);
     pushLog(`Сценарий запущен в стране «${country.name}». Первый импульс стабилен.`);
     renderAll();
   }
@@ -382,7 +414,7 @@
 
   function resolveBackgroundEvent() {
     const country = randomItem(activeCountries());
-    const chance = .13 + country.noise * .055 + (hasUpgrade("switchback") ? .12 : 0);
+    const chance = .12 + country.noise * .0025 + (hasUpgrade("switchback") ? .12 : 0);
     if (Math.random() > chance) return 0;
     const events = [
       `Фоновая активность в ${country.name} усилила один из маршрутов.`,
@@ -400,7 +432,7 @@
     if (!candidates.length) return;
     const target = candidates.sort((first, second) => second.defense - first.defense)[0];
     const resistance = effectiveStats().resilience + (hasUpgrade("lattice") ? 2 : 0);
-    const chance = .08 + target.defense * .035 - resistance * .025;
+    const chance = .07 + target.defense * .002 - resistance * .025;
     if (Math.random() < chance) {
       state.countries[target.id] = "contained";
       pushLog(`Контур защиты страны «${target.name}» закрыл один отмеченный узел.`);
@@ -420,7 +452,7 @@
       const candidates = openNeighbors();
       if (!candidates.length) break;
       const target = randomItem(candidates);
-      const chance = .18 + stats.speed * .052 + sourceActivity * .025 + backgroundBonus + (hasUpgrade("cascade") ? .11 : 0) - target.defense * .035;
+      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundBonus + (hasUpgrade("cascade") ? .11 : 0) - target.defense * .0027;
       if (Math.random() < chance) {
         state.countries[target.id] = "infected";
         newSignals += 1;
@@ -430,7 +462,7 @@
     if (!newSignals) pushLog("Связи дрожат, но контур не пропускает новый устойчивый импульс в этом цикле.");
     state.signal += 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
     const averageDefense = activeCountries().reduce((total, country) => total + country.defense, 0) / Math.max(1, activeCountries().length);
-    const awarenessStep = 3 + averageDefense * .56 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0);
+    const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0);
     state.alert = clamp(state.alert + awarenessStep + newSignals * 2.2, 0, 100);
     containSignal();
     const influenced = activeCountries().length;

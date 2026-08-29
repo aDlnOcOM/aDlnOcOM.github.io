@@ -1,0 +1,14 @@
+HackBox uses a locally bundled snapshot of selected World Bank World Development Indicators
+to make its hidden, fictional gameplay balance more geographically varied.
+
+Indicators used:
+- SP.POP.TOTL — Population, total
+- NY.GDP.PCAP.CD — GDP per capita (current US$)
+- IT.NET.USER.ZS — Individuals using the Internet (% of population)
+
+Source: World Bank Indicators API v2
+https://api.worldbank.org/v2/
+Retrieved: 2026-08-29 UTC
+
+The resulting values are internal game coefficients only. They are not presented as
+country cybersecurity ratings or factual assessments of a country’s institutions.
