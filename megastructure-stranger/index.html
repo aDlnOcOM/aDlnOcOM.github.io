@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d14">
+  <title>Megastructure Stranger</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="masthead">
+      <a class="wordmark" href="#top" aria-label="Megastructure Stranger, главная">
+        <span>MEGA</span><span>STRUCTURE</span><b>STRANGER</b>
+      </a>
+      <div class="masthead-meta">
+        <span class="status-dot"></span>
+        <span>Сектор наблюдения: слепая зона</span>
+      </div>
+    </header>
+
+    <section id="home-screen" class="home-screen" aria-labelledby="home-title">
+      <div class="briefing-panel">
+        <p class="eyebrow">убежище 41 / служебный уровень не отмечен</p>
+        <h1 id="home-title">Пока система не видит тебя — ты жив.</h1>
+        <p class="briefing-copy">Ты перестал принимать стабилизаторы, вышел из смены и спрятался между техническими этажами. Каждый спуск приносит лом для убежища, имплантов и снаряжения — если вернёшься.</p>
+        <div class="run-stats" aria-label="Статистика убежища">
+          <div><span>Лом</span><strong id="salvage-count">0000</strong></div>
+          <div><span>Лучший этаж</span><strong id="best-floor">00</strong></div>
+          <div><span>Состояние</span><strong>НЕ ЗАРЕГИСТРИРОВАН</strong></div>
+        </div>
+        <button id="start-run" class="primary-button" type="button">Начать забег <span>↘</span></button>
+      </div>
+
+      <div class="home-grid">
+        <section class="terminal-panel implant-panel" aria-labelledby="implant-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">нейроцех / нелегальный доступ</p>
+              <h2 id="implant-title">Импланты</h2>
+            </div>
+            <span class="terminal-state">СЕТЬ ВНЕ СИСТЕМЫ</span>
+          </div>
+          <div id="implant-tree" class="implant-tree"></div>
+        </section>
+
+        <section class="terminal-panel weapon-panel" aria-labelledby="weapon-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">оружейный шкаф / ПП Охраны</p>
+              <h2 id="weapon-title">Крепления оружия</h2>
+            </div>
+            <span id="smg-level" class="terminal-state">БАЗОВАЯ КОНФИГУРАЦИЯ</span>
+          </div>
+          <div id="weapon-mods" class="weapon-mods"></div>
+        </section>
+      </div>
+
+      <section class="loadout-panel" aria-labelledby="loadout-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">перед выходом / инвентаризация</p>
+            <h2 id="loadout-title">Стартовый комплект</h2>
+          </div>
+          <span class="terminal-state">7 / 7 СЛОТОВ</span>
+        </div>
+        <div id="loadout-list" class="loadout-list"></div>
+      </section>
+    </section>
+
+    <section id="run-screen" class="run-screen" hidden aria-label="Забег по мегаструктуре">
+      <aside class="run-sidebar">
+        <div class="run-card floor-card">
+          <p class="eyebrow">маршрут сканера</p>
+          <h2>Этаж <span id="floor-number">01</span></h2>
+          <div id="floor-route" class="floor-route" aria-label="Карта комнат текущего этажа"></div>
+        </div>
+        <div class="run-card signal-card">
+          <p class="eyebrow">системное сообщение</p>
+          <p id="signal-text">Шумоподавление включено. Путь до следующей комнаты свободен.</p>
+        </div>
+        <button id="abort-run" class="quiet-button" type="button">Вернуться в убежище</button>
+      </aside>
+
+      <section class="combat-section">
+        <div class="combat-hud">
+          <div class="vitals">
+            <div class="hud-label"><span>ЦЕЛОСТНОСТЬ</span><strong id="health-label">100 / 100</strong></div>
+            <div class="meter"><i id="health-bar"></i></div>
+            <div class="hud-label armor-label"><span>БРОНЯ</span><strong id="armor-label">04</strong></div>
+            <div class="meter armor-meter"><i id="armor-bar"></i></div>
+          </div>
+          <div class="weapon-hud">
+            <span id="weapon-name">ПП ОХРАНЫ</span>
+            <strong id="ammo-label">32 <small>/ 32</small></strong>
+            <em id="weapon-hint">ЛКМ — огонь · R — перезарядка · 1/2 — смена</em>
+          </div>
+          <div class="combat-readout">
+            <span>ЛОМ <b id="run-salvage">000</b></span>
+            <span>УГРОЗА <b id="threat-label">НИЗКАЯ</b></span>
+          </div>
+        </div>
+        <div class="canvas-frame">
+          <canvas id="game-canvas" width="960" height="600" aria-label="Поле боя. Передвижение WASD, прицеливание мышью, огонь левой кнопкой."></canvas>
+          <div id="room-overlay" class="room-overlay" aria-live="polite"></div>
+          <div class="control-note">WASD / стрелки — движение · мышь — прицел · ЛКМ — огонь · Q — нож</div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
