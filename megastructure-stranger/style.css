@@ -24,9 +24,11 @@ body {
     var(--void);
   color: var(--ink);
   font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  isolation: isolate;
   margin: 0;
   min-width: 1120px;
   min-height: 100vh;
+  position: relative;
 }
 
 button { font: inherit; }
@@ -36,7 +38,34 @@ button:focus-visible {
   outline-offset: 3px;
 }
 
-.app-shell { margin: 0 auto; max-width: 1440px; padding: 26px 36px 40px; }
+.build-watermark {
+  display: grid;
+  gap: 96px 152px;
+  grid-template-columns: repeat(3, minmax(350px, 1fr));
+  inset: -280px -220px;
+  pointer-events: none;
+  position: fixed;
+  transform: rotate(-24deg) scale(1.06);
+  transform-origin: center;
+  z-index: 0;
+}
+
+.build-watermark span {
+  background: linear-gradient(90deg, rgba(154, 164, 174, 0.04), rgba(185, 194, 201, 0.2) 48%, rgba(108, 118, 129, 0.06));
+  background-clip: text;
+  color: transparent;
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-size: 54px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 0.8;
+  text-align: center;
+  text-transform: uppercase;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.app-shell { margin: 0 auto; max-width: 1440px; padding: 26px 36px 40px; position: relative; z-index: 1; }
 
 .masthead {
   align-items: center;
