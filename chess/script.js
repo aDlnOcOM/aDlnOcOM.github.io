@@ -44,7 +44,11 @@
     advanceTimer: null,
     squareGrid: [],
     settingsOpen: false,
-    leotisAwakened: false
+    leotisAwakened: false,
+    moveHistory: [],
+    initialPosition: null,
+    replayIndex: null,
+    finalStatus: ""
   };
 
   const getElement = id => document.getElementById(id);
@@ -56,6 +60,34 @@
   const inBounds = (row, col) => row >= 0 && row < 8 && col >= 0 && col < 8;
   const copyBoard = board => board.map(row => [...row]);
   const owns = (piece, color) => color === "w" ? isWhite(piece) : isBlack(piece);
+
+  function copyMove(move) {
+    return move ? { ...move } : null;
+  }
+
+  function squareName(row, col) {
+    return `${String.fromCharCode(97 + col)}${8 - row}`;
+  }
+
+  function createPositionSnapshot() {
+    return {
+      board: copyBoard(state.board),
+      turn: state.turn,
+      castling: { ...state.castling },
+      enPassant: state.enPassant ? [...state.enPassant] : null,
+      lastMove: copyMove(state.lastMove)
+    };
+  }
+
+  function restorePositionSnapshot(snapshot) {
+    state.board = copyBoard(snapshot.board);
+    state.turn = snapshot.turn;
+    state.castling = { ...snapshot.castling };
+    state.enPassant = snapshot.enPassant ? [...snapshot.enPassant] : null;
+    state.lastMove = copyMove(snapshot.lastMove);
+    state.selected = null;
+    state.possible = [];
+  }
 
   function freshBoard() {
     return [
@@ -81,6 +113,10 @@
     state.castling = { K: true, Q: true, k: true, q: true };
     state.enPassant = null;
     state.leotisAwakened = false;
+    state.moveHistory = [];
+    state.replayIndex = null;
+    state.finalStatus = "";
+    state.initialPosition = createPositionSnapshot();
     getElement("restart").style.display = "none";
     getElement("thinking").textContent = "";
     applyTheme();
@@ -88,6 +124,8 @@
     updateDifficultyDisplay();
     updateStatus();
     render();
+    renderMoveHistory();
+    syncReplayControls();
     if (state.playerColor === "b") aiMove();
   }
 
@@ -727,6 +765,95 @@
     }, delay);
   }
 
+  function recordMove(move, piece) {
+    state.moveHistory.push({
+      piece,
+      from: squareName(move.fr, move.fc),
+      to: squareName(move.tr, move.tc),
+      snapshot: createPositionSnapshot()
+    });
+  }
+
+  function formatMoveCount(count) {
+    const lastTwoDigits = count % 100;
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return `${count} ходов`;
+    const lastDigit = count % 10;
+    if (lastDigit === 1) return `${count} ход`;
+    if (lastDigit >= 2 && lastDigit <= 4) return `${count} хода`;
+    return `${count} ходов`;
+  }
+
+  function renderMoveHistory() {
+    const list = getElement("move-list");
+    const count = getElement("move-count");
+    count.textContent = formatMoveCount(state.moveHistory.length);
+    list.innerHTML = "";
+    if (!state.moveHistory.length) {
+      const empty = document.createElement("li");
+      empty.className = "history-empty";
+      empty.textContent = "Пока ходов нет";
+      list.appendChild(empty);
+      return;
+    }
+    state.moveHistory.forEach((entry, index) => {
+      const item = document.createElement("li");
+      const move = document.createElement("button");
+      const moveNumber = document.createElement("span");
+      const piece = document.createElement("span");
+      const path = document.createElement("span");
+      move.type = "button";
+      move.className = "history-move";
+      move.dataset.historyIndex = String(index);
+      move.disabled = !state.gameOver;
+      move.setAttribute("aria-label", `${describeSquareName(entry.piece)}: ${entry.from} → ${entry.to}`);
+      if (state.replayIndex === index + 1) move.classList.add("active");
+      moveNumber.className = "history-number";
+      moveNumber.textContent = index % 2 === 0 ? `${Math.floor(index / 2) + 1}.` : "…";
+      piece.className = `history-piece ${isWhite(entry.piece) ? "white" : "black"}`;
+      piece.textContent = PIECES[entry.piece];
+      piece.setAttribute("aria-hidden", "true");
+      path.className = "history-path";
+      path.textContent = `— ${entry.from} → ${entry.to}`;
+      move.append(moveNumber, piece, path);
+      item.appendChild(move);
+      list.appendChild(item);
+    });
+  }
+
+  function describeSquareName(piece) {
+    return `${isWhite(piece) ? "Белые" : "Чёрные"}: ${PIECE_NAMES[piece.toLowerCase()]}`;
+  }
+
+  function syncReplayControls() {
+    const controls = getElement("replay-controls");
+    const hasReplay = state.gameOver && state.moveHistory.length > 0;
+    controls.hidden = !hasReplay;
+    if (!hasReplay) return;
+    const total = state.moveHistory.length;
+    const index = state.replayIndex ?? total;
+    getElement("replay-first").disabled = index === 0;
+    getElement("replay-previous").disabled = index === 0;
+    getElement("replay-next").disabled = index === total;
+    getElement("replay-last").disabled = index === total;
+    getElement("replay-position").textContent = index === total ? "Финальная позиция" : `Ход ${index} из ${total}`;
+  }
+
+  function viewPosition(index) {
+    if (!state.gameOver || !state.initialPosition) return;
+    const total = state.moveHistory.length;
+    const nextIndex = Math.max(0, Math.min(total, index));
+    const snapshot = nextIndex === 0 ? state.initialPosition : state.moveHistory[nextIndex - 1].snapshot;
+    restorePositionSnapshot(snapshot);
+    state.replayIndex = nextIndex;
+    getElement("thinking").textContent = "";
+    getElement("status").textContent = nextIndex === total
+      ? state.finalStatus
+      : `Просмотр партии: ход ${nextIndex} из ${total}`;
+    render();
+    renderMoveHistory();
+    syncReplayControls();
+  }
+
   function doMove(move) {
     const animation = captureMoveAnimation(move);
     const mover = state.board[move.fr][move.fc];
@@ -736,11 +863,13 @@
     state.board = next.board;
     state.castling = next.castling;
     state.enPassant = next.enPassant;
-    state.lastMove = move;
+    state.lastMove = copyMove(move);
     state.selected = null;
     state.possible = [];
     state.turn = enemy(state.turn);
+    recordMove(move, mover);
     render();
+    renderMoveHistory();
     playMoveAnimation(animation);
     const moves = legalMoves(state.board, state.turn, state.castling, state.enPassant);
     if (!moves.length) { endGame(inCheck(state.board, state.turn) ? (state.turn === state.playerColor ? "lose" : "win") : "draw"); return; }
@@ -753,21 +882,23 @@
     const status = getElement("status");
     if (result === "win" && state.difficulty < DIFFICULTY_LEVELS.length - 1) {
       const nextDifficulty = state.difficulty + 1;
-      status.textContent = `Победа! Следующий уровень: ${nextDifficulty + 1} · ${DIFFICULTY_LEVELS[nextDifficulty].label}`;
-      getElement("thinking").textContent = "Переход к следующему сопернику…";
-      state.advanceTimer = setTimeout(() => {
-        state.difficulty = nextDifficulty;
-        savePreferences();
-        init();
-      }, 1600);
+      state.difficulty = nextDifficulty;
+      updateDifficultyDisplay();
+      savePreferences();
+      state.finalStatus = `Победа! Следующий уровень: ${nextDifficulty + 1} · ${DIFFICULTY_LEVELS[nextDifficulty].label}`;
+      getElement("thinking").textContent = "Следующий соперник будет выбран после новой партии.";
     } else if (result === "win") {
-      status.textContent = `Вы прошли все ${DIFFICULTY_LEVELS.length} уровней. Легендарная победа!`;
+      state.finalStatus = `Вы прошли все ${DIFFICULTY_LEVELS.length} уровней. Легендарная победа!`;
       getElement("thinking").textContent = "";
     } else {
-      status.textContent = result === "lose" ? "Вы проиграли" : "Ничья";
+      state.finalStatus = result === "lose" ? "Вы проиграли" : "Ничья";
       getElement("thinking").textContent = "";
     }
+    status.textContent = state.finalStatus;
+    state.replayIndex = state.moveHistory.length;
     getElement("restart").style.display = "inline-block";
+    renderMoveHistory();
+    syncReplayControls();
   }
 
   function updateStatus() {
@@ -938,6 +1069,15 @@
 
   getElement("restart").addEventListener("click", init);
   getElement("switch").addEventListener("click", () => { state.playerColor = enemy(state.playerColor); init(); });
+  getElement("move-list").addEventListener("click", event => {
+    const entry = event.target.closest("button[data-history-index]");
+    if (!entry || !state.gameOver) return;
+    viewPosition(Number(entry.dataset.historyIndex) + 1);
+  });
+  getElement("replay-first").addEventListener("click", () => viewPosition(0));
+  getElement("replay-previous").addEventListener("click", () => viewPosition((state.replayIndex ?? state.moveHistory.length) - 1));
+  getElement("replay-next").addEventListener("click", () => viewPosition((state.replayIndex ?? state.moveHistory.length) + 1));
+  getElement("replay-last").addEventListener("click", () => viewPosition(state.moveHistory.length));
   getElement("settings-toggle").addEventListener("click", () => {
     state.settingsOpen = !state.settingsOpen;
     syncSettingsPanel();
