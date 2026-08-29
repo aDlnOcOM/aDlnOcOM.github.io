@@ -8,7 +8,35 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="command-shell">
+  <section id="start-screen" class="entry-screen" aria-labelledby="start-title">
+    <div class="entry-panel">
+      <p class="eyebrow">HACKBOX / ИЗОЛИРОВАННАЯ СТРАТЕГИЧЕСКАЯ СИМУЛЯЦИЯ</p>
+      <h1 id="start-title">Карта<br><span>сигнала</span></h1>
+      <p class="entry-copy">Построй игровую модель угрозы, выбери её поведенческий профиль и проведи абстрактный сценарий на географической карте. Все механики существуют только внутри симуляции.</p>
+      <div class="entry-actions">
+        <button id="new-game" class="entry-primary" type="button">Новая игра <span>→</span></button>
+        <button id="continue-game" class="entry-secondary" type="button" disabled>Продолжить игру</button>
+      </div>
+      <p id="save-hint" class="entry-note">Сохранения пока нет. Новая игра начнётся с конструктора модели.</p>
+    </div>
+  </section>
+
+  <section id="creation-screen" class="entry-screen creation-screen" aria-labelledby="creation-title" hidden>
+    <div class="creation-panel">
+      <header class="creation-heading">
+        <div><p class="eyebrow">ШАГ 01 / ПРОФИЛЬ СЦЕНАРИЯ</p><h1 id="creation-title">Собрать<br><span>модель угрозы</span></h1></div>
+        <p>Выбери высокоуровневую игровую роль и один поведенческий вариант. Описания намеренно не являются техническими инструкциями.</p>
+      </header>
+      <label class="creation-name" for="creation-name"><span>НАЗВАНИЕ СЦЕНАРИЯ</span><input id="creation-name" maxlength="18" value="СЕРАЯ ПЕТЛЯ" autocomplete="off"></label>
+      <div class="creation-layout">
+        <section><div class="creation-label"><span>ТИП МОДЕЛИ</span><b>6 РОЛЕЙ</b></div><div id="threat-type-grid" class="threat-type-grid" role="radiogroup" aria-label="Тип игровой модели угрозы"></div></section>
+        <section><div class="creation-label"><span>ПОВЕДЕНЧЕСКИЙ ВАРИАНТ</span><b id="variant-count">0 ВАРИАНТОВ</b></div><div id="threat-variant-grid" class="threat-variant-grid" role="radiogroup" aria-label="Вариант игровой модели угрозы"></div></section>
+      </div>
+      <footer class="creation-footer"><p id="threat-summary">Выбери тип модели, чтобы увидеть его игровую роль.</p><button id="create-game" class="entry-primary" type="button">Продолжить к карте <span>→</span></button></footer>
+    </div>
+  </section>
+
+  <main id="game-shell" class="command-shell" hidden>
     <header class="command-bar">
       <a class="brand" href="#top" aria-label="HackBox, карта сценария"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
       <div class="global-readouts" aria-label="Сводка сценария">
