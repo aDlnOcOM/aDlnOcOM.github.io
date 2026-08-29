@@ -40,7 +40,7 @@ button:focus-visible {
 
 .build-watermark {
   display: grid;
-  gap: 96px 152px;
+  gap: 46px 88px;
   grid-template-columns: repeat(3, minmax(350px, 1fr));
   inset: -280px -220px;
   pointer-events: none;
