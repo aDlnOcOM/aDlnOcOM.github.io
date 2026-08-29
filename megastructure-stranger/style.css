@@ -39,10 +39,10 @@ button:focus-visible {
 }
 
 .build-watermark {
-  display: grid;
-  gap: 46px 88px;
-  grid-template-columns: repeat(3, minmax(350px, 1fr));
-  inset: -280px -220px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  inset: -285px -420px;
   pointer-events: none;
   position: fixed;
   transform: rotate(-24deg) scale(1.06);
@@ -53,17 +53,21 @@ button:focus-visible {
 .build-watermark span {
   background: linear-gradient(90deg, rgba(154, 164, 174, 0.04), rgba(185, 194, 201, 0.2) 48%, rgba(108, 118, 129, 0.06));
   background-clip: text;
+  background-repeat: repeat-x;
+  background-size: 560px 100%;
   color: transparent;
   font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-  font-size: 54px;
+  font-size: 50px;
   font-weight: 400;
   letter-spacing: 0.12em;
   line-height: 0.8;
-  text-align: center;
+  text-align: left;
   text-transform: uppercase;
   user-select: none;
   white-space: nowrap;
 }
+
+.build-watermark span:nth-child(even) { transform: translateX(-190px); }
 
 .app-shell { margin: 0 auto; max-width: 1440px; padding: 26px 36px 40px; position: relative; z-index: 1; }
 
