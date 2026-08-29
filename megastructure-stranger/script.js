@@ -8,14 +8,13 @@
   const HEIGHT = canvas.height;
   const SAVE_KEY = "megastructure-stranger-mvp-v1";
   const STARTER_LOADOUT = [
-    ["РЮКЗАК", "Офисная сумка", "BAG"],
-    ["ОСНОВНОЕ", "ПП Охраны", "SMG"],
-    ["ВТОРИЧНОЕ", "Нож охраны", "KNF"],
-    ["НАГРУДНИК", "Потрёпанная кожанка", "CHR"],
-    ["ШТАНЫ", "Старые карго", "CRG"],
-    ["ШЛЕМ", "Потрёпанная бейсболка", "CAP"],
-    ["БОТИНКИ", "Берцы охранника этажа", "BOT"],
-    ["МОДУЛИ", "MOLLE / экзоскелет / фонарь", "---"]
+    { id: "bag", slot: "РЮКЗАК", name: "Офисная сумка", icon: "BAG" },
+    { id: "smg", slot: "ОСНОВНОЕ", name: "ПП Охраны", icon: "SMG" },
+    { id: "knife", slot: "ВТОРИЧНОЕ", name: "Нож охраны", icon: "KNF" },
+    { id: "chest", slot: "НАГРУДНИК", name: "Потрёпанная кожанка", icon: "CHR" },
+    { id: "pants", slot: "ШТАНЫ", name: "Старые карго", icon: "CRG" },
+    { id: "helmet", slot: "ШЛЕМ", name: "Потрёпанная бейсболка", icon: "CAP" },
+    { id: "boots", slot: "БОТИНКИ", name: "Берцы охранника этажа", icon: "BOT" }
   ];
   const IMPLANTS = [
     { id: "cortex", name: "Контур тишины", effect: "+15 к целостности", cost: 20, requires: [] },
@@ -23,14 +22,79 @@
     { id: "ceramic", name: "Керамо-рёбра", effect: "+2 к броне", cost: 38, requires: ["cortex"] },
     { id: "ghost", name: "Слепой импульс", effect: "дольше неуязвимость", cost: 64, requires: ["myofiber", "ceramic"] }
   ];
-  const WEAPON_MODS = [
-    { id: "underbarrel", slot: "ПОДСТВОЛЬНИК", name: "Сканер ближней зоны", effect: "контур врагов", cost: 18 },
-    { id: "muzzle", slot: "НАДУЛЬНИК", name: "Компенсатор", effect: "+2 урона", cost: 26 },
-    { id: "magazine", slot: "МАГАЗИН", name: "Удлинённый", effect: "+12 патронов", cost: 30 },
-    { id: "optic", slot: "ПРИЦЕЛ", name: "Пинхол", effect: "меньше разброс", cost: 22 },
-    { id: "stock", slot: "ПРИКЛАД", name: "Складной каркас", effect: "-18% перезарядка", cost: 24 },
-    { id: "grip", slot: "РУКОЯТЬ", name: "Полимерная", effect: "ровнее очередь", cost: 20 }
-  ];
+  const EQUIPMENT_TREES = {
+    smg: {
+      label: "ОСНОВНОЕ ОРУЖИЕ / ПП ОХРАНЫ",
+      branches: [
+        { id: "muzzle", base: "Нет надульника", options: [
+          { id: "compensator", name: "Компенсатор", effect: "−24% разброс", cost: 26, tier: { name: "Портовый контур", effect: "ещё −12% разброс", cost: 38 } },
+          { id: "suppressor", name: "Глушитель", effect: "−25% шума", cost: 24, tier: { name: "Глушитель II", effect: "−45% шума", cost: 36 } }
+        ] },
+        { id: "ammo", base: "Простой патрон", options: [
+          { id: "incendiary", name: "Зажигательный", effect: "+1 урон", cost: 25, tier: { name: "Термозаряд", effect: "+2 урон", cost: 42 } },
+          { id: "armor-piercing", name: "Бронебойный", effect: "+2 урона", cost: 28, tier: { name: "Вольфрамовый", effect: "+3 урона", cost: 46 } }
+        ] },
+        { id: "magazine", base: "Обычный магазин", options: [
+          { id: "extended", name: "Удлинённый", effect: "+12 патронов", cost: 30, tier: { name: "Барабан", effect: "+8 патронов", cost: 44 } },
+          { id: "quick-feed", name: "Быстрая подача", effect: "−22% перезарядка", cost: 27, tier: { name: "Автоподача", effect: "ещё −18%", cost: 40 } }
+        ] },
+        { id: "optic", base: "Iron sights", options: [
+          { id: "reflex", name: "Коллиматор", effect: "−20% разброс", cost: 22, tier: { name: "Точка 2x", effect: "ещё −10%", cost: 35 } },
+          { id: "rangefinder", name: "Дальномер", effect: "+10% скорость пули", cost: 23, tier: { name: "Дальномер II", effect: "+15% скорость", cost: 37 } }
+        ] },
+        { id: "stock", base: "Нет приклада", options: [
+          { id: "frame-stock", name: "Каркасный", effect: "−14% разброс", cost: 20, tier: { name: "Упор-фиксатор", effect: "ещё −10%", cost: 34 } },
+          { id: "servo-stock", name: "Сервоприклад", effect: "−14% перезарядка", cost: 24, tier: { name: "Сервопривод II", effect: "ещё −12%", cost: 38 } }
+        ] },
+        { id: "underbarrel", base: "Нет подствольника", options: [
+          { id: "scanner", name: "Сканер", effect: "контур врагов", cost: 18, tier: { name: "Сканер II", effect: "дальний контур", cost: 30 } },
+          { id: "shock-module", name: "Шок-модуль", effect: "+1 урон", cost: 23, tier: { name: "Шок II", effect: "+2 урона", cost: 36 } }
+        ] }
+      ]
+    },
+    knife: {
+      label: "ВТОРИЧНОЕ ОРУЖИЕ / НОЖ ОХРАНЫ",
+      branches: [{ id: "blade", base: "Штатное лезвие", options: [
+        { id: "serrated", name: "Зубчатая кромка", effect: "+10 урона ножом", cost: 20, tier: { name: "Кромка II", effect: "+14 урона", cost: 34 } },
+        { id: "shock-grip", name: "Шок-рукоять", effect: "−18% задержка", cost: 18, tier: { name: "Шок II", effect: "−24% задержка", cost: 31 } }
+      ] }]
+    },
+    bag: {
+      label: "РЮКЗАК / ОФИСНАЯ СУМКА",
+      branches: [{ id: "carry", base: "Обычная сумка", options: [
+        { id: "molle", name: "MOLLE-панель", effect: "+15% лома", cost: 22, tier: { name: "MOLLE II", effect: "+15% ещё", cost: 38 } },
+        { id: "sealed", name: "Герметичный вкладыш", effect: "+20% лома после смерти", cost: 20, tier: { name: "Герметик II", effect: "+20% ещё", cost: 34 } }
+      ] }]
+    },
+    chest: {
+      label: "НАГРУДНИК / ПОТРЁПАННАЯ КОЖАНКА",
+      branches: [{ id: "chest-core", base: "Потрёпанная кожа", options: [
+        { id: "partial-exo", name: "Частичный экзоскелет", effect: "+2 броня", cost: 30, tier: { name: "Усиленный каркас", effect: "+2 броня", cost: 47 } },
+        { id: "full-exo", name: "Полный экзоскелет", effect: "+20 целостность", cost: 34, tier: { name: "Полный каркас II", effect: "+20 целостность", cost: 52 } }
+      ] }]
+    },
+    pants: {
+      label: "ШТАНЫ / СТАРЫЕ КАРГО",
+      branches: [{ id: "pants-core", base: "Старые карго", options: [
+        { id: "knee-pads", name: "Наколенники", effect: "+1 броня", cost: 17, tier: { name: "Наколенники II", effect: "+1 броня", cost: 28 } },
+        { id: "quiet-lining", name: "Тихая подкладка", effect: "+8% скорость", cost: 19, tier: { name: "Подкладка II", effect: "+8% скорость", cost: 30 } }
+      ] }]
+    },
+    helmet: {
+      label: "ШЛЕМ / ПОТРЁПАННАЯ БЕЙСБОЛКА",
+      branches: [{ id: "helmet-core", base: "Потрёпанная кепка", options: [
+        { id: "lamp", name: "Налобный фонарь", effect: "дальняя видимость", cost: 16, tier: { name: "Фонарь II", effect: "широкий луч", cost: 27 } },
+        { id: "signal-filter", name: "Фильтр сигнала", effect: "+8 целостность", cost: 21, tier: { name: "Фильтр II", effect: "+10 целостность", cost: 33 } }
+      ] }]
+    },
+    boots: {
+      label: "БОТИНКИ / БЕРЦЫ ОХРАННИКА",
+      branches: [{ id: "boot-core", base: "Штатные берцы", options: [
+        { id: "servo-laces", name: "Сервошнуровка", effect: "+10% скорость", cost: 22, tier: { name: "Серво II", effect: "+10% скорость", cost: 36 } },
+        { id: "mag-soles", name: "Магнитные подошвы", effect: "+1 броня", cost: 21, tier: { name: "Подошвы II", effect: "+1 броня", cost: 35 } }
+      ] }]
+    }
+  };
   const ROOM_NAMES = ["Служебный колодец", "Коридор с архивами", "Грузовая развязка", "Тепловой буфер", "Шлюз внешнего доступа", "Комната рекуперации"];
   const ENEMY_TYPES = {
     watcher: { name: "Наблюдатель", color: "#ff7d75", radius: 14, hp: 38, speed: 72, fire: 1.2, bulletSpeed: 205, damage: 7, reward: 6 },
@@ -43,20 +107,58 @@
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
   const distance = (first, second) => Math.hypot(first.x - second.x, first.y - second.y);
   const randomBetween = (minimum, maximum) => minimum + Math.random() * (maximum - minimum);
-  const hasMod = id => progression.mods.includes(id);
   const hasImplant = id => progression.implants.includes(id);
+
+  function createEquipmentProgress(savedEquipment = {}) {
+    const equipment = {};
+    Object.entries(EQUIPMENT_TREES).forEach(([gearId, tree]) => {
+      equipment[gearId] = {};
+      tree.branches.forEach(branch => {
+        const savedBranch = savedEquipment[gearId]?.[branch.id] || {};
+        const choiceExists = branch.options.some(option => option.id === savedBranch.choice);
+        equipment[gearId][branch.id] = { choice: choiceExists ? savedBranch.choice : null, tier: Boolean(choiceExists && savedBranch.tier) };
+      });
+    });
+    return equipment;
+  }
+
+  function getBranchProgress(gearId, branchId) {
+    return progression.equipment[gearId][branchId];
+  }
+
+  function hasUpgrade(gearId, branchId, choiceId) {
+    return getBranchProgress(gearId, branchId).choice === choiceId;
+  }
+
+  function hasTier(gearId, branchId, choiceId) {
+    const branch = getBranchProgress(gearId, branchId);
+    return branch.choice === choiceId && branch.tier;
+  }
 
   function loadProgression() {
     try {
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
+      const equipment = createEquipmentProgress(saved.equipment);
+      const legacyMods = {
+        underbarrel: ["underbarrel", "scanner"],
+        muzzle: ["muzzle", "compensator"],
+        magazine: ["magazine", "extended"],
+        optic: ["optic", "reflex"],
+        stock: ["stock", "frame-stock"],
+        grip: ["stock", "servo-stock"]
+      };
+      (Array.isArray(saved.mods) ? saved.mods : []).forEach(mod => {
+        const legacy = legacyMods[mod];
+        if (legacy) equipment.smg[legacy[0]].choice = legacy[1];
+      });
       return {
         salvage: Number.isFinite(saved.salvage) ? saved.salvage : 0,
         bestFloor: Number.isFinite(saved.bestFloor) ? saved.bestFloor : 0,
         implants: Array.isArray(saved.implants) ? saved.implants : [],
-        mods: Array.isArray(saved.mods) ? saved.mods : []
+        equipment
       };
     } catch {
-      return { salvage: 0, bestFloor: 0, implants: [], mods: [] };
+      return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress() };
     }
   }
 
@@ -77,7 +179,8 @@
     runSalvage: 0,
     elapsed: 0,
     lastFrame: performance.now(),
-    roomClearTimer: null
+    roomClearTimer: null,
+    selectedGear: "smg"
   };
 
   function saveProgression() {
@@ -85,34 +188,46 @@
   }
 
   function playerStats() {
+    const isChoice = (branchId, choiceId) => hasUpgrade("smg", branchId, choiceId);
+    const isMaxed = (branchId, choiceId) => hasTier("smg", branchId, choiceId);
     return {
-      maxHealth: 100 + (hasImplant("cortex") ? 15 : 0),
-      armor: 4 + (hasImplant("ceramic") ? 2 : 0),
-      speed: 245 * (hasImplant("myofiber") ? 1.12 : 1),
+      maxHealth: 100 + (hasImplant("cortex") ? 15 : 0) + (hasUpgrade("chest", "chest-core", "full-exo") ? 20 : 0) + (hasTier("chest", "chest-core", "full-exo") ? 20 : 0) + (hasUpgrade("helmet", "helmet-core", "signal-filter") ? 8 : 0) + (hasTier("helmet", "helmet-core", "signal-filter") ? 10 : 0),
+      armor: 4 + (hasImplant("ceramic") ? 2 : 0) + (hasUpgrade("chest", "chest-core", "partial-exo") ? 2 : 0) + (hasTier("chest", "chest-core", "partial-exo") ? 2 : 0) + (hasUpgrade("pants", "pants-core", "knee-pads") ? 1 : 0) + (hasTier("pants", "pants-core", "knee-pads") ? 1 : 0) + (hasUpgrade("boots", "boot-core", "mag-soles") ? 1 : 0) + (hasTier("boots", "boot-core", "mag-soles") ? 1 : 0),
+      speed: 245 * (hasImplant("myofiber") ? 1.12 : 1) * (hasUpgrade("pants", "pants-core", "quiet-lining") ? (hasTier("pants", "pants-core", "quiet-lining") ? 1.16 : 1.08) : 1) * (hasUpgrade("boots", "boot-core", "servo-laces") ? (hasTier("boots", "boot-core", "servo-laces") ? 1.2 : 1.1) : 1),
       invulnerability: hasImplant("ghost") ? 0.62 : 0.34,
-      magazine: 32 + (hasMod("magazine") ? 12 : 0),
-      damage: 9 + (hasMod("muzzle") ? 2 : 0),
-      spread: 0.055 - (hasMod("optic") ? 0.022 : 0) - (hasMod("grip") ? 0.012 : 0),
-      reload: 1.22 * (hasMod("stock") ? 0.82 : 1)
+      magazine: 32 + (isChoice("magazine", "extended") ? 12 : 0) + (isMaxed("magazine", "extended") ? 8 : 0),
+      damage: 9 + (isChoice("ammo", "incendiary") ? 1 : 0) + (isMaxed("ammo", "incendiary") ? 2 : 0) + (isChoice("ammo", "armor-piercing") ? 2 : 0) + (isMaxed("ammo", "armor-piercing") ? 3 : 0) + (isChoice("underbarrel", "shock-module") ? 1 : 0) + (isMaxed("underbarrel", "shock-module") ? 2 : 0),
+      spread: 0.055 - (isChoice("muzzle", "compensator") ? (isMaxed("muzzle", "compensator") ? 0.018 : 0.013) : 0) - (isChoice("optic", "reflex") ? (isMaxed("optic", "reflex") ? 0.016 : 0.011) : 0) - (isChoice("stock", "frame-stock") ? (isMaxed("stock", "frame-stock") ? 0.012 : 0.008) : 0),
+      reload: 1.22 * (isChoice("magazine", "quick-feed") ? (isMaxed("magazine", "quick-feed") ? 0.61 : 0.78) : 1) * (isChoice("stock", "servo-stock") ? (isMaxed("stock", "servo-stock") ? 0.74 : 0.86) : 1),
+      bulletSpeed: 680 * (isChoice("optic", "rangefinder") ? (isMaxed("optic", "rangefinder") ? 1.25 : 1.1) : 1),
+      knifeDamage: 34 + (hasUpgrade("knife", "blade", "serrated") ? 10 : 0) + (hasTier("knife", "blade", "serrated") ? 14 : 0),
+      knifeDelay: .42 * (hasUpgrade("knife", "blade", "shock-grip") ? (hasTier("knife", "blade", "shock-grip") ? .58 : .82) : 1),
+      salvageMultiplier: hasUpgrade("bag", "carry", "molle") ? (hasTier("bag", "carry", "molle") ? 1.3 : 1.15) : 1,
+      deathRetention: hasUpgrade("bag", "carry", "sealed") ? (hasTier("bag", "carry", "sealed") ? .8 : .6) : .4
     };
   }
 
   function updateHome() {
     element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
-    element("smg-level").textContent = progression.mods.length ? `${progression.mods.length} МОД. УСТАНОВЛЕНО` : "БАЗОВАЯ КОНФИГУРАЦИЯ";
     renderLoadout();
     renderImplants();
-    renderWeaponMods();
+    renderEquipmentTree();
   }
 
   function renderLoadout() {
     const list = element("loadout-list");
     list.innerHTML = "";
-    STARTER_LOADOUT.forEach(([slot, item, icon]) => {
-      const entry = document.createElement("div");
-      entry.className = "loadout-item";
-      entry.innerHTML = `<span class="loadout-icon">${icon}</span><span><small>${slot}</small><strong>${item}</strong></span>`;
+    STARTER_LOADOUT.forEach(item => {
+      const entry = document.createElement("button");
+      entry.className = `loadout-item ${state.selectedGear === item.id ? "selected" : ""}`;
+      entry.type = "button";
+      entry.innerHTML = `<span class="loadout-icon">${item.icon}</span><span><small>${item.slot}</small><strong>${item.name}</strong></span>`;
+      entry.addEventListener("click", () => {
+        state.selectedGear = item.id;
+        renderLoadout();
+        renderEquipmentTree();
+      });
       list.appendChild(entry);
     });
   }
@@ -138,21 +253,6 @@
     });
   }
 
-  function renderWeaponMods() {
-    const grid = element("weapon-mods");
-    grid.innerHTML = "";
-    WEAPON_MODS.forEach(mod => {
-      const unlocked = hasMod(mod.id);
-      const button = document.createElement("button");
-      button.className = `mod-card ${unlocked ? "active" : ""}`;
-      button.type = "button";
-      button.disabled = unlocked || progression.salvage < mod.cost;
-      button.innerHTML = `<small>${mod.slot} · ${unlocked ? "УСТАНОВЛЕНО" : `${mod.cost} ЛОМА`}</small><strong>${mod.name}</strong><em>${mod.effect}</em>`;
-      button.addEventListener("click", () => purchaseMod(mod));
-      grid.appendChild(button);
-    });
-  }
-
   function purchaseImplant(implant) {
     if (!canBuy(implant, "implants")) return;
     progression.salvage -= implant.cost;
@@ -161,10 +261,69 @@
     updateHome();
   }
 
-  function purchaseMod(mod) {
-    if (!canBuy(mod, "mods")) return;
-    progression.salvage -= mod.cost;
-    progression.mods.push(mod.id);
+  function renderEquipmentTree() {
+    const gear = EQUIPMENT_TREES[state.selectedGear];
+    const selectedItem = STARTER_LOADOUT.find(item => item.id === state.selectedGear);
+    const tree = element("equipment-tree");
+    const branchCount = gear.branches.filter(branch => getBranchProgress(state.selectedGear, branch.id).choice).length;
+    element("tree-eyebrow").textContent = gear.label;
+    element("tree-state").textContent = branchCount ? `${branchCount} ВЕТВ. ВЫБРАНО` : "БАЗОВАЯ СХЕМА";
+    element("tree-note").textContent = `${selectedItem.name}: каждая сота первого слоя ведёт в две взаимоисключающие специализации. Выбор нельзя отменить в текущем MVP.`;
+    tree.innerHTML = "";
+    gear.branches.forEach(branch => {
+      const progress = getBranchProgress(state.selectedGear, branch.id);
+      const group = document.createElement("article");
+      group.className = "upgrade-branch";
+      const root = document.createElement("div");
+      root.className = "hex-node hex-root";
+      root.innerHTML = `<small>1 СЛОЙ</small><strong>${branch.base}</strong><em>${branch.id.toUpperCase()}</em>`;
+      group.appendChild(root);
+      branch.options.forEach(option => {
+        const selected = progress.choice === option.id;
+        const blocked = Boolean(progress.choice && !selected);
+        const choice = document.createElement("button");
+        choice.type = "button";
+        choice.className = `hex-node hex-choice ${selected ? "active" : ""} ${blocked ? "blocked" : ""}`;
+        choice.disabled = selected || blocked || progression.salvage < option.cost;
+        choice.innerHTML = `<small>${selected ? "ВЫБРАНО" : `${option.cost} ЛОМА`}</small><strong>${option.name}</strong><em>${option.effect}</em>`;
+        choice.addEventListener("click", () => purchaseTreeChoice(state.selectedGear, branch, option));
+        group.appendChild(choice);
+      });
+      const tier = document.createElement("div");
+      tier.className = "branch-tier";
+      const activeOption = branch.options.find(option => option.id === progress.choice);
+      if (!activeOption) {
+        tier.innerHTML = "<span class=\"branch-locked\">выбери одну из двух дорог</span>";
+      } else if (progress.tier) {
+        tier.innerHTML = `<div class="hex-node hex-choice active"><small>3 СЛОЙ · УСТАНОВЛЕНО</small><strong>${activeOption.tier.name}</strong><em>${activeOption.tier.effect}</em></div>`;
+      } else {
+        const tierButton = document.createElement("button");
+        tierButton.type = "button";
+        tierButton.className = "hex-node hex-choice";
+        tierButton.disabled = progression.salvage < activeOption.tier.cost;
+        tierButton.innerHTML = `<small>3 СЛОЙ · ${activeOption.tier.cost} ЛОМА</small><strong>${activeOption.tier.name}</strong><em>${activeOption.tier.effect}</em>`;
+        tierButton.addEventListener("click", () => purchaseTreeTier(state.selectedGear, branch, activeOption));
+        tier.appendChild(tierButton);
+      }
+      group.appendChild(tier);
+      tree.appendChild(group);
+    });
+  }
+
+  function purchaseTreeChoice(gearId, branch, option) {
+    const progress = getBranchProgress(gearId, branch.id);
+    if (progress.choice || progression.salvage < option.cost) return;
+    progression.salvage -= option.cost;
+    progress.choice = option.id;
+    saveProgression();
+    updateHome();
+  }
+
+  function purchaseTreeTier(gearId, branch, option) {
+    const progress = getBranchProgress(gearId, branch.id);
+    if (progress.choice !== option.id || progress.tier || progression.salvage < option.tier.cost) return;
+    progression.salvage -= option.tier.cost;
+    progress.tier = true;
     saveProgression();
     updateHome();
   }
@@ -441,7 +600,7 @@
     }
     const stats = playerStats();
     const aim = Math.atan2(state.input.mouseY - player.y, state.input.mouseX - player.x) + randomBetween(-stats.spread, stats.spread);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * 680, vy: Math.sin(aim) * 680, radius: 3, damage: stats.damage, color: "#9ffdf3", lifetime: 1.25 });
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, color: "#9ffdf3", lifetime: 1.25 });
     player.ammo -= 1;
     player.fireCooldown = .105;
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
@@ -456,13 +615,13 @@
   function knifeAttack() {
     const player = state.player;
     if (!state.active || player.knifeCooldown > 0) return;
-    player.knifeCooldown = .42;
+    player.knifeCooldown = playerStats().knifeDelay;
     player.knifeFlash = .16;
     const angle = Math.atan2(state.input.mouseY - player.y, state.input.mouseX - player.x);
     state.enemies.forEach(enemy => {
       const enemyAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
       const difference = Math.atan2(Math.sin(enemyAngle - angle), Math.cos(enemyAngle - angle));
-      if (distance(player, enemy) < 83 && Math.abs(difference) < .92) damageEnemy(enemy, 34);
+      if (distance(player, enemy) < 83 && Math.abs(difference) < .92) damageEnemy(enemy, playerStats().knifeDamage);
     });
   }
 
@@ -542,7 +701,7 @@
     createParticles(enemy.x, enemy.y, enemy.color, 4, 48);
     if (enemy.health > 0) return;
     state.enemies = state.enemies.filter(candidate => candidate !== enemy);
-    state.runSalvage += enemy.reward;
+    state.runSalvage += Math.ceil(enemy.reward * playerStats().salvageMultiplier);
     createParticles(enemy.x, enemy.y, "#d4ee70", enemy.boss ? 20 : 9, enemy.boss ? 100 : 58);
   }
 
@@ -556,8 +715,9 @@
     createParticles(player.x, player.y, "#ff6d68", 11, 80);
     if (player.health > 0) return;
     state.active = false;
-    const recovered = Math.floor(state.runSalvage * .4);
-    showOverlay(`<div class="overlay-card"><p class="eyebrow">контур контроля обнаружил след</p><h2>Смена окончена.</h2><p>Автономный маршрут выбросил тебя к убежищу. Удалось сохранить ${recovered} ед. лома.</p><div class="overlay-actions"><button class="primary-button" type="button" data-action="return" data-multiplier="0.4">В убежище <span>↖</span></button><button class="quiet-button" type="button" data-action="retry">Новый забег</button></div></div>`);
+    const recoveryRate = playerStats().deathRetention;
+    const recovered = Math.floor(state.runSalvage * recoveryRate);
+    showOverlay(`<div class="overlay-card"><p class="eyebrow">контур контроля обнаружил след</p><h2>Смена окончена.</h2><p>Автономный маршрут выбросил тебя к убежищу. Удалось сохранить ${recovered} ед. лома.</p><div class="overlay-actions"><button class="primary-button" type="button" data-action="return" data-multiplier="${recoveryRate}">В убежище <span>↖</span></button><button class="quiet-button" type="button" data-action="retry">Новый забег</button></div></div>`);
   }
 
   function createParticles(x, y, color, amount, speed) {
@@ -675,7 +835,7 @@
       context.arc(player.x, player.y, 64, angle - .9, angle + .9);
       context.stroke();
     }
-    if (hasMod("underbarrel")) {
+    if (hasUpgrade("smg", "underbarrel", "scanner")) {
       context.strokeStyle = "rgba(99, 228, 221, .24)";
       context.beginPath();
       context.arc(player.x, player.y, 100, 0, Math.PI * 2);
