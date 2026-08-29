@@ -3,144 +3,123 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#091016">
-  <title>HackBox — симуляция сети</title>
+  <meta name="theme-color" content="#071015">
+  <title>HackBox — карта сценария</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app-shell">
-    <header class="masthead">
-      <a class="brand" href="#top" aria-label="HackBox, главная">
-        <span class="brand-mark">HB</span>
-        <span><b>HACK</b><strong>BOX</strong><em>SIMULATION LAB</em></span>
-      </a>
-      <div class="header-status">
-        <span class="status-light"></span>
-        <span>ИЗОЛИРОВАННАЯ ПЕСОЧНИЦА</span>
-        <span class="header-divider"></span>
-        <span>СБОРКА 0.1.0</span>
+  <main class="command-shell">
+    <header class="command-bar">
+      <a class="brand" href="#top" aria-label="HackBox, карта сценария"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
+      <div class="global-readouts" aria-label="Сводка сценария">
+        <div><span>ЦИКЛ</span><b id="global-turn-top">00</b></div>
+        <div><span>ОТМЕЧЕНО</span><b id="global-coverage">00<span>/72</span></b></div>
+        <div><span>ВНИМАНИЕ</span><b id="global-alert">08%</b></div>
       </div>
+      <div class="sandbox-state"><i></i><span>ИЗОЛИРОВАННАЯ СИМУЛЯЦИЯ</span></div>
     </header>
 
-    <section class="intro-grid" aria-labelledby="game-title">
-      <div class="intro-copy">
-        <p class="eyebrow">проект «серый ящик» / учебная симуляция</p>
-        <h1 id="game-title">Проектируй<br><span>штамм.</span> Захватывай<br>сигнал.</h1>
-          <p>HackBox — стратегическая игра о вымышленной цифровой эпидемии. Собери абстрактную схему, выбери страну старта и проведи сигнал через мировую сеть до того, как контур защиты закроет всё поле.</p>
-      </div>
-      <aside class="safety-card" aria-label="Статус симуляции">
-        <span class="safety-icon">⊞</span>
-        <div>
-          <b>СИМУЛЯЦИЯ</b>
-          <p>Все сущности вымышлены и существуют только на этой игровой карте.</p>
+    <section class="situation-strip" aria-labelledby="scenario-title">
+      <div><p class="eyebrow">ОПЕРАЦИЯ / PANORAMA-72</p><h1 id="scenario-title">Карта сигнала</h1></div>
+      <p>Выбери стартовую страну, выстраивай игровую схему и проводи её через связанную мировую сеть. Реакция контуров и фоновых событий меняется от региона к региону.</p>
+      <b id="mission-mode" class="mission-mode">ВЫБОР СТАРТА</b>
+    </section>
+
+    <section class="map-command" aria-label="Оперативная карта">
+      <aside class="country-rail">
+        <div class="rail-heading"><span>СТРАНА / ПРОФИЛЬ</span><em id="country-status">НАВЕДИ КУРСОР</em></div>
+        <div id="country-profile" class="country-profile" aria-live="polite">
+          <span>СТРАНА СТАРТА</span><b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b>
+          <p>Каждая игровая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>
         </div>
+        <div class="rail-divider"></div>
+        <p class="rail-note">ДО ЗАПУСКА: выбери одну страну.<br>ПОСЛЕ ЗАПУСКА: нажимай на узлы, чтобы читать их текущий статус.</p>
+        <button id="launch-simulation" class="launch-button" type="button" disabled>Выбери страну старта</button>
+      </aside>
+
+      <section class="world-stage">
+        <div class="map-topline"><span>ГЕОГРАФИЧЕСКАЯ КАРТА / <b>72</b> СТРАНЫ</span><span id="network-readout">ВЫБЕРИ СТРАНУ СТАРТА</span></div>
+        <div id="network-map" class="network-map" aria-label="Географическая карта мира">
+          <svg class="world-geography" viewBox="0 0 1200 560" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M64 83 121 49 191 52 232 80 251 115 231 138 209 130 188 151 166 160 157 190 132 196 111 178 91 180 76 154 49 143 39 112Z" />
+            <path d="M216 214 244 229 257 272 277 301 274 341 291 383 281 448 255 489 234 467 232 418 215 387 223 350 203 317 210 279 196 246Z" />
+            <path d="M312 37 352 24 386 40 378 72 342 83 317 68Z" />
+            <path d="M488 85 528 63 577 71 598 91 631 79 698 89 735 102 774 95 820 113 870 110 920 136 966 148 1007 181 1020 215 981 230 943 217 916 235 874 230 839 246 806 226 764 231 730 209 692 217 650 202 625 219 592 205 560 213 527 187 509 169 479 161 467 126Z" />
+            <path d="M536 217 572 230 590 268 581 304 605 344 593 389 565 422 536 404 522 365 499 330 502 286 519 257Z" />
+            <path d="M927 345 967 336 1002 352 1048 357 1082 386 1070 422 1021 430 984 445 952 424 920 402Z" />
+            <path d="M1073 422 1086 432 1082 447 1067 448Z" />
+            <path d="M444 505 527 492 634 502 720 521 681 548 557 554 463 542Z" />
+          </svg>
+          <div id="country-layer" class="country-layer"></div>
+        </div>
+        <footer class="map-footer"><span><i class="legend-seed"></i>ТВОЙ СИГНАЛ</span><span><i class="legend-open"></i>НЕЙТРАЛЬНАЯ СТРАНА</span><span><i class="legend-locked"></i>ИЗОЛИРОВАННЫЙ КОНТУР</span><span>НАЖМИ НА СТРАНУ ДЛЯ СВОДКИ</span></footer>
+      </section>
+
+      <aside class="control-rail">
+        <div class="rail-heading"><span>СИСТЕМНЫЙ КОНТУР</span><em id="campaign-state">ОЖИДАНИЕ</em></div>
+        <div class="threat-card">
+          <div class="threat-heading"><span>ВНИМАНИЕ КОНТУРА</span><b id="alert-value">08%</b></div>
+          <div class="meter danger-meter"><i id="alert-meter"></i></div>
+          <p id="alert-text">Контур заметил слабый фон, но пока не понимает его рисунок.</p>
+        </div>
+        <div class="resource-card"><span>СИГНАЛЬНЫЙ РЕСУРС</span><b id="signal-points">04</b><small>используй в нижней панели решений</small></div>
+        <button id="advance-turn" class="advance-button" type="button" disabled>Запустить цикл <span>↯</span></button>
+        <button id="reset-simulation" class="quiet-button" type="button">Сбросить сценарий</button>
       </aside>
     </section>
 
-    <section class="workbench" aria-labelledby="workbench-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">01 / конструктор сигнального штамма</p>
-          <h2 id="workbench-title">Собрать схему</h2>
-        </div>
-        <span class="section-code">HBX—S/09</span>
-      </div>
+    <section class="decision-dock" aria-label="Панель решений">
+      <nav class="dock-tabs" aria-label="Разделы решений">
+        <button class="dock-tab active" type="button" data-dock="evolution" aria-selected="true"><span>01</span> Адаптации</button>
+        <button class="dock-tab" type="button" data-dock="builder" aria-selected="false"><span>02</span> Конструктор</button>
+        <button class="dock-tab" type="button" data-dock="intel" aria-selected="false"><span>03</span> Журнал</button>
+        <div class="dock-status"><span>ЦИКЛ</span><b id="turn-count">00</b><em id="dock-state">ОЖИДАНИЕ</em></div>
+      </nav>
 
-      <div class="workbench-grid">
-        <form id="strain-form" class="builder-form">
-          <label class="field-label" for="strain-name">Имя штамма</label>
-          <input id="strain-name" name="strain-name" maxlength="18" value="СЕРАЯ ПЕТЛЯ" autocomplete="off">
-
-          <span class="field-label">Архитектура</span>
-          <div id="archetype-options" class="option-grid" role="radiogroup" aria-label="Архитектура штамма">
-            <button class="option-card selected" type="button" data-archetype="specter" aria-pressed="true"><small>01 / ТИХИЙ</small><strong>Спектр</strong><em>маскировка и дрейф</em></button>
-            <button class="option-card" type="button" data-archetype="swarm" aria-pressed="false"><small>02 / РОЕВОЙ</small><strong>Улей</strong><em>темп и каскады</em></button>
-            <button class="option-card" type="button" data-archetype="prism" aria-pressed="false"><small>03 / ПРИЗМАТИЧЕСКИЙ</small><strong>Призма</strong><em>скачки и адаптация</em></button>
-          </div>
-
-          <span class="field-label">Аппликатор</span>
-          <div id="applicator-options" class="applicator-grid">
-            <button class="chip selected" type="button" data-applicator="relay" aria-pressed="true"><span>↗</span> Релейная петля</button>
-            <button class="chip" type="button" data-applicator="archive" aria-pressed="false"><span>▣</span> Архивный импульс</button>
-            <button class="chip" type="button" data-applicator="fabric" aria-pressed="false"><span>⌁</span> Ткань узлов</button>
-          </div>
-
-          <div class="dial-list" aria-label="Параметры штамма">
-            <label><span>ТИХИЙ ДРЕЙФ</span><input id="stealth-input" type="range" min="1" max="6" value="3"><b id="stealth-value">03</b></label>
-            <label><span>ТЕМП КАСКАДА</span><input id="speed-input" type="range" min="1" max="6" value="3"><b id="speed-value">03</b></label>
-            <label><span>УСТОЙЧИВОСТЬ</span><input id="resilience-input" type="range" min="1" max="6" value="2"><b id="resilience-value">02</b></label>
-          </div>
-        </form>
-
-        <aside class="build-preview" aria-labelledby="preview-title">
-          <div class="preview-window">
-            <div class="preview-topline"><span>СХЕМА / ЖИВАЯ</span><span id="strain-id">HB-013</span></div>
-            <div class="preview-core" aria-hidden="true"><i></i><i></i><i></i><b>◌</b></div>
-            <div class="preview-name"><small>ОБЪЕКТ</small><strong id="preview-name">СЕРАЯ ПЕТЛЯ</strong></div>
-          </div>
-          <div class="preview-stats">
-            <div><span>ДРЕЙФ</span><b id="preview-stealth">03</b></div>
-            <div><span>КАСКАД</span><b id="preview-speed">03</b></div>
-            <div><span>ЩИТ</span><b id="preview-resilience">02</b></div>
-          </div>
-          <p id="preview-description">Осторожная схема: копит импульс в затенённых узлах и медленнее поднимает тревогу.</p>
-          <button id="launch-simulation" class="launch-button" type="button">Запустить симуляцию <span>→</span></button>
-        </aside>
-      </div>
-    </section>
-
-    <section class="campaign-section" aria-labelledby="campaign-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">02 / оперативная карта</p>
-          <h2 id="campaign-title">Сеть «ПАНОРАМА»</h2>
-        </div>
-        <div class="turn-indicator"><span>ЦИКЛ</span><strong id="turn-count">00</strong><em id="campaign-state">ОЖИДАНИЕ</em></div>
-      </div>
-
-      <div class="campaign-grid">
-        <section class="network-panel" aria-label="Карта сети Панорама">
-          <div class="network-topline"><span>МИРОВАЯ КАРТА / 72 СТРАНЫ</span><span id="network-readout">ВЫБЕРИ СТРАНУ СТАРТА</span></div>
-          <div id="network-map" class="network-map" aria-label="Карта стран игровой сети"></div>
-          <div class="map-legend"><span><i class="legend-seed"></i>ТВОЙ СИГНАЛ</span><span><i class="legend-open"></i>ОТКРЫТЫЙ УЗЕЛ</span><span><i class="legend-locked"></i>КОНТУР ЗАЩИТЫ</span></div>
+      <div class="dock-body">
+        <section id="dock-evolution" class="dock-panel active" aria-labelledby="evolution-title">
+          <div class="dock-heading"><div><p class="eyebrow">матрица адаптаций</p><h2 id="evolution-title">Переписать паттерн</h2></div><span id="upgrade-note">ЗАПУСТИ СЦЕНАРИЙ</span></div>
+          <div id="upgrade-grid" class="upgrade-grid"></div>
         </section>
 
-        <aside class="operations-panel">
-          <div id="country-profile" class="country-card" aria-live="polite">
-            <span>СТРАНА СТАРТА</span>
-            <b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b>
-            <p>Каждая страна по-разному влияет на темп сигнала, непредсказуемые события и силу защитного контура.</p>
+        <section id="dock-builder" class="dock-panel" aria-labelledby="builder-title" hidden>
+          <div class="dock-heading"><div><p class="eyebrow">конструктор / до запуска</p><h2 id="builder-title">Собрать схему</h2></div><span id="strain-id">HB-013</span></div>
+          <div class="builder-grid">
+            <form id="strain-form" class="builder-form">
+              <label class="field-label" for="strain-name">Имя штамма</label>
+              <input id="strain-name" name="strain-name" maxlength="18" value="СЕРАЯ ПЕТЛЯ" autocomplete="off">
+              <span class="field-label">Архитектура</span>
+              <div id="archetype-options" class="option-grid" role="radiogroup" aria-label="Архитектура штамма">
+                <button class="option-card selected" type="button" data-archetype="specter" aria-pressed="true"><small>01 / ТИХИЙ</small><strong>Спектр</strong><em>маскировка и дрейф</em></button>
+                <button class="option-card" type="button" data-archetype="swarm" aria-pressed="false"><small>02 / РОЕВОЙ</small><strong>Улей</strong><em>темп и каскады</em></button>
+                <button class="option-card" type="button" data-archetype="prism" aria-pressed="false"><small>03 / ПРИЗМАТИЧЕСКИЙ</small><strong>Призма</strong><em>скачки и адаптация</em></button>
+              </div>
+              <span class="field-label">Аппликатор</span>
+              <div id="applicator-options" class="applicator-grid">
+                <button class="chip selected" type="button" data-applicator="relay" aria-pressed="true">↗ Релейная петля</button>
+                <button class="chip" type="button" data-applicator="archive" aria-pressed="false">▣ Архивный импульс</button>
+                <button class="chip" type="button" data-applicator="fabric" aria-pressed="false">⌁ Ткань узлов</button>
+              </div>
+            </form>
+            <aside class="pattern-console">
+              <div class="preview-core" aria-hidden="true"><i></i><i></i><i></i><b>◌</b></div>
+              <div class="preview-name"><small>ОБЪЕКТ</small><strong id="preview-name">СЕРАЯ ПЕТЛЯ</strong></div>
+              <p id="preview-description">Осторожная схема: копит импульс в затенённых узлах и медленнее поднимает тревогу.</p>
+              <div class="dial-list" aria-label="Параметры штамма">
+                <label><span>ТИХИЙ ДРЕЙФ</span><input id="stealth-input" type="range" min="1" max="6" value="3"><b id="stealth-value">03</b></label>
+                <label><span>ТЕМП КАСКАДА</span><input id="speed-input" type="range" min="1" max="6" value="3"><b id="speed-value">03</b></label>
+                <label><span>УСТОЙЧИВОСТЬ</span><input id="resilience-input" type="range" min="1" max="6" value="2"><b id="resilience-value">02</b></label>
+              </div>
+              <div class="preview-stats"><div><span>ДРЕЙФ</span><b id="preview-stealth">03</b></div><div><span>КАСКАД</span><b id="preview-speed">03</b></div><div><span>ЩИТ</span><b id="preview-resilience">02</b></div></div>
+            </aside>
           </div>
-          <div class="threat-card">
-            <div class="threat-heading"><span>ВНИМАНИЕ КОНТУРА</span><b id="alert-value">08%</b></div>
-            <div class="meter danger-meter"><i id="alert-meter"></i></div>
-            <p id="alert-text">Контур наблюдает за стартовым шлюзом. Пока он не подозревает о схеме.</p>
-          </div>
-          <div class="resource-card">
-            <span>СИГНАЛЬНЫЙ РЕСУРС</span>
-            <b id="signal-points">04</b>
-            <small>Очки для адаптаций</small>
-          </div>
-          <button id="advance-turn" class="advance-button" type="button" disabled>Запустить цикл <span>↯</span></button>
-          <button id="reset-simulation" class="quiet-button" type="button">Сбросить сценарий</button>
-        </aside>
-      </div>
-    </section>
+        </section>
 
-    <section class="evolution-section" aria-labelledby="evolution-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">03 / матрица адаптаций</p>
-          <h2 id="evolution-title">Переписать паттерн</h2>
-        </div>
-        <span id="upgrade-note" class="section-code">НУЖЕН СИГНАЛЬНЫЙ РЕСУРС</span>
+        <section id="dock-intel" class="dock-panel" aria-labelledby="log-title" hidden>
+          <div class="dock-heading"><div><p class="eyebrow">журнал эмулятора</p><h2 id="log-title">Лента событий</h2></div><span id="log-status">ПЕСКИ ГОТОВЫ</span></div>
+          <ol id="event-log" class="event-log" aria-live="polite"></ol>
+        </section>
       </div>
-      <div id="upgrade-grid" class="upgrade-grid"></div>
-    </section>
-
-    <section class="log-section" aria-labelledby="log-title">
-      <div class="section-heading compact-heading"><div><p class="eyebrow">журнал эмулятора</p><h2 id="log-title">Лента событий</h2></div><span id="log-status" class="section-code">ПЕСКИ ГОТОВЫ</span></div>
-      <ol id="event-log" class="event-log" aria-live="polite"></ol>
     </section>
   </main>
   <script src="script.js"></script>

@@ -16,46 +16,36 @@
     fabric: { name: "Ткань узлов", description: "Формирует более устойчивые, но медленные связи.", speed: -1, resilience: 1 }
   };
 
-  const WORLD_REGIONS = [
-    { id: "north", code: "N", name: "Северные хребты", x: 7, y: 12, names: ["Нордвейл", "Лидора", "Фростин", "Рунвар", "Астен", "Керн", "Элвар", "Мерос", "Талвик", "Ильмар", "Бранта", "Сивер"] },
-    { id: "west", code: "W", name: "Западные проливы", x: 10, y: 52, names: ["Аркадия", "Мерида", "Сольмар", "Вента", "Карро", "Умбра", "Галея", "Риона", "Ферра", "Тревис", "Каден", "Лорка"] },
-    { id: "central", code: "C", name: "Центральный пояс", x: 41, y: 20, names: ["Кассия", "Аурелия", "Сильва", "Калия", "Орбита", "Вестра", "Новация", "Терран", "Лиор", "Бриам", "Окса", "Дория"] },
-    { id: "east", code: "E", name: "Восточная дуга", x: 71, y: 12, names: ["Солария", "Пелагея", "Руно", "Айма", "Сандор", "Истра", "Кайо", "Вирра", "Нерос", "Амара", "Сейна", "Талас"] },
-    { id: "south", code: "S", name: "Южная платформа", x: 40, y: 63, names: ["Новара", "Эстель", "Корон", "Мирас", "Ярра", "Элора", "Тинта", "Хавен", "Марен", "Керис", "Лума", "Фиора"] },
-    { id: "ocean", code: "O", name: "Океанические цепи", x: 71, y: 62, names: ["Астер", "Дельта", "Орио", "Лагуна", "Рифа", "Кобальт", "Пасса", "Тирея", "Иона", "Вектор", "Каори", "Селин"] }
+  const COUNTRY_SEEDS = [
+    ["can", "CAN", "Канада", "Северная Америка", -106, 56], ["usa", "USA", "США", "Северная Америка", -98, 39], ["mex", "MEX", "Мексика", "Северная Америка", -102, 23], ["gtm", "GTM", "Гватемала", "Северная Америка", -90, 15], ["cub", "CUB", "Куба", "Северная Америка", -79, 22], ["hti", "HTI", "Гаити", "Северная Америка", -72, 19], ["dom", "DOM", "Доминиканская Республика", "Северная Америка", -70, 19], ["jam", "JAM", "Ямайка", "Северная Америка", -77, 18], ["pan", "PAN", "Панама", "Северная Америка", -80, 9], ["cri", "CRI", "Коста-Рика", "Северная Америка", -84, 10], ["blz", "BLZ", "Белиз", "Северная Америка", -88, 17], ["nic", "NIC", "Никарагуа", "Северная Америка", -86, 13],
+    ["col", "COL", "Колумбия", "Южная Америка", -74, 4], ["ven", "VEN", "Венесуэла", "Южная Америка", -66, 7], ["ecu", "ECU", "Эквадор", "Южная Америка", -78, -1], ["per", "PER", "Перу", "Южная Америка", -75, -10], ["bol", "BOL", "Боливия", "Южная Америка", -64, -17], ["bra", "BRA", "Бразилия", "Южная Америка", -52, -10], ["pry", "PRY", "Парагвай", "Южная Америка", -58, -23], ["ury", "URY", "Уругвай", "Южная Америка", -56, -33], ["arg", "ARG", "Аргентина", "Южная Америка", -65, -35], ["chl", "CHL", "Чили", "Южная Америка", -71, -30],
+    ["isl", "ISL", "Исландия", "Европа", -19, 65], ["irl", "IRL", "Ирландия", "Европа", -8, 53], ["gbr", "GBR", "Великобритания", "Европа", -2, 54], ["prt", "PRT", "Португалия", "Европа", -8, 39], ["esp", "ESP", "Испания", "Европа", -4, 40], ["fra", "FRA", "Франция", "Европа", 2, 46], ["deu", "DEU", "Германия", "Европа", 10, 51], ["ita", "ITA", "Италия", "Европа", 12, 42], ["nor", "NOR", "Норвегия", "Европа", 10, 62], ["swe", "SWE", "Швеция", "Европа", 17, 61], ["pol", "POL", "Польша", "Европа", 19, 52], ["rou", "ROU", "Румыния", "Европа", 25, 46], ["grc", "GRC", "Греция", "Европа", 22, 39], ["tur", "TUR", "Турция", "Европа", 35, 39], ["ukr", "UKR", "Украина", "Европа", 32, 49], ["fin", "FIN", "Финляндия", "Европа", 26, 64], ["ltu", "LTU", "Литва", "Европа", 24, 55], ["nld", "NLD", "Нидерланды", "Европа", 5, 52],
+    ["mar", "MAR", "Марокко", "Африка", -6, 32], ["dza", "DZA", "Алжир", "Африка", 2, 28], ["tun", "TUN", "Тунис", "Африка", 9, 34], ["egy", "EGY", "Египет", "Африка", 30, 27], ["nga", "NGA", "Нигерия", "Африка", 8, 9], ["gha", "GHA", "Гана", "Африка", -1, 7], ["sen", "SEN", "Сенегал", "Африка", -14, 14], ["eth", "ETH", "Эфиопия", "Африка", 40, 9], ["ken", "KEN", "Кения", "Африка", 37, 0], ["tza", "TZA", "Танзания", "Африка", 35, -6], ["zaf", "ZAF", "ЮАР", "Африка", 25, -29], ["cod", "COD", "ДР Конго", "Африка", 23, -2], ["ago", "AGO", "Ангола", "Африка", 17, -12], ["mdg", "MDG", "Мадагаскар", "Африка", 47, -20],
+    ["rus", "RUS", "Россия", "Азия", 90, 60], ["kaz", "KAZ", "Казахстан", "Азия", 68, 48], ["sau", "SAU", "Саудовская Аравия", "Азия", 45, 24], ["irn", "IRN", "Иран", "Азия", 53, 32], ["ind", "IND", "Индия", "Азия", 79, 22], ["pak", "PAK", "Пакистан", "Азия", 70, 30], ["chn", "CHN", "Китай", "Азия", 104, 35], ["mng", "MNG", "Монголия", "Азия", 103, 46], ["jpn", "JPN", "Япония", "Азия", 138, 37], ["kor", "KOR", "Республика Корея", "Азия", 127, 37], ["vnm", "VNM", "Вьетнам", "Азия", 108, 16], ["tha", "THA", "Таиланд", "Азия", 101, 15], ["idn", "IDN", "Индонезия", "Азия", 118, -3], ["phl", "PHL", "Филиппины", "Азия", 122, 13],
+    ["aus", "AUS", "Австралия", "Океания", 134, -25], ["nzl", "NZL", "Новая Зеландия", "Океания", 174, -41], ["png", "PNG", "Папуа — Новая Гвинея", "Океания", 144, -6], ["fji", "FJI", "Фиджи", "Океания", 178, -17]
   ];
 
-  const COUNTRIES = WORLD_REGIONS.flatMap((region, regionIndex) => region.names.map((name, index) => {
-    const row = Math.floor(index / 4);
-    const column = index % 4;
-    return {
-      id: `${region.id}-${index + 1}`,
-      code: `${region.code}${String(index + 1).padStart(2, "0")}`,
-      name,
-      region: region.name,
-      x: region.x + column * 6 + (row === 1 ? 1.4 : 0),
-      y: region.y + row * 8,
-      activity: 1 + (index * 2 + regionIndex * 3) % 5,
-      noise: 1 + (index * 3 + regionIndex) % 5,
-      defense: 1 + (index * 4 + regionIndex * 2) % 5
-    };
+  const COUNTRIES = COUNTRY_SEEDS.map(([id, code, name, region, longitude, latitude], index) => ({
+    id, code, name, region, longitude, latitude,
+    x: (longitude + 180) / 3.6,
+    y: (80 - latitude) / 1.45,
+    activity: 1 + (index * 7 + 2) % 5,
+    noise: 1 + (index * 3 + 4) % 5,
+    defense: 1 + (index * 4 + 1) % 5
   }));
 
   const createWorldLinks = () => {
-    const links = [];
-    WORLD_REGIONS.forEach(region => {
-      const localCountries = COUNTRIES.filter(country => country.id.startsWith(`${region.id}-`));
-      localCountries.forEach((country, index) => {
-        if (index % 4 !== 3) links.push([country.id, localCountries[index + 1].id]);
-        if (index < 8) links.push([country.id, localCountries[index + 4].id]);
-      });
+    const links = new Set();
+    COUNTRIES.forEach(country => {
+      const nearby = COUNTRIES.filter(other => other.id !== country.id).sort((first, second) => {
+        const latitudeScale = Math.cos(country.latitude * Math.PI / 180);
+        const firstDistance = Math.hypot((country.longitude - first.longitude) * latitudeScale, (country.latitude - first.latitude) * 1.25);
+        const secondDistance = Math.hypot((country.longitude - second.longitude) * latitudeScale, (country.latitude - second.latitude) * 1.25);
+        return firstDistance - secondDistance;
+      }).slice(0, 3);
+      nearby.forEach(other => links.add([country.id, other.id].sort().join(":")));
     });
-    [[0, 1], [0, 2], [1, 2], [1, 4], [2, 3], [2, 4], [3, 5], [4, 5], [2, 5]].forEach(([firstRegion, secondRegion], index) => {
-      const first = COUNTRIES.filter(country => country.id.startsWith(`${WORLD_REGIONS[firstRegion].id}-`));
-      const second = COUNTRIES.filter(country => country.id.startsWith(`${WORLD_REGIONS[secondRegion].id}-`));
-      links.push([first[(index * 3 + 2) % first.length].id, second[(index * 5 + 4) % second.length].id]);
-    });
-    return links;
+    return [...links].map(link => link.split(":"));
   };
 
   const LINKS = createWorldLinks();
@@ -80,6 +70,7 @@
     speed: 3,
     resilience: 2,
     selectedCountry: null,
+    inspectedCountry: null,
     countries: countryStates(),
     started: false,
     active: false,
@@ -127,12 +118,15 @@
 
   function renderCountryProfile() {
     const profile = element("country-profile");
-    const country = countriesById.get(state.selectedCountry);
+    const country = countriesById.get(state.started ? state.inspectedCountry || state.selectedCountry : state.selectedCountry);
     if (!country) {
-      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b><p>Каждая страна по-разному влияет на темп сигнала, непредсказуемые события и силу защитного контура.</p>";
+      profile.innerHTML = "<span>СТРАНА СТАРТА</span><b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b><p>Каждая страна меняет темп сигнала, шанс фонового события и силу защитного контура.</p>";
+      element("country-status").textContent = "ВЫБОР СТАРТА";
       return;
     }
-    profile.innerHTML = `<span>СТРАНА СТАРТА / ${country.code}</span><b>${country.name.toUpperCase()}</b><p>Игровой профиль страны. Числа не описывают реальные государства или их системы.</p><div class="country-metrics"><span>АКТИВНОСТЬ<b>${country.activity}/5</b></span><span>ФОН<b>${country.noise}/5</b></span><span>КОНТУР<b>${country.defense}/5</b></span></div>`;
+    const status = state.countries[country.id] === "seed" ? "СТАРТОВЫЙ СИГНАЛ" : state.countries[country.id] === "infected" ? "ОТМЕЧЕНА" : state.countries[country.id] === "contained" ? "ИЗОЛИРОВАНА" : state.started ? "НЕЙТРАЛЬНА" : "КАНДИДАТ НА СТАРТ";
+    profile.innerHTML = `<span>${country.region.toUpperCase()} / ${country.code}</span><b>${country.name.toUpperCase()}</b><p>Игровой профиль. Числа служат только балансом симуляции и не являются оценкой реальных систем страны.</p><div class="country-metrics"><span>АКТИВНОСТЬ<b>${country.activity}/5</b></span><span>ФОН<b>${country.noise}/5</b></span><span>КОНТУР<b>${country.defense}/5</b></span></div>`;
+    element("country-status").textContent = status;
   }
 
   function countryNeighbors(id) {
@@ -140,47 +134,36 @@
   }
 
   function renderWorldMap() {
-    const map = element("network-map");
-    map.innerHTML = "";
-    const bounds = map.getBoundingClientRect();
-    LINKS.forEach(([firstId, secondId]) => {
-      const first = countriesById.get(firstId);
-      const second = countriesById.get(secondId);
-      const x1 = bounds.width * first.x / 100;
-      const y1 = bounds.height * first.y / 100;
-      const x2 = bounds.width * second.x / 100;
-      const y2 = bounds.height * second.y / 100;
-      const link = document.createElement("i");
-      link.className = "world-link";
-      link.style.left = `${x1}px`;
-      link.style.top = `${y1}px`;
-      link.style.width = `${Math.hypot(x2 - x1, y2 - y1)}px`;
-      link.style.transform = `rotate(${Math.atan2(y2 - y1, x2 - x1)}rad)`;
-      map.appendChild(link);
-    });
+    const layer = element("country-layer");
+    layer.innerHTML = "";
     COUNTRIES.forEach(country => {
       const node = document.createElement("button");
       const nodeState = state.countries[country.id];
-      const selected = state.selectedCountry === country.id;
+      const selected = state.started ? state.inspectedCountry === country.id : state.selectedCountry === country.id;
       node.type = "button";
-      node.className = `network-node ${nodeState} ${!state.started && selected ? "start-candidate" : ""}`;
-      node.style.left = `calc(${country.x}% - 15px)`;
-      node.style.top = `calc(${country.y}% - 15px)`;
-      node.disabled = state.started;
+      node.className = `network-node ${nodeState} ${!state.started && selected ? "start-candidate" : ""} ${state.started && selected ? "inspected" : ""}`;
+      node.style.left = `calc(${country.x}% - 10px)`;
+      node.style.top = `calc(${country.y}% - 10px)`;
       node.setAttribute("aria-pressed", String(selected));
       node.setAttribute("aria-label", `${country.name}: активность ${country.activity} из 5, фон ${country.noise} из 5, контур ${country.defense} из 5`);
       node.title = `${country.name} · активность ${country.activity}/5 · фон ${country.noise}/5 · контур ${country.defense}/5`;
       node.innerHTML = `<small>${country.code}</small>`;
       node.addEventListener("click", () => selectStartCountry(country.id));
-      map.appendChild(node);
+      layer.appendChild(node);
     });
   }
 
   function renderCampaign() {
     const influenced = Object.values(state.countries).filter(value => value === "seed" || value === "infected").length;
     const country = countriesById.get(state.selectedCountry);
+    const campaignLabel = state.active ? "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
     element("turn-count").textContent = String(state.turn).padStart(2, "0");
-    element("campaign-state").textContent = state.active ? "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
+    element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
+    element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
+    element("global-alert").textContent = `${Math.round(state.alert)}%`;
+    element("campaign-state").textContent = campaignLabel;
+    element("dock-state").textContent = campaignLabel;
+    element("mission-mode").textContent = state.active ? "ОПЕРАЦИЯ АКТИВНА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
     element("network-readout").textContent = state.started ? `${influenced} ИЗ ${COUNTRIES.length} ОТМЕЧЕНО` : country ? `СТАРТ: ${country.name.toUpperCase()}` : "ВЫБЕРИ СТРАНУ СТАРТА";
     element("signal-points").textContent = String(state.signal).padStart(2, "0");
     element("alert-value").textContent = `${Math.round(state.alert)}%`;
@@ -228,7 +211,11 @@
   }
 
   function selectStartCountry(id) {
-    if (state.started) return;
+    if (state.started) {
+      state.inspectedCountry = id;
+      renderCampaign();
+      return;
+    }
     state.selectedCountry = id;
     const country = countriesById.get(id);
     pushLog(`Стартовая точка выбрана: ${country.name}. Профиль загружен в песочницу.`);
@@ -240,6 +227,7 @@
     state.started = true;
     state.active = true;
     state.countries[state.selectedCountry] = "seed";
+    state.inspectedCountry = state.selectedCountry;
     const country = countriesById.get(state.selectedCountry);
     state.alert = clamp(5 + country.defense * 2 - effectiveStats().stealth, 3, 25);
     pushLog(`Сценарий запущен в стране «${country.name}». Первый импульс стабилен.`);
@@ -334,6 +322,7 @@
 
   function resetSimulation() {
     state.selectedCountry = null;
+    state.inspectedCountry = null;
     state.countries = countryStates();
     state.started = false;
     state.active = false;
@@ -343,6 +332,19 @@
     state.upgrades = [];
     state.log = ["Песочница сброшена. Выбери новую страну старта на мировой карте."];
     renderAll();
+  }
+
+  function openDock(name) {
+    document.querySelectorAll(".dock-tab").forEach(tab => {
+      const active = tab.dataset.dock === name;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll(".dock-panel").forEach(panel => {
+      const active = panel.id === `dock-${name}`;
+      panel.classList.toggle("active", active);
+      panel.hidden = !active;
+    });
   }
 
   element("strain-name").addEventListener("input", updatePreview);
@@ -377,6 +379,7 @@
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
+  document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
 
   renderAll();
