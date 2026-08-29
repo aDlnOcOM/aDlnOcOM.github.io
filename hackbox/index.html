@@ -26,7 +26,7 @@
       <div class="intro-copy">
         <p class="eyebrow">проект «серый ящик» / учебная симуляция</p>
         <h1 id="game-title">Проектируй<br><span>штамм.</span> Захватывай<br>сигнал.</h1>
-        <p>HackBox — стратегическая игра о вымышленной цифровой эпидемии. Собери абстрактную схему, выбери способ её поведения и проведи её через сеть до того, как контур защиты закроет всё поле.</p>
+          <p>HackBox — стратегическая игра о вымышленной цифровой эпидемии. Собери абстрактную схему, выбери страну старта и проведи сигнал через мировую сеть до того, как контур защиты закроет всё поле.</p>
       </div>
       <aside class="safety-card" aria-label="Статус симуляции">
         <span class="safety-icon">⊞</span>
@@ -100,12 +100,17 @@
 
       <div class="campaign-grid">
         <section class="network-panel" aria-label="Карта сети Панорама">
-          <div class="network-topline"><span>СИГНАЛЬНАЯ КАРТА / 12 УЗЛОВ</span><span id="network-readout">0 ИЗ 12 ОТМЕЧЕНО</span></div>
-          <div id="network-map" class="network-map" aria-label="Узлы сети"></div>
+          <div class="network-topline"><span>МИРОВАЯ КАРТА / 72 СТРАНЫ</span><span id="network-readout">ВЫБЕРИ СТРАНУ СТАРТА</span></div>
+          <div id="network-map" class="network-map" aria-label="Карта стран игровой сети"></div>
           <div class="map-legend"><span><i class="legend-seed"></i>ТВОЙ СИГНАЛ</span><span><i class="legend-open"></i>ОТКРЫТЫЙ УЗЕЛ</span><span><i class="legend-locked"></i>КОНТУР ЗАЩИТЫ</span></div>
         </section>
 
         <aside class="operations-panel">
+          <div id="country-profile" class="country-card" aria-live="polite">
+            <span>СТРАНА СТАРТА</span>
+            <b>ВЫБЕРИ УЗЕЛ НА КАРТЕ</b>
+            <p>Каждая страна по-разному влияет на темп сигнала, непредсказуемые события и силу защитного контура.</p>
+          </div>
           <div class="threat-card">
             <div class="threat-heading"><span>ВНИМАНИЕ КОНТУРА</span><b id="alert-value">08%</b></div>
             <div class="meter danger-meter"><i id="alert-meter"></i></div>
