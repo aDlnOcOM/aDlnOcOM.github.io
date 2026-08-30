@@ -157,6 +157,8 @@
   const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
   /** Создаёт исходное нейтральное состояние для всех стран на карте. */
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
+  const BASE_TICK_MS = 6000;
+  const TIME_SCALES = new Set([0, 0.5, 1, 2, 4]);
   const state = {
     gameCreated: false,
     scenarioName: "СЕРАЯ ПЕТЛЯ",
@@ -175,6 +177,9 @@
     turn: 0,
     signal: 4,
     alert: 8,
+    timeScale: 1,
+    elapsedMilliseconds: 0,
+    tickElapsed: 0,
     upgrades: [],
     economicDamage: 0,
     scenarioProfit: 0,
@@ -182,6 +187,8 @@
   };
   let geographyLoading = false;
   let geographyReady = false;
+  let previousFrameTime = performance.now();
+  let previousClockPaint = 0;
 
   /** Возвращает выбранный учебный сценарий с безопасным резервным вариантом. */
   function activeThreatType() {
@@ -364,12 +371,66 @@
     renderGeography();
   }
 
+  /** Преобразует прошедшее игровое время в компактную запись часов, минут и секунд. */
+  function formatSimulationTime(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor(totalSeconds % 3600 / 60);
+    const seconds = totalSeconds % 60;
+    return hours ? `T+${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `T+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  /** Обновляет таймер, индикатор тика и доступность кнопок скорости. */
+  function renderRealtimeControls() {
+    element("simulation-clock").textContent = formatSimulationTime(state.elapsedMilliseconds || 0);
+    element("tick-progress").style.width = `${clamp((state.tickElapsed || 0) / BASE_TICK_MS * 100, 0, 100)}%`;
+    element("realtime-state").textContent = !state.started ? "ОЖИДАНИЕ" : !state.active ? "ЗАВЕРШЕНО" : state.timeScale === 0 ? "ПАУЗА" : `${state.timeScale}× / LIVE`;
+    document.querySelectorAll("[data-time-scale]").forEach(button => {
+      const selected = Number(button.dataset.timeScale) === state.timeScale;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.disabled = !state.active;
+    });
+  }
+
+  /** Переключает скорость симуляции между паузой и разрешёнными множителями времени. */
+  function setTimeScale(value) {
+    const nextScale = Number(value);
+    if (!state.active || !TIME_SCALES.has(nextScale)) return;
+    state.timeScale = nextScale;
+    previousFrameTime = performance.now();
+    pushLog(nextScale === 0 ? "Ход учебной симуляции приостановлен." : `Скорость учебной симуляции изменена: ${nextScale}×.`);
+    renderAll();
+  }
+
+  /** Продвигает реалтайм-таймер и автоматически запускает игровые тики. */
+  function processRealtimeFrame(timestamp) {
+    const frameDelta = Math.min(Math.max(timestamp - previousFrameTime, 0), 1000);
+    previousFrameTime = timestamp;
+    if (state.active && state.timeScale > 0) {
+      const scaledDelta = frameDelta * state.timeScale;
+      state.elapsedMilliseconds += scaledDelta;
+      state.tickElapsed += scaledDelta;
+      let processedTicks = 0;
+      while (state.tickElapsed >= BASE_TICK_MS && state.active && processedTicks < 3) {
+        state.tickElapsed -= BASE_TICK_MS;
+        advanceCycle();
+        processedTicks += 1;
+      }
+      if (timestamp - previousClockPaint >= 100) {
+        previousClockPaint = timestamp;
+        renderRealtimeControls();
+      }
+    }
+    window.requestAnimationFrame(processRealtimeFrame);
+  }
+
   /** Обновляет сводку кампании, метрики и элементы управления картой. */
   function renderCampaign() {
     const influenced = Object.values(state.countries).filter(value => value === "seed" || value === "infected").length;
     const country = countriesById.get(state.selectedCountry);
     const inspectedCountry = countriesById.get(state.inspectedCountry);
-    const campaignLabel = state.active ? "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
+    const campaignLabel = state.active ? state.timeScale === 0 ? "ПАУЗА" : "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
     element("turn-count").textContent = String(state.turn).padStart(2, "0");
     element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
@@ -379,7 +440,7 @@
     element("map-country-count").textContent = String(COUNTRIES.length);
     element("campaign-state").textContent = campaignLabel;
     element("dock-state").textContent = campaignLabel;
-    element("mission-mode").textContent = state.active ? "ОПЕРАЦИЯ АКТИВНА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
+    element("mission-mode").textContent = state.active ? state.timeScale === 0 ? "СИМУЛЯЦИЯ НА ПАУЗЕ" : "ОПЕРАЦИЯ АКТИВНА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
     element("network-readout").textContent = state.started ? `${influenced} ИЗ ${COUNTRIES.length} ОТМЕЧЕНО` : country ? `СТАРТ: ${country.name.toUpperCase()}` : "ВЫБЕРИ СТРАНУ СТАРТА";
     element("signal-points").textContent = String(state.signal).padStart(2, "0");
     element("alert-value").textContent = `${Math.round(state.alert)}%`;
@@ -391,6 +452,7 @@
     element("launch-simulation").textContent = state.started ? "СТРАНА СТАРТА ПОДТВЕРЖДЕНА" : state.selectedCountry ? `ПОДТВЕРДИТЬ: ${country.name.toUpperCase()} →` : "СНАЧАЛА ВЫБЕРИ СТРАНУ";
     element("launch-simulation").setAttribute("aria-label", state.started ? "Страна старта подтверждена" : country ? `Подтвердить страну старта: ${country.name}` : "Сначала выбери страну старта");
     if (state.started && inspectedCountry) element("network-readout").textContent = `ПРОСМОТР: ${inspectedCountry.name.toUpperCase()}`;
+    renderRealtimeControls();
     renderCountryProfile();
     renderWorldMap();
   }
@@ -475,6 +537,9 @@
       turn: 0,
       signal: 4,
       alert: 8,
+      timeScale: 1,
+      elapsedMilliseconds: 0,
+      tickElapsed: 0,
       upgrades: [],
       economicDamage: 0,
       scenarioProfit: 0,
@@ -504,12 +569,16 @@
       threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
       countries: { ...countryStates(), ...(loaded.countries || {}) },
       upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
+      timeScale: TIME_SCALES.has(Number(loaded.timeScale)) ? Number(loaded.timeScale) : 1,
+      elapsedMilliseconds: Number.isFinite(loaded.elapsedMilliseconds) ? loaded.elapsedMilliseconds : 0,
+      tickElapsed: Number.isFinite(loaded.tickElapsed) ? clamp(loaded.tickElapsed, 0, BASE_TICK_MS) : 0,
       economicDamage: Number.isFinite(loaded.economicDamage) ? loaded.economicDamage : 0,
       scenarioProfit: Number.isFinite(loaded.scenarioProfit) ? loaded.scenarioProfit : 0,
       log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
     });
     const name = state.scenarioName || "СЕРАЯ ПЕТЛЯ";
     element("strain-name").value = name;
+    previousFrameTime = performance.now();
     showScreen("game");
     renderAll();
   }
@@ -543,6 +612,7 @@
     state.active = true;
     state.countries[state.selectedCountry] = "seed";
     state.inspectedCountry = state.selectedCountry;
+    previousFrameTime = performance.now();
     const country = countriesById.get(state.selectedCountry);
     state.alert = clamp(5 + country.defense * .13 - effectiveStats().stealth + threatModifiers().alert, 3, 25);
     pushLog(`Сценарий запущен в стране «${country.name}». Первый импульс стабилен.`);
@@ -657,6 +727,10 @@
     state.turn = 0;
     state.signal = 4;
     state.alert = 8;
+    state.timeScale = 1;
+    state.elapsedMilliseconds = 0;
+    state.tickElapsed = 0;
+    previousFrameTime = performance.now();
     state.upgrades = [];
     state.economicDamage = 0;
     state.scenarioProfit = 0;
@@ -718,13 +792,21 @@
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
+  element("time-controls").addEventListener("click", event => {
+    const button = event.target.closest("[data-time-scale]");
+    if (button) setTimeScale(button.dataset.timeScale);
+  });
   document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
   window.addEventListener("pagehide", saveGame);
+  document.addEventListener("visibilitychange", () => {
+    previousFrameTime = performance.now();
+  });
 
   renderStartScreen();
   if (!consumeScenarioDraft()) {
     renderAll();
     showScreen("start");
   }
+  window.requestAnimationFrame(processRealtimeFrame);
 })();

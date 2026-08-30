@@ -72,7 +72,18 @@
           <p id="alert-text">Контур заметил слабый фон, но пока не понимает его рисунок.</p>
         </div>
         <div class="resource-card"><span>СИГНАЛЬНЫЙ РЕСУРС</span><b id="signal-points">04</b><small>используй в нижней панели решений</small></div>
-        <button id="advance-turn" class="advance-button" type="button" disabled>Запустить цикл <span>↯</span></button>
+        <section class="realtime-card" aria-label="Управление скоростью симуляции">
+          <div><span>ВРЕМЯ СИМУЛЯЦИИ</span><b id="simulation-clock">T+00:00</b><em id="realtime-state">ОЖИДАНИЕ</em></div>
+          <div class="meter timeline-meter"><i id="tick-progress"></i></div>
+          <div id="time-controls" class="time-controls" role="radiogroup" aria-label="Скорость симуляции">
+            <button type="button" data-time-scale="0" aria-pressed="false">Ⅱ</button>
+            <button type="button" data-time-scale="0.5" aria-pressed="false">0.5×</button>
+            <button type="button" data-time-scale="1" aria-pressed="true">1×</button>
+            <button type="button" data-time-scale="2" aria-pressed="false">2×</button>
+            <button type="button" data-time-scale="4" aria-pressed="false">4×</button>
+          </div>
+        </section>
+        <button id="advance-turn" class="advance-button" type="button" disabled>Следующий такт <span>↯</span></button>
         <button id="reset-simulation" class="quiet-button" type="button">Сбросить сценарий</button>
       </aside>
     </section>
