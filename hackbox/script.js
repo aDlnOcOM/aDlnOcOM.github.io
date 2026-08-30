@@ -3,8 +3,11 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
 
 // Управляет фронтендом карты, ходами кампании и адаптациями безопасной игровой симуляции HackBox.
 (() => {
+  /** Возвращает элемент игрового интерфейса по его идентификатору. */
   const element = id => document.getElementById(id);
+  /** Ограничивает числовой показатель минимальным и максимальным значениями. */
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+  /** Выбирает случайный элемент из непустого массива для безопасного игрового события. */
   const randomItem = items => items[Math.floor(Math.random() * items.length)];
 
   const ARCHETYPES = {
@@ -56,8 +59,11 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
   };
 
   const COUNTRY_MODEL_DATA = window.HACKBOX_COUNTRY_MODEL_DATA?.countries || {};
+  /** Создаёт псевдослучайный, но повторяемый показатель для абстрактного игрового баланса. */
   const modeledScore = (index, baseline, salt) => clamp(Math.round(baseline + ((index * (11 + salt) + salt * 17) % 31) - 15 + Math.sin((index + salt) * 1.7) * 4), 5, 95);
+  /** Нормализует положительный показатель по логарифмической шкале от 0 до 100. */
   const logarithmicScore = (value, minimum, maximum) => clamp((Math.log10(value) - Math.log10(minimum)) / (Math.log10(maximum) - Math.log10(minimum)) * 100, 0, 100);
+  /** Строит скрытый балансный профиль страны из открытых статистических данных или регионального шаблона. */
   const countrySimulationProfile = (region, index, code) => {
     const [activity, noise, defense] = REGION_BALANCE[region] || REGION_BALANCE["Мир"];
     const fallback = {
@@ -77,9 +83,12 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
     };
   };
 
+  /** Возвращает стабильный ключ географического объекта по его порядковому номеру. */
   const geographyFeatureKey = index => `geography-${index}`;
+  /** Извлекает поддерживаемый ISO-код из свойств объекта GeoJSON. */
   const featureCode = properties => properties.ISO_A3 && properties.ISO_A3 !== "-99" ? properties.ISO_A3 : properties.ADM0_A3 && properties.ADM0_A3 !== "-99" ? properties.ADM0_A3 : null;
 
+  /** Формирует набор стран из встроенной географии или резервной таблицы координат. */
   const COUNTRIES = (() => {
     const geography = window.HACKBOX_WORLD_GEOJSON;
     if (!geography?.features?.length) {
@@ -116,6 +125,7 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
     });
   })();
 
+  /** Создаёт для карты разреженную сеть ближайших соседей между странами. */
   const createWorldLinks = () => {
     const links = new Set();
     COUNTRIES.forEach(country => {
@@ -146,6 +156,7 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
   const countriesById = new Map(COUNTRIES.map(country => [country.id, country]));
   const countriesByFeatureKey = new Map(COUNTRIES.map(country => [country.id, country]));
   const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
+  /** Создаёт исходное нейтральное состояние для всех стран на карте. */
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
   const state = {
     gameCreated: false,
