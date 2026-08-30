@@ -1,7 +1,8 @@
 // Управляет отображением отдельной страницы конструктора учебных сценариев HackBox.
 
-import { findScenario, findScenarioVariant, getDefaultScenarioVariant, listScenarioIds } from "../domain/scenario-catalog.js";
-import { saveScenarioDraft } from "../backend/scenario-repository.js";
+(() => {
+const { findScenario, findScenarioVariant, getDefaultScenarioVariant, listScenarioIds } = window.HackboxDomain;
+const { saveScenarioDraft } = window.HackboxRepository;
 
 const scenarioIds = listScenarioIds();
 let selectedId = scenarioIds[0] || "";
@@ -114,3 +115,4 @@ function startScenario() {
 
 element("start-scenario").addEventListener("click", startScenario);
 renderCatalog();
+})();

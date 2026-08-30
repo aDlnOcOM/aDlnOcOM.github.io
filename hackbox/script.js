@@ -1,8 +1,7 @@
-import { findScenario, findScenarioVariant, isKnownScenario, listScenarioIds } from "./modules/domain/scenario-catalog.js";
-import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./modules/backend/scenario-repository.js";
-
 // Управляет фронтендом карты, ходами кампании и адаптациями безопасной игровой симуляции HackBox.
 (() => {
+  const { findScenario, findScenarioVariant, isKnownScenario, listScenarioIds } = window.HackboxDomain;
+  const { readCampaignSave, takeScenarioDraft, writeCampaignSave } = window.HackboxRepository;
   /** Возвращает элемент игрового интерфейса по его идентификатору. */
   const element = id => document.getElementById(id);
   /** Ограничивает числовой показатель минимальным и максимальным значениями. */
@@ -448,11 +447,6 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
     element("save-hint").textContent = saved ? "Найдено локальное сохранение сценария. Продолжение восстановит карту и выбранную модель." : "Сохранения пока нет. Новая игра начнётся с конструктора модели.";
   }
 
-  /** Открывает самостоятельную страницу конструктора для создания новой кампании. */
-  function openCreator() {
-    window.location.assign("create.html");
-  }
-
   /**
    * Инициализирует игровое состояние по безопасному черновику из конструктора.
    *
@@ -720,13 +714,13 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
     updatePreview();
     saveGame();
   });
-  element("new-game").addEventListener("click", openCreator);
   element("continue-game").addEventListener("click", continueGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
   document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
+  window.addEventListener("pagehide", saveGame);
 
   renderStartScreen();
   if (!consumeScenarioDraft()) {

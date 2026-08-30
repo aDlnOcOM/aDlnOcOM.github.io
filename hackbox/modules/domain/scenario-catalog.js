@@ -1,5 +1,6 @@
 // Предоставляет доменную модель безопасных учебных сценариев для всех экранов HackBox.
 
+(() => {
 const catalog = window.HACKBOX_SCENARIO_CATALOG || {};
 
 /**
@@ -7,7 +8,7 @@ const catalog = window.HACKBOX_SCENARIO_CATALOG || {};
  *
  * @returns {string[]} Идентификаторы доступных сценариев.
  */
-export function listScenarioIds() {
+function listScenarioIds() {
   return Object.keys(catalog);
 }
 
@@ -17,7 +18,7 @@ export function listScenarioIds() {
  * @param {string} id Идентификатор сценария.
  * @returns {object | null} Описание сценария или null, если каталог пуст.
  */
-export function findScenario(id) {
+function findScenario(id) {
   return catalog[id] || catalog[listScenarioIds()[0]] || null;
 }
 
@@ -27,7 +28,7 @@ export function findScenario(id) {
  * @param {string} id Идентификатор сценария.
  * @returns {object | null} Вариант сценария или null, если сценарий не найден.
  */
-export function getDefaultScenarioVariant(id) {
+function getDefaultScenarioVariant(id) {
   return findScenario(id)?.variants?.[0] || null;
 }
 
@@ -38,7 +39,7 @@ export function getDefaultScenarioVariant(id) {
  * @param {string} variantId Идентификатор варианта.
  * @returns {object | null} Найденный вариант или базовый вариант сценария.
  */
-export function findScenarioVariant(scenarioId, variantId) {
+function findScenarioVariant(scenarioId, variantId) {
   const scenario = findScenario(scenarioId);
   return scenario?.variants?.find(variant => variant.id === variantId) || getDefaultScenarioVariant(scenarioId);
 }
@@ -49,6 +50,15 @@ export function findScenarioVariant(scenarioId, variantId) {
  * @param {string} id Идентификатор сценария.
  * @returns {boolean} True, когда сценарий можно выбрать.
  */
-export function isKnownScenario(id) {
+function isKnownScenario(id) {
   return Boolean(catalog[id]);
 }
+
+window.HackboxDomain = {
+  findScenario,
+  findScenarioVariant,
+  getDefaultScenarioVariant,
+  isKnownScenario,
+  listScenarioIds
+};
+})();

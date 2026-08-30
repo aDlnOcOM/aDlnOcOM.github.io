@@ -14,7 +14,7 @@
       <h1 id="start-title">Карта<br><span>сигнала</span></h1>
       <p class="entry-copy">Построй игровую модель угрозы, выбери её поведенческий профиль и проведи абстрактный сценарий на географической карте. Все механики существуют только внутри симуляции.</p>
       <div class="entry-actions">
-        <button id="new-game" class="entry-primary" type="button">Новая игра <span>→</span></button>
+        <a id="new-game" class="entry-primary" href="create.html">Новая игра <span>→</span></a>
         <button id="continue-game" class="entry-secondary" type="button" disabled>Продолжить игру</button>
       </div>
       <p id="save-hint" class="entry-note">Сохранения пока нет. Новая игра начнётся с конструктора модели.</p>
@@ -134,6 +134,8 @@
   <script src="assets/world-countries.js"></script>
   <script src="assets/world-bank-country-model.js"></script>
   <script src="assets/scenario-catalog.js"></script>
-  <script type="module" src="script.js"></script>
+  <script src="modules/domain/scenario-catalog.js"></script>
+  <script src="modules/backend/scenario-repository.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

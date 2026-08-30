@@ -1,7 +1,9 @@
 // Изолирует работу HackBox с локальными черновиками и сохранениями браузера.
 
+(() => {
 const DRAFT_KEY = "hackbox-scenario-draft-v3";
 const SAVE_KEY = "hackbox-scenario-save-v3";
+const SESSION_SAVE_KEY = "hackbox-scenario-session-save-v3";
 
 /**
  * Читает JSON из указанного браузерного хранилища, не прерывая игру при повреждённых данных.
@@ -41,7 +43,7 @@ function writeJson(storage, key, value) {
  * @param {{scenarioId: string, variantId: string, scenarioName: string}} draft Выбранный игроком сценарий.
  * @returns {boolean} True, если черновик сохранён.
  */
-export function saveScenarioDraft(draft) {
+function saveScenarioDraft(draft) {
   return writeJson(sessionStorage, DRAFT_KEY, { version: 3, ...draft });
 }
 
@@ -50,7 +52,7 @@ export function saveScenarioDraft(draft) {
  *
  * @returns {{scenarioId: string, variantId: string, scenarioName: string} | null} Валидный черновик или null.
  */
-export function takeScenarioDraft() {
+function takeScenarioDraft() {
   const draft = readJson(sessionStorage, DRAFT_KEY);
   try {
     sessionStorage.removeItem(DRAFT_KEY);
@@ -65,9 +67,10 @@ export function takeScenarioDraft() {
  *
  * @returns {{state: object} | null} Снимок кампании или null.
  */
-export function readCampaignSave() {
+function readCampaignSave() {
   const saved = readJson(localStorage, SAVE_KEY);
-  return saved?.version === 3 && saved.state?.gameCreated ? saved : null;
+  const sessionSave = readJson(sessionStorage, SESSION_SAVE_KEY);
+  return isCurrentCampaignSave(saved) ? saved : isCurrentCampaignSave(sessionSave) ? sessionSave : null;
 }
 
 /**
@@ -76,6 +79,27 @@ export function readCampaignSave() {
  * @param {object} state Состояние игровой кампании.
  * @returns {boolean} True, если сохранение создано.
  */
-export function writeCampaignSave(state) {
-  return writeJson(localStorage, SAVE_KEY, { version: 3, savedAt: Date.now(), state });
+function writeCampaignSave(state) {
+  const snapshot = { version: 3, savedAt: Date.now(), state };
+  const localSaved = writeJson(localStorage, SAVE_KEY, snapshot);
+  const sessionSaved = writeJson(sessionStorage, SESSION_SAVE_KEY, snapshot);
+  return localSaved || sessionSaved;
 }
+
+/**
+ * Проверяет, соответствует ли снимок текущему формату браузерного сохранения.
+ *
+ * @param {object | null} saved Потенциальный снимок кампании.
+ * @returns {boolean} True, если снимок можно безопасно восстановить.
+ */
+function isCurrentCampaignSave(saved) {
+  return saved?.version === 3 && saved.state?.gameCreated;
+}
+
+window.HackboxRepository = {
+  readCampaignSave,
+  saveScenarioDraft,
+  takeScenarioDraft,
+  writeCampaignSave
+};
+})();
