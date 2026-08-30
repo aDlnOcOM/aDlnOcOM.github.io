@@ -174,6 +174,7 @@
     countries: countryStates(),
     started: false,
     active: false,
+    result: null,
     turn: 0,
     signal: 4,
     alert: 8,
@@ -425,12 +426,50 @@
     window.requestAnimationFrame(processRealtimeFrame);
   }
 
+  /** Выбирает безопасную цель кампании по балансному профилю текущего сценария. */
+  function activeScenarioObjective() {
+    const economy = activeThreatType().economy;
+    if (economy.impact >= 80) {
+      return { name: "ПРЕДЕЛ УСТОЙЧИВОСТИ", description: "Накопи игровое экономическое давление до ответа защитного контура.", metric: "economicDamage", target: 900, unit: "ОЧКОВ" };
+    }
+    if (economy.yield >= 65) {
+      return { name: "ДОЛГАЯ КАМПАНИЯ", description: "Сохраняй низкий профиль и накопи условный ресурс сценария.", metric: "scenarioProfit", target: 260, unit: "ЕДИНИЦ" };
+    }
+    return { name: "ГЛОБАЛЬНЫЙ ОХВАТ", description: "Расширь учебный сигнал до значительной части географической карты.", metric: "coverage", target: Math.ceil(COUNTRIES.length * .45), unit: "СТРАН" };
+  }
+
+  /** Рассчитывает текущее значение и процент выполнения активной цели. */
+  function scenarioObjectiveProgress() {
+    const objective = activeScenarioObjective();
+    const value = objective.metric === "coverage" ? activeCountries().length : Number(state[objective.metric] || 0);
+    return { ...objective, value, percent: clamp(value / objective.target * 100, 0, 100) };
+  }
+
+  /** Отображает название, пояснение и прогресс безопасной цели кампании. */
+  function renderScenarioObjective() {
+    const objective = scenarioObjectiveProgress();
+    element("objective-name").textContent = objective.name;
+    element("objective-text").textContent = state.result === "objective" ? "Учебная цель достигнута. Сценарий завершён успешно." : objective.description;
+    element("objective-value").textContent = `${Math.round(objective.value)} / ${objective.target} ${objective.unit}`;
+    element("objective-progress").style.width = `${objective.percent}%`;
+  }
+
+  /** Завершает кампанию, когда выбранная игровая цель достигнута. */
+  function evaluateScenarioObjective() {
+    const objective = scenarioObjectiveProgress();
+    if (!state.active || objective.percent < 100) return false;
+    state.active = false;
+    state.result = "objective";
+    pushLog(`Цель «${objective.name}» достигнута. Учебная симуляция завершена.`);
+    return true;
+  }
+
   /** Обновляет сводку кампании, метрики и элементы управления картой. */
   function renderCampaign() {
     const influenced = Object.values(state.countries).filter(value => value === "seed" || value === "infected").length;
     const country = countriesById.get(state.selectedCountry);
     const inspectedCountry = countriesById.get(state.inspectedCountry);
-    const campaignLabel = state.active ? state.timeScale === 0 ? "ПАУЗА" : "СИГНАЛ В ПУТИ" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
+    const campaignLabel = state.active ? state.timeScale === 0 ? "ПАУЗА" : "СИГНАЛ В ПУТИ" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
     element("turn-count").textContent = String(state.turn).padStart(2, "0");
     element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
@@ -440,7 +479,7 @@
     element("map-country-count").textContent = String(COUNTRIES.length);
     element("campaign-state").textContent = campaignLabel;
     element("dock-state").textContent = campaignLabel;
-    element("mission-mode").textContent = state.active ? state.timeScale === 0 ? "СИМУЛЯЦИЯ НА ПАУЗЕ" : "ОПЕРАЦИЯ АКТИВНА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
+    element("mission-mode").textContent = state.active ? state.timeScale === 0 ? "СИМУЛЯЦИЯ НА ПАУЗЕ" : "ОПЕРАЦИЯ АКТИВНА" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
     element("network-readout").textContent = state.started ? `${influenced} ИЗ ${COUNTRIES.length} ОТМЕЧЕНО` : country ? `СТАРТ: ${country.name.toUpperCase()}` : "ВЫБЕРИ СТРАНУ СТАРТА";
     element("signal-points").textContent = String(state.signal).padStart(2, "0");
     element("alert-value").textContent = `${Math.round(state.alert)}%`;
@@ -453,6 +492,7 @@
     element("launch-simulation").setAttribute("aria-label", state.started ? "Страна старта подтверждена" : country ? `Подтвердить страну старта: ${country.name}` : "Сначала выбери страну старта");
     if (state.started && inspectedCountry) element("network-readout").textContent = `ПРОСМОТР: ${inspectedCountry.name.toUpperCase()}`;
     renderRealtimeControls();
+    renderScenarioObjective();
     renderCountryProfile();
     renderWorldMap();
   }
@@ -534,6 +574,7 @@
       countries: countryStates(),
       started: false,
       active: false,
+      result: null,
       turn: 0,
       signal: 4,
       alert: 8,
@@ -572,6 +613,7 @@
       timeScale: TIME_SCALES.has(Number(loaded.timeScale)) ? Number(loaded.timeScale) : 1,
       elapsedMilliseconds: Number.isFinite(loaded.elapsedMilliseconds) ? loaded.elapsedMilliseconds : 0,
       tickElapsed: Number.isFinite(loaded.tickElapsed) ? clamp(loaded.tickElapsed, 0, BASE_TICK_MS) : 0,
+      result: typeof loaded.result === "string" ? loaded.result : null,
       economicDamage: Number.isFinite(loaded.economicDamage) ? loaded.economicDamage : 0,
       scenarioProfit: Number.isFinite(loaded.scenarioProfit) ? loaded.scenarioProfit : 0,
       log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
@@ -707,11 +749,15 @@
     state.alert = clamp(state.alert + awarenessStep + newSignals * 2.2, 0, 100);
     containSignal();
     const influenced = activeCountries().length;
-    if (influenced === COUNTRIES.length) {
+    if (evaluateScenarioObjective()) {
+      // Завершение и запись в журнал выполняются внутри проверки цели.
+    } else if (influenced === COUNTRIES.length) {
       state.active = false;
+      state.result = "coverage";
       pushLog("Сценарий завершён: весь игровой мир отмечен сигналом до полной изоляции.");
     } else if (state.alert >= 100) {
       state.active = false;
+      state.result = "contained";
       pushLog("Контур достиг максимальной готовности и закрыл сценарий. Попробуй другой старт или адаптацию.");
     }
     renderAll();
@@ -724,6 +770,7 @@
     state.countries = countryStates();
     state.started = false;
     state.active = false;
+    state.result = null;
     state.turn = 0;
     state.signal = 4;
     state.alert = 8;

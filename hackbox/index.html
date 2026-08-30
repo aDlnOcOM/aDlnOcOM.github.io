@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#071015">
   <title>HackBox — карта сценария</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="simulation.css">
 </head>
 <body>
   <section id="start-screen" class="entry-screen" aria-labelledby="start-title">
@@ -70,6 +71,13 @@
           <div class="threat-heading"><span>ВНИМАНИЕ КОНТУРА</span><b id="alert-value">08%</b></div>
           <div class="meter danger-meter"><i id="alert-meter"></i></div>
           <p id="alert-text">Контур заметил слабый фон, но пока не понимает его рисунок.</p>
+        </div>
+        <div class="objective-card">
+          <span>ЦЕЛЬ СЦЕНАРИЯ</span>
+          <b id="objective-name">ГЛОБАЛЬНЫЙ ОХВАТ</b>
+          <div class="meter objective-meter"><i id="objective-progress"></i></div>
+          <p id="objective-text">Подготовь модель и подтверди стартовую страну.</p>
+          <small id="objective-value">00 / 00</small>
         </div>
         <div class="resource-card"><span>СИГНАЛЬНЫЙ РЕСУРС</span><b id="signal-points">04</b><small>используй в нижней панели решений</small></div>
         <section class="realtime-card" aria-label="Управление скоростью симуляции">
