@@ -32,6 +32,18 @@ export function getDefaultScenarioVariant(id) {
 }
 
 /**
+ * Находит безопасный игровой вариант в пределах указанного сценария.
+ *
+ * @param {string} scenarioId Идентификатор сценария.
+ * @param {string} variantId Идентификатор варианта.
+ * @returns {object | null} Найденный вариант или базовый вариант сценария.
+ */
+export function findScenarioVariant(scenarioId, variantId) {
+  const scenario = findScenario(scenarioId);
+  return scenario?.variants?.find(variant => variant.id === variantId) || getDefaultScenarioVariant(scenarioId);
+}
+
+/**
  * Проверяет, существует ли сценарий с указанным идентификатором.
  *
  * @param {string} id Идентификатор сценария.

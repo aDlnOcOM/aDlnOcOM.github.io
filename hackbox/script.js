@@ -1,4 +1,4 @@
-import { findScenario, getDefaultScenarioVariant, isKnownScenario, listScenarioIds } from "./modules/domain/scenario-catalog.js";
+import { findScenario, findScenarioVariant, isKnownScenario, listScenarioIds } from "./modules/domain/scenario-catalog.js";
 import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./modules/backend/scenario-repository.js";
 
 // Управляет фронтендом карты, ходами кампании и адаптациями безопасной игровой симуляции HackBox.
@@ -445,13 +445,13 @@ import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./module
   /**
    * Инициализирует игровое состояние по безопасному черновику из конструктора.
    *
-   * @param {{scenarioId: string, scenarioName: string}} draft Данные выбранного игрового сценария.
+   * @param {{scenarioId: string, variantId: string, scenarioName: string}} draft Данные выбранного игрового сценария.
    * @returns {void}
    */
   function startNewScenario(draft) {
     const scenarioId = isKnownScenario(draft.scenarioId) ? draft.scenarioId : listScenarioIds()[0];
     const scenario = findScenario(scenarioId);
-    const variant = getDefaultScenarioVariant(scenarioId);
+    const variant = findScenarioVariant(scenarioId, draft.variantId);
     Object.assign(state, {
       gameCreated: true,
       scenarioName: draft.scenarioName || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ",

@@ -1,12 +1,26 @@
 // Описывает общеизвестные классы вредоносного ПО только как безопасные учебные сценарии для игровой симуляции.
 (() => {
+  /**
+   * Собирает безопасный игровой сценарий с тремя нетехническими ветвями баланса.
+   *
+   * @param {string} name Отображаемое имя общеизвестного класса.
+   * @param {string} role Высокоуровневая роль в учебной симуляции.
+   * @param {string} cycle Описание игрового цикла без операционных деталей.
+   * @param {object} modifiers Базовые балансные модификаторы.
+   * @param {object} economy Коэффициенты условных игровых показателей.
+   * @returns {object} Описание сценария для интерфейса и карты.
+   */
   const scenario = (name, role, cycle, modifiers, economy) => ({
     name,
     role,
     cycle,
     modifiers,
     economy,
-    variants: [{ id: "standard", name: "Учебный сценарий", effect: cycle, modifiers: {} }]
+    variants: [
+      { id: "standard", name: "Базовая модель", effect: "Сбалансированный учебный профиль без дополнительного сдвига параметров.", modifiers: {} },
+      { id: "quiet", name: "Сдержанная модель", effect: "Медленнее развивает игровую карту, но снижает внимание контура.", modifiers: { stealth: 1, speed: -1, alert: -1 } },
+      { id: "pressure", name: "Модель давления", effect: "Ускоряет темп учебной кампании ценой более заметного сигнала.", modifiers: { stealth: -1, speed: 1, alert: 1 } }
+    ]
   });
 
   window.HACKBOX_SCENARIO_CATALOG = {

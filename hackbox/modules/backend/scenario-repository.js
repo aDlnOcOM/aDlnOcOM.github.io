@@ -38,7 +38,7 @@ function writeJson(storage, key, value) {
 /**
  * Сохраняет выбор со страницы конструктора до перенаправления на карту мира.
  *
- * @param {{scenarioId: string, scenarioName: string}} draft Выбранный игроком сценарий.
+ * @param {{scenarioId: string, variantId: string, scenarioName: string}} draft Выбранный игроком сценарий.
  * @returns {boolean} True, если черновик сохранён.
  */
 export function saveScenarioDraft(draft) {
@@ -48,7 +48,7 @@ export function saveScenarioDraft(draft) {
 /**
  * Однократно возвращает черновик сценария и очищает его, чтобы обновление страницы не перезапускало игру.
  *
- * @returns {{scenarioId: string, scenarioName: string} | null} Валидный черновик или null.
+ * @returns {{scenarioId: string, variantId: string, scenarioName: string} | null} Валидный черновик или null.
  */
 export function takeScenarioDraft() {
   const draft = readJson(sessionStorage, DRAFT_KEY);
@@ -57,7 +57,7 @@ export function takeScenarioDraft() {
   } catch {
     // Черновик всё равно будет проигнорирован, если хранилище недоступно.
   }
-  return draft?.version === 3 && typeof draft.scenarioId === "string" ? draft : null;
+  return draft?.version === 3 && typeof draft.scenarioId === "string" && typeof draft.variantId === "string" ? draft : null;
 }
 
 /**

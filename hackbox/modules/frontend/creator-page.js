@@ -1,10 +1,11 @@
 // Управляет отображением отдельной страницы конструктора учебных сценариев HackBox.
 
-import { findScenario, listScenarioIds } from "../domain/scenario-catalog.js";
+import { findScenario, findScenarioVariant, getDefaultScenarioVariant, listScenarioIds } from "../domain/scenario-catalog.js";
 import { saveScenarioDraft } from "../backend/scenario-repository.js";
 
 const scenarioIds = listScenarioIds();
 let selectedId = scenarioIds[0] || "";
+let selectedVariantId = getDefaultScenarioVariant(selectedId)?.id || "standard";
 
 /**
  * Возвращает DOM-элемент по его уникальному идентификатору.
@@ -34,6 +35,29 @@ function createScenarioButton(id, index) {
   button.innerHTML = `<small>${String(index + 1).padStart(2, "0")} / КЛАСС</small><strong>${scenario.name}</strong><em>${scenario.role}</em>`;
   button.addEventListener("click", () => {
     selectedId = id;
+    selectedVariantId = getDefaultScenarioVariant(id)?.id || "standard";
+    renderCatalog();
+  });
+  return button;
+}
+
+/**
+ * Создаёт кнопку выбора безопасного балансного варианта текущего сценария.
+ *
+ * @param {object} variant Игровой вариант сценария.
+ * @param {number} index Порядковый номер варианта.
+ * @returns {HTMLButtonElement} Готовая интерактивная карточка варианта.
+ */
+function createVariantButton(variant, index) {
+  const button = document.createElement("button");
+  const isSelected = variant.id === selectedVariantId;
+  button.type = "button";
+  button.className = `scenario-variant ${isSelected ? "selected" : ""}`;
+  button.setAttribute("role", "radio");
+  button.setAttribute("aria-checked", String(isSelected));
+  button.innerHTML = `<small>ВАРИАНТ ${String(index + 1).padStart(2, "0")}</small><strong>${variant.name}</strong><em>${variant.effect}</em>`;
+  button.addEventListener("click", () => {
+    selectedVariantId = variant.id;
     renderCatalog();
   });
   return button;
@@ -43,13 +67,15 @@ function createScenarioButton(id, index) {
  * Обновляет карточку с игровыми параметрами выбранного сценария.
  *
  * @param {object} scenario Текущий учебный сценарий.
+ * @param {object} variant Выбранная игроком балансная ветвь.
  * @returns {void}
  */
-function renderScenarioProfile(scenario) {
+function renderScenarioProfile(scenario, variant) {
   const position = scenarioIds.indexOf(selectedId) + 1;
   element("scenario-profile-index").textContent = `${String(position).padStart(2, "0")} / УЧЕБНАЯ МОДЕЛЬ`;
   element("scenario-profile-name").textContent = scenario.name;
-  element("scenario-profile-description").textContent = scenario.role;
+  element("scenario-profile-variant").textContent = variant.name.toUpperCase();
+  element("scenario-profile-description").textContent = `${scenario.role} ${variant.effect}`;
   element("scenario-cycle-text").textContent = scenario.cycle;
   element("scenario-impact").textContent = String(scenario.economy.impact).padStart(2, "0");
   element("scenario-yield").textContent = String(scenario.economy.yield).padStart(2, "0");
@@ -62,11 +88,16 @@ function renderScenarioProfile(scenario) {
  */
 function renderCatalog() {
   const selected = findScenario(selectedId);
+  const variant = findScenarioVariant(selectedId, selectedVariantId);
   const grid = element("scenario-type-grid");
   grid.innerHTML = "";
   scenarioIds.forEach((id, index) => grid.appendChild(createScenarioButton(id, index)));
+  const variantGrid = element("scenario-variant-grid");
+  variantGrid.innerHTML = "";
+  selected?.variants.forEach((item, index) => variantGrid.appendChild(createVariantButton(item, index)));
   element("catalog-count").textContent = `${scenarioIds.length} ТИПА`;
-  if (selected) renderScenarioProfile(selected);
+  element("variant-count").textContent = `${selected?.variants.length || 0} ВАРИАНТА`;
+  if (selected && variant) renderScenarioProfile(selected, variant);
 }
 
 /**
@@ -77,7 +108,7 @@ function renderCatalog() {
 function startScenario() {
   const input = element("scenario-name");
   const scenarioName = input.value.trim().toUpperCase() || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ";
-  const saved = saveScenarioDraft({ scenarioId: selectedId, scenarioName });
+  const saved = saveScenarioDraft({ scenarioId: selectedId, variantId: selectedVariantId, scenarioName });
   window.location.assign(saved ? "index.html?new=1" : "index.html");
 }
 
