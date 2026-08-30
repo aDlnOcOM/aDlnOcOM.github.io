@@ -47,3 +47,91 @@
   background: var(--lime);
   width: 0;
 }
+
+/* Строит читаемое дерево безопасных адаптаций поверх базовой сетки интерфейса. */
+.upgrade-grid.evolution-tree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.evolution-branch {
+  min-width: 0;
+  border: 1px solid #28464f;
+  background: linear-gradient(180deg, rgba(14, 34, 40, .96), rgba(8, 22, 27, .92));
+  padding: 10px;
+}
+
+.evolution-branch > header {
+  min-height: 35px;
+  border-bottom: 1px solid #29444c;
+  margin-bottom: 11px;
+  padding-bottom: 8px;
+}
+
+.evolution-branch > header span,
+.evolution-branch > header small {
+  display: block;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.evolution-branch > header span {
+  color: var(--cyan);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.evolution-branch > header small {
+  color: var(--muted);
+  font-size: 7px;
+  margin-top: 4px;
+}
+
+.trait-stack {
+  display: grid;
+  gap: 19px;
+}
+
+.trait-card {
+  position: relative;
+  width: 100%;
+  min-height: 92px;
+  text-align: left;
+}
+
+.trait-card + .trait-card::before {
+  position: absolute;
+  content: "";
+  width: 1px;
+  height: 19px;
+  left: 50%;
+  bottom: 100%;
+  background: #3f6974;
+}
+
+.trait-card.locked {
+  opacity: .5;
+  filter: saturate(.45);
+}
+
+.trait-card.unlocked {
+  border-color: var(--lime);
+  box-shadow: inset 3px 0 0 var(--lime);
+}
+
+.trait-card.unlocked small {
+  color: var(--lime);
+}
+
+@media (max-width: 980px) {
+  .upgrade-grid.evolution-tree {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .upgrade-grid.evolution-tree {
+    grid-template-columns: 1fr;
+  }
+}

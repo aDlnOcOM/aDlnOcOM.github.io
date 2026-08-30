@@ -141,16 +141,36 @@
 
   const LINKS = createWorldLinks();
 
-  const UPGRADES = [
-    { id: "veil", cost: 2, name: "Вуаль шума", effect: "−1 к вниманию контура за цикл", branch: "Скрытность" },
-    { id: "cascade", cost: 3, name: "Каскадный резонанс", effect: "+11% к шансу эха", branch: "Темп" },
-    { id: "anchor", cost: 3, name: "Якорь паттерна", effect: "сложнее закрыть отмеченный узел", branch: "Устойчивость" },
-    { id: "relayMap", cost: 4, name: "Память маршрутов", effect: "дополнительный выбор связи", branch: "Навигация" },
-    { id: "chorus", cost: 3, name: "Хор отражений", effect: "+1 сигнальный ресурс при новой отметке", branch: "Ресурс" },
-    { id: "quietCore", cost: 5, name: "Тихое ядро", effect: "стартовые страны реже вызывают тревогу", branch: "Скрытность" },
-    { id: "switchback", cost: 5, name: "Смена грани", effect: "фоновые события чаще помогают маршруту", branch: "Навигация" },
-    { id: "lattice", cost: 6, name: "Решётка доверия", effect: "снижение эффекта закрытия связей", branch: "Устойчивость" }
+  const UPGRADE_BRANCHES = [
+    { id: "connectivity", name: "Связность", hint: "охват и темп карты" },
+    { id: "observability", name: "Наблюдаемость", hint: "контроль заметности" },
+    { id: "stability", name: "Устойчивость", hint: "сопротивление изоляции" },
+    { id: "efficiency", name: "Эффективность", hint: "экономика Compute Points" },
+    { id: "adaptation", name: "Адаптация", hint: "реакция на события" },
+    { id: "scenario", name: "Профиль", hint: "особенности сценария" }
   ];
+
+  const UPGRADES = [
+    { id: "relayMap", branch: "connectivity", tier: 1, cost: 2, name: "Карта связности", effect: "+1 выбор связи за цикл" },
+    { id: "cascade", branch: "connectivity", tier: 2, cost: 4, alert: 2, requires: "relayMap", name: "Каскадный отклик", effect: "+8% к шансу нового эха" },
+    { id: "wideMap", branch: "connectivity", tier: 3, cost: 7, alert: 4, requires: "cascade", name: "Широкий контур", effect: "ещё один выбор связи за цикл" },
+    { id: "veil", branch: "observability", tier: 1, cost: 2, name: "Фильтр наблюдаемости", effect: "меньше внимания за цикл" },
+    { id: "quietCore", branch: "observability", tier: 2, cost: 4, requires: "veil", name: "Тихое ядро", effect: "+1 к скрытности модели" },
+    { id: "shadowBalance", branch: "observability", tier: 3, cost: 7, requires: "quietCore", name: "Баланс тени", effect: "сдерживает резкие всплески внимания" },
+    { id: "anchor", branch: "stability", tier: 1, cost: 3, name: "Якорь состояния", effect: "+1 к устойчивости модели" },
+    { id: "lattice", branch: "stability", tier: 2, cost: 5, requires: "anchor", name: "Решётка резерва", effect: "слабее эффект изоляции" },
+    { id: "recoveryLoop", branch: "stability", tier: 3, cost: 8, alert: 1, requires: "lattice", name: "Контур восстановления", effect: "редкий возврат закрытого узла" },
+    { id: "chorus", branch: "efficiency", tier: 1, cost: 3, name: "Хор отражений", effect: "+1 CP за цикл с новой отметкой" },
+    { id: "resourceCache", branch: "efficiency", tier: 2, cost: 5, requires: "chorus", name: "Буфер вычислений", effect: "+1 CP каждый третий цикл" },
+    { id: "compoundYield", branch: "efficiency", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Составной результат", effect: "+1 CP за сильный экономический такт" },
+    { id: "switchback", branch: "adaptation", tier: 1, cost: 3, name: "Смена ритма", effect: "фоновые события происходят чаще" },
+    { id: "adaptiveRhythm", branch: "adaptation", tier: 2, cost: 5, requires: "switchback", name: "Адаптивный ритм", effect: "события сильнее снижают внимание" },
+    { id: "responseWindow", branch: "adaptation", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно ответа", effect: "события могут принести +1 CP" },
+    { id: "scenarioFocus", branch: "scenario", tier: 1, cost: 4, alert: 1, name: "Фокус сценария", effect: "+8% к профильному результату" },
+    { id: "scenarioMastery", branch: "scenario", tier: 2, cost: 8, alert: 3, requires: "scenarioFocus", name: "Мастерство профиля", effect: "ещё +12% к профильному результату" }
+  ];
+
+  const upgradesById = new Map(UPGRADES.map(upgrade => [upgrade.id, upgrade]));
 
   const countriesById = new Map(COUNTRIES.map(country => [country.id, country]));
   const countriesByFeatureKey = new Map(COUNTRIES.map(country => [country.id, country]));
@@ -224,7 +244,7 @@
     const applicator = APPLICATORS[state.applicator];
     const threat = threatModifiers();
     return {
-      stealth: clamp(state.stealth + archetype.stealth + threat.stealth - (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
+      stealth: clamp(state.stealth + archetype.stealth + threat.stealth + (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
       speed: clamp(state.speed + archetype.speed + applicator.speed + threat.speed, 1, 8),
       resilience: clamp(state.resilience + archetype.resilience + applicator.resilience + threat.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
     };
@@ -497,21 +517,43 @@
     renderWorldMap();
   }
 
-  /** Отрисовывает доступные игровые адаптации и их состояние. */
+  /** Проверяет, выполнено ли требование предыдущего уровня адаптации. */
+  function meetsUpgradeRequirement(upgrade) {
+    return !upgrade.requires || hasUpgrade(upgrade.requires);
+  }
+
+  /** Возвращает короткое имя требуемой адаптации для подсказки. */
+  function upgradeRequirementName(upgrade) {
+    return upgrade.requires ? upgradesById.get(upgrade.requires)?.name || "предыдущий уровень" : "";
+  }
+
+  /** Отрисовывает ветвящееся дерево безопасных игровых адаптаций. */
   function renderUpgrades() {
     const grid = element("upgrade-grid");
     grid.innerHTML = "";
-    UPGRADES.forEach(upgrade => {
-      const unlocked = hasUpgrade(upgrade.id);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `upgrade-card ${unlocked ? "unlocked" : ""}`;
-      button.disabled = unlocked || !state.started || state.signal < upgrade.cost;
-      button.innerHTML = `<small>${upgrade.branch.toUpperCase()} · ${unlocked ? "УСТАНОВЛЕНО" : `${upgrade.cost} СИГНАЛА`}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em>`;
-      button.addEventListener("click", () => buyUpgrade(upgrade));
-      grid.appendChild(button);
+    UPGRADE_BRANCHES.forEach(branch => {
+      const section = document.createElement("section");
+      section.className = "evolution-branch";
+      section.innerHTML = `<header><span>${branch.name}</span><small>${branch.hint}</small></header>`;
+      const stack = document.createElement("div");
+      stack.className = "trait-stack";
+      UPGRADES.filter(upgrade => upgrade.branch === branch.id).forEach(upgrade => {
+        const unlocked = hasUpgrade(upgrade.id);
+        const requirementMet = meetsUpgradeRequirement(upgrade);
+        const affordable = state.signal >= upgrade.cost;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `upgrade-card trait-card tier-${upgrade.tier} ${unlocked ? "unlocked" : ""} ${!requirementMet ? "locked" : ""}`;
+        button.disabled = unlocked || !state.started || !requirementMet || !affordable;
+        const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(upgrade)}` : `${upgrade.cost} CP${upgrade.alert ? ` · +${upgrade.alert}% ВНИМАНИЯ` : ""}`;
+        button.innerHTML = `<small>УРОВЕНЬ ${upgrade.tier} · ${status}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em>`;
+        button.addEventListener("click", () => buyUpgrade(upgrade));
+        stack.appendChild(button);
+      });
+      section.appendChild(stack);
+      grid.appendChild(section);
     });
-    element("upgrade-note").textContent = state.started ? `${state.signal} СИГНАЛА ДОСТУПНО` : "ЗАПУСТИ СЦЕНАРИЙ";
+    element("upgrade-note").textContent = state.started ? `${state.signal} CP ДОСТУПНО` : "ЗАПУСТИ СЦЕНАРИЙ";
   }
 
   /** Выводит последние события учебной симуляции. */
@@ -661,12 +703,13 @@
     renderAll();
   }
 
-  /** Покупает адаптацию, если у игрока достаточно сигнального ресурса. */
+  /** Покупает доступную адаптацию и применяет её цену заметности. */
   function buyUpgrade(upgrade) {
-    if (!state.started || hasUpgrade(upgrade.id) || state.signal < upgrade.cost) return;
+    if (!state.started || hasUpgrade(upgrade.id) || !meetsUpgradeRequirement(upgrade) || state.signal < upgrade.cost) return;
     state.signal -= upgrade.cost;
     state.upgrades.push(upgrade.id);
-    pushLog(`Адаптация «${upgrade.name}» встроена в паттерн.`);
+    state.alert = clamp(state.alert + (upgrade.alert || 0), 0, 100);
+    pushLog(`Адаптация «${upgrade.name}» установлена за ${upgrade.cost} CP${upgrade.alert ? `; внимание контура +${upgrade.alert}%` : ""}.`);
     renderAll();
   }
 
