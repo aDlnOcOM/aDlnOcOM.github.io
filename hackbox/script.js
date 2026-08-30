@@ -1,4 +1,7 @@
-// Управляет конструктором вымышленного штамма, мировой картой, ходами кампании и адаптациями HackBox.
+import { findScenario, getDefaultScenarioVariant, isKnownScenario, listScenarioIds } from "./modules/domain/scenario-catalog.js";
+import { readCampaignSave, takeScenarioDraft, writeCampaignSave } from "./modules/backend/scenario-repository.js";
+
+// Управляет фронтендом карты, ходами кампании и адаптациями безопасной игровой симуляции HackBox.
 (() => {
   const element = id => document.getElementById(id);
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
@@ -16,57 +19,8 @@
     fabric: { name: "Ткань узлов", description: "Формирует более устойчивые, но медленные связи.", speed: -1, resilience: 1 }
   };
 
-  // Описывает только безопасные игровые роли и их поведенческие последствия внутри абстрактной симуляции.
-  const THREAT_TYPES = {
-    observer: {
-      name: "Наблюдатель", role: "Пассивная модель, которая предпочитает медленный темп и низкую заметность.", modifiers: { stealth: 1, speed: -1, resilience: 0, alert: -2 },
-      variants: [
-        { id: "ledger", name: "Тихий журнал", effect: "стабильнее на ранних циклах", modifiers: { resilience: 1 } },
-        { id: "mirror", name: "Зеркальный обзор", effect: "лучше скрывает след сценария", modifiers: { stealth: 1 } },
-        { id: "census", name: "Карта присутствия", effect: "бережёт сигнал при первом расширении", modifiers: { speed: 1 } }
-      ]
-    },
-    relay: {
-      name: "Ретранслятор", role: "Связная модель, для которой важна непрерывность маршрута между отмеченными странами.", modifiers: { stealth: 0, speed: 1, resilience: 0, alert: 0 },
-      variants: [
-        { id: "mesh", name: "Сетчатый ритм", effect: "равномерно удерживает соседние связи", modifiers: { resilience: 1 } },
-        { id: "queue", name: "Очередь импульсов", effect: "ускоряет темп сценария", modifiers: { speed: 1 } },
-        { id: "bridge", name: "Мостовой контур", effect: "снижает стартовую тревогу", modifiers: { stealth: 1, alert: -1 } }
-      ]
-    },
-    disruptor: {
-      name: "Нарушитель", role: "Напористая модель: быстрее меняет состояние карты, но заметнее для ответной реакции.", modifiers: { stealth: -1, speed: 1, resilience: 0, alert: 3 },
-      variants: [
-        { id: "pulse", name: "Короткий импульс", effect: "самый быстрый начальный темп", modifiers: { speed: 1, alert: 1 } },
-        { id: "pressure", name: "Давление нагрузки", effect: "лучше переживает ответную реакцию", modifiers: { resilience: 1 } },
-        { id: "ripple", name: "Волновой сдвиг", effect: "сохраняет часть скрытности", modifiers: { stealth: 1 } }
-      ]
-    },
-    sleeper: {
-      name: "Спящий агент", role: "Отложенная модель, которая экономит заметность в обмен на более медленное развитие.", modifiers: { stealth: 1, speed: -1, resilience: 1, alert: -2 },
-      variants: [
-        { id: "clock", name: "Ритм ожидания", effect: "сильнее снижает раннюю тревогу", modifiers: { stealth: 1, alert: -1 } },
-        { id: "threshold", name: "Пороговая логика", effect: "лучше выдерживает изоляцию", modifiers: { resilience: 1 } },
-        { id: "reserve", name: "Резервный контур", effect: "компенсирует медленный темп", modifiers: { speed: 1 } }
-      ]
-    },
-    mimic: {
-      name: "Мимик", role: "Адаптивная модель, маскирующаяся под обычный ритм симуляции и меняющая темп по ситуации.", modifiers: { stealth: 1, speed: 0, resilience: 0, alert: -1 },
-      variants: [
-        { id: "routine", name: "Обычный ритм", effect: "сбалансированный скрытый профиль", modifiers: { stealth: 1 } },
-        { id: "echo", name: "Эхо привычки", effect: "быстрее накапливает темп", modifiers: { speed: 1 } },
-        { id: "mask", name: "Смена маски", effect: "устойчивее к закрытию маршрута", modifiers: { resilience: 1 } }
-      ]
-    },
-    collector: {
-      name: "Сборщик", role: "Накопительная модель: медленнее входит в сценарий, зато лучше сохраняет ресурс для адаптаций.", modifiers: { stealth: 0, speed: -1, resilience: 1, alert: 0 },
-      variants: [
-        { id: "index", name: "Таблица сигналов", effect: "более устойчивый профиль", modifiers: { resilience: 1 } },
-        { id: "cache", name: "Локальный резерв", effect: "бережнее относится к тревоге", modifiers: { stealth: 1, alert: -1 } },
-        { id: "stream", name: "Поток сводок", effect: "быстрее переходит к следующему циклу", modifiers: { speed: 1 } }
-      ]
-    }
-  };
+  // Получает единый набор сценариев из доменного слоя вместо данных интерфейса.
+  const THREAT_TYPES = Object.fromEntries(listScenarioIds().map(id => [id, findScenario(id)]));
 
   const COUNTRY_SEEDS = [
     ["can", "CAN", "Канада", "Северная Америка", -106, 56], ["usa", "USA", "США", "Северная Америка", -98, 39], ["mex", "MEX", "Мексика", "Северная Америка", -102, 23], ["gtm", "GTM", "Гватемала", "Северная Америка", -90, 15], ["cub", "CUB", "Куба", "Северная Америка", -79, 22], ["hti", "HTI", "Гаити", "Северная Америка", -72, 19], ["dom", "DOM", "Доминиканская Республика", "Северная Америка", -70, 19], ["jam", "JAM", "Ямайка", "Северная Америка", -77, 18], ["pan", "PAN", "Панама", "Северная Америка", -80, 9], ["cri", "CRI", "Коста-Рика", "Северная Америка", -84, 10], ["blz", "BLZ", "Белиз", "Северная Америка", -88, 17], ["nic", "NIC", "Никарагуа", "Северная Америка", -86, 13],
@@ -193,12 +147,11 @@
   const countriesByFeatureKey = new Map(COUNTRIES.map(country => [country.id, country]));
   const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
-  const SAVE_KEY = "hackbox-scenario-save-v2";
   const state = {
     gameCreated: false,
     scenarioName: "СЕРАЯ ПЕТЛЯ",
-    threatType: "observer",
-    threatVariant: "ledger",
+    threatType: "virus",
+    threatVariant: "standard",
     archetype: "specter",
     applicator: "relay",
     stealth: 3,
@@ -213,19 +166,24 @@
     signal: 4,
     alert: 8,
     upgrades: [],
+    economicDamage: 0,
+    scenarioProfit: 0,
     log: ["Песочница готова. Выбери страну старта на мировой карте."]
   };
   let geographyLoading = false;
   let geographyReady = false;
 
+  /** Возвращает выбранный учебный сценарий с безопасным резервным вариантом. */
   function activeThreatType() {
-    return THREAT_TYPES[state.threatType];
+    return THREAT_TYPES[state.threatType] || findScenario(listScenarioIds()[0]);
   }
 
+  /** Возвращает игровой вариант активного сценария. */
   function activeThreatVariant() {
     return activeThreatType().variants.find(variant => variant.id === state.threatVariant) || activeThreatType().variants[0];
   }
 
+  /** Складывает балансные модификаторы сценария и его варианта. */
   function threatModifiers() {
     const type = activeThreatType();
     const variant = activeThreatVariant();
@@ -237,10 +195,12 @@
     }), { stealth: 0, speed: 0, resilience: 0, alert: 0 });
   }
 
+  /** Проверяет, приобретена ли конкретная игровая адаптация. */
   function hasUpgrade(id) {
     return state.upgrades.includes(id);
   }
 
+  /** Рассчитывает итоговые игровые параметры с учётом выбранной конфигурации. */
   function effectiveStats() {
     const archetype = ARCHETYPES[state.archetype];
     const applicator = APPLICATORS[state.applicator];
@@ -252,11 +212,13 @@
     };
   }
 
+  /** Добавляет заметку в журнал и сохраняет компактный размер истории. */
   function pushLog(message) {
     state.log.unshift(message);
     state.log = state.log.slice(0, 12);
   }
 
+  /** Обновляет визуальную сводку параметров в панели конструктора карты. */
   function updatePreview() {
     const stats = effectiveStats();
     const name = element("strain-name").value.trim().toUpperCase() || "БЕЗЫМЯННАЯ СХЕМА";
@@ -275,6 +237,7 @@
     });
   }
 
+  /** Рендерит краткий профиль выбранной или просматриваемой страны. */
   function renderCountryProfile() {
     const profile = element("country-profile");
     const country = countriesById.get(state.started ? state.inspectedCountry || state.selectedCountry : state.selectedCountry);
@@ -288,14 +251,17 @@
     element("country-status").textContent = status;
   }
 
+  /** Возвращает страны, связанные с указанной страной на игровой карте. */
   function countryNeighbors(id) {
     return LINKS.flatMap(([first, second]) => first === id ? [second] : second === id ? [first] : []);
   }
 
+  /** Переводит географические координаты в координаты SVG-карты. */
   function projectCoordinate([longitude, latitude]) {
     return [((longitude + 180) / 360) * 1200, ((90 - latitude) / 180) * 560];
   }
 
+  /** Преобразует замкнутую географическую линию в SVG-путь. */
   function ringToPath(ring) {
     return ring.map((coordinate, index) => {
       const [x, y] = projectCoordinate(coordinate);
@@ -303,12 +269,14 @@
     }).join(" ") + " Z";
   }
 
+  /** Преобразует Polygon или MultiPolygon из GeoJSON в строку SVG-пути. */
   function geometryToPath(geometry) {
     if (geometry.type === "Polygon") return geometry.coordinates.map(ringToPath).join(" ");
     if (geometry.type === "MultiPolygon") return geometry.coordinates.flatMap(polygon => polygon.map(ringToPath)).join(" ");
     return "";
   }
 
+  /** Синхронизирует классы контуров стран с текущим состоянием кампании. */
   function updateBoundaryStates() {
     document.querySelectorAll("#country-boundaries .country-boundary").forEach(path => {
       const country = countriesById.get(path.dataset.countryId);
@@ -320,6 +288,7 @@
     });
   }
 
+  /** Создаёт интерактивные SVG-контуры по загруженным географическим данным. */
   function paintGeography(data, source) {
     const svg = element("country-boundaries");
     svg.innerHTML = "";
@@ -357,6 +326,7 @@
     updateBoundaryStates();
   }
 
+  /** Обеспечивает однократную отрисовку встроенной или загружаемой географической карты. */
   function renderGeography() {
     if (geographyReady) {
       updateBoundaryStates();
@@ -379,10 +349,12 @@
       });
   }
 
+  /** Обновляет географическую часть главного экрана. */
   function renderWorldMap() {
     renderGeography();
   }
 
+  /** Обновляет сводку кампании, метрики и элементы управления картой. */
   function renderCampaign() {
     const influenced = Object.values(state.countries).filter(value => value === "seed" || value === "infected").length;
     const country = countriesById.get(state.selectedCountry);
@@ -392,6 +364,8 @@
     element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
     element("global-alert").textContent = `${Math.round(state.alert)}%`;
+    element("economic-damage").textContent = String(Math.round(state.economicDamage || 0)).padStart(2, "0");
+    element("scenario-profit").textContent = String(Math.round(state.scenarioProfit || 0)).padStart(2, "0");
     element("map-country-count").textContent = String(COUNTRIES.length);
     element("campaign-state").textContent = campaignLabel;
     element("dock-state").textContent = campaignLabel;
@@ -411,6 +385,7 @@
     renderWorldMap();
   }
 
+  /** Отрисовывает доступные игровые адаптации и их состояние. */
   function renderUpgrades() {
     const grid = element("upgrade-grid");
     grid.innerHTML = "";
@@ -427,6 +402,7 @@
     element("upgrade-note").textContent = state.started ? `${state.signal} СИГНАЛА ДОСТУПНО` : "ЗАПУСТИ СЦЕНАРИЙ";
   }
 
+  /** Выводит последние события учебной симуляции. */
   function renderLog() {
     const log = element("event-log");
     log.innerHTML = "";
@@ -438,85 +414,49 @@
     element("log-status").textContent = state.active ? "СИГНАЛ ЖИВОЙ" : state.started ? "КОНТУР ОСТАНОВЛЕН" : "ПЕСКИ ГОТОВЫ";
   }
 
+  /** Перенаправляет чтение сохранения в отдельный модуль локальных данных. */
   function readSavedGame() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
-      return saved?.version === 2 && saved.state?.gameCreated ? saved : null;
-    } catch {
-      return null;
-    }
+    return readCampaignSave();
   }
 
+  /** Сохраняет кампанию через изолированный модуль, когда игра уже создана. */
   function saveGame() {
-    if (!state.gameCreated) return;
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 2, savedAt: Date.now(), state }));
-    } catch {
-      // Сохранение не является обязательным для запуска локальной симуляции.
-    }
+    if (state.gameCreated) writeCampaignSave(state);
   }
 
+  /** Показывает либо стартовую страницу, либо основной экран кампании. */
   function showScreen(name) {
     element("start-screen").hidden = name !== "start";
-    element("creation-screen").hidden = name !== "creation";
     element("game-shell").hidden = name !== "game";
   }
 
+  /** Отражает наличие локального сохранения на стартовом экране. */
   function renderStartScreen() {
     const saved = readSavedGame();
     element("continue-game").disabled = !saved;
     element("save-hint").textContent = saved ? "Найдено локальное сохранение сценария. Продолжение восстановит карту и выбранную модель." : "Сохранения пока нет. Новая игра начнётся с конструктора модели.";
   }
 
-  function renderThreatCreator() {
-    const typeGrid = element("threat-type-grid");
-    const type = activeThreatType();
-    typeGrid.innerHTML = "";
-    Object.entries(THREAT_TYPES).forEach(([id, definition], index) => {
-      const button = document.createElement("button");
-      const selected = id === state.threatType;
-      button.type = "button";
-      button.className = `threat-type ${selected ? "selected" : ""}`;
-      button.dataset.threatType = id;
-      button.setAttribute("role", "radio");
-      button.setAttribute("aria-checked", String(selected));
-      button.innerHTML = `<small>${String(index + 1).padStart(2, "0")} / РОЛЬ</small><strong>${definition.name}</strong><em>${definition.role}</em>`;
-      button.addEventListener("click", () => {
-        state.threatType = id;
-        state.threatVariant = definition.variants[0].id;
-        renderThreatCreator();
-      });
-      typeGrid.appendChild(button);
-    });
-
-    const variantGrid = element("threat-variant-grid");
-    variantGrid.innerHTML = "";
-    type.variants.forEach((variant, index) => {
-      const button = document.createElement("button");
-      const selected = variant.id === state.threatVariant;
-      button.type = "button";
-      button.className = `threat-variant ${selected ? "selected" : ""}`;
-      button.dataset.threatVariant = variant.id;
-      button.setAttribute("role", "radio");
-      button.setAttribute("aria-checked", String(selected));
-      button.innerHTML = `<small>ВАРИАНТ ${String(index + 1).padStart(2, "0")}</small><strong>${variant.name}</strong><em>${variant.effect}</em>`;
-      button.addEventListener("click", () => {
-        state.threatVariant = variant.id;
-        renderThreatCreator();
-      });
-      variantGrid.appendChild(button);
-    });
-    const modifiers = threatModifiers();
-    element("variant-count").textContent = `${type.variants.length} ВАРИАНТА`;
-    element("threat-summary").textContent = `${type.name} / ${activeThreatVariant().name}: ${type.role} Игровой баланс: скрытность ${modifiers.stealth >= 0 ? "+" : ""}${modifiers.stealth}, темп ${modifiers.speed >= 0 ? "+" : ""}${modifiers.speed}, устойчивость ${modifiers.resilience >= 0 ? "+" : ""}${modifiers.resilience}.`;
+  /** Открывает самостоятельную страницу конструктора для создания новой кампании. */
+  function openCreator() {
+    window.location.assign("create.html");
   }
 
-  function prepareNewGame() {
+  /**
+   * Инициализирует игровое состояние по безопасному черновику из конструктора.
+   *
+   * @param {{scenarioId: string, scenarioName: string}} draft Данные выбранного игрового сценария.
+   * @returns {void}
+   */
+  function startNewScenario(draft) {
+    const scenarioId = isKnownScenario(draft.scenarioId) ? draft.scenarioId : listScenarioIds()[0];
+    const scenario = findScenario(scenarioId);
+    const variant = getDefaultScenarioVariant(scenarioId);
     Object.assign(state, {
-      gameCreated: false,
-      scenarioName: "СЕРАЯ ПЕТЛЯ",
-      threatType: "observer",
-      threatVariant: "ledger",
+      gameCreated: true,
+      scenarioName: draft.scenarioName || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ",
+      threatType: scenarioId,
+      threatVariant: variant?.id || "standard",
       archetype: "specter",
       applicator: "relay",
       stealth: 3,
@@ -531,43 +471,45 @@
       signal: 4,
       alert: 8,
       upgrades: [],
-      log: ["Новый сценарий подготовлен. Выбери страну старта на мировой карте."]
+      economicDamage: 0,
+      scenarioProfit: 0,
+      log: [`Учебная модель «${scenario?.name || "Сценарий"}» подготовлена. Выбери страну старта на мировой карте.`]
     });
-    element("creation-name").value = state.scenarioName;
     element("strain-name").value = state.scenarioName;
-    renderThreatCreator();
-    showScreen("creation");
-  }
-
-  function createGame() {
-    const name = element("creation-name").value.trim().toUpperCase() || "БЕЗЫМЯННАЯ СХЕМА";
-    state.scenarioName = name;
-    state.gameCreated = true;
-    element("strain-name").value = name;
-    pushLog(`Модель «${activeThreatType().name} / ${activeThreatVariant().name}» собрана. Выбери стартовую страну.`);
     showScreen("game");
     renderAll();
   }
 
+  /** Принимает одноразовый черновик конструктора и открывает на его основе новую кампанию. */
+  function consumeScenarioDraft() {
+    const draft = takeScenarioDraft();
+    if (!draft) return false;
+    startNewScenario(draft);
+    window.history.replaceState({}, document.title, "index.html");
+    return true;
+  }
+
+  /** Восстанавливает проверенное локальное сохранение в основной экран кампании. */
   function continueGame() {
     const saved = readSavedGame();
     if (!saved) return;
     const loaded = saved.state;
-    if (!THREAT_TYPES[loaded.threatType]) return;
+    if (!isKnownScenario(loaded.threatType)) return;
     Object.assign(state, loaded, {
       threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
       countries: { ...countryStates(), ...(loaded.countries || {}) },
       upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
+      economicDamage: Number.isFinite(loaded.economicDamage) ? loaded.economicDamage : 0,
+      scenarioProfit: Number.isFinite(loaded.scenarioProfit) ? loaded.scenarioProfit : 0,
       log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
     });
     const name = state.scenarioName || "СЕРАЯ ПЕТЛЯ";
-    element("creation-name").value = name;
     element("strain-name").value = name;
-    renderThreatCreator();
     showScreen("game");
     renderAll();
   }
 
+  /** Перерисовывает все игровые панели и сохраняет актуальное состояние. */
   function renderAll() {
     updatePreview();
     renderCampaign();
@@ -576,6 +518,7 @@
     saveGame();
   }
 
+  /** Выбирает стартовую страну до запуска или открывает профиль страны после запуска. */
   function selectStartCountry(id) {
     if (state.started) {
       state.inspectedCountry = id;
@@ -588,6 +531,7 @@
     renderAll();
   }
 
+  /** Запускает подготовленную игровую кампанию из выбранной страны. */
   function launchSimulation() {
     if (!state.selectedCountry || state.started) return;
     state.started = true;
@@ -600,6 +544,7 @@
     renderAll();
   }
 
+  /** Покупает адаптацию, если у игрока достаточно сигнального ресурса. */
   function buyUpgrade(upgrade) {
     if (!state.started || hasUpgrade(upgrade.id) || state.signal < upgrade.cost) return;
     state.signal -= upgrade.cost;
@@ -608,10 +553,12 @@
     renderAll();
   }
 
+  /** Возвращает страны, которые пока остаются активными в игровом сценарии. */
   function activeCountries() {
     return COUNTRIES.filter(country => ["seed", "infected"].includes(state.countries[country.id]));
   }
 
+  /** Собирает открытые соседние страны, доступные для следующего абстрактного шага. */
   function openNeighbors() {
     const targets = new Set();
     activeCountries().forEach(country => {
@@ -622,6 +569,7 @@
     return [...targets].map(id => countriesById.get(id));
   }
 
+  /** Разыгрывает безопасное фоновое событие и возвращает его балансный бонус. */
   function resolveBackgroundEvent() {
     const country = randomItem(activeCountries());
     const chance = .12 + country.noise * .0025 + (hasUpgrade("switchback") ? .12 : 0);
@@ -636,6 +584,7 @@
     return .17;
   }
 
+  /** Моделирует игровую ответную реакцию контура при высокой тревоге. */
   function containSignal() {
     if (state.alert < 53) return;
     const candidates = activeCountries().filter(country => country.id !== state.selectedCountry);
@@ -649,6 +598,7 @@
     }
   }
 
+  /** Продвигает кампанию на один игровой цикл и пересчитывает её абстрактные показатели. */
   function advanceCycle() {
     if (!state.active) return;
     state.turn += 1;
@@ -671,6 +621,12 @@
     }
     if (!newSignals) pushLog("Связи дрожат, но контур не пропускает новый устойчивый импульс в этом цикле.");
     state.signal += 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
+    const scenarioEconomy = activeThreatType().economy;
+    const activeCount = activeCountries().length;
+    const pressureGain = (4 + activeCount * 3 + newSignals * 9) * scenarioEconomy.impact / 100;
+    const profitGain = (1 + newSignals + Math.max(0, 35 - state.alert) / 35) * scenarioEconomy.yield / 100;
+    state.economicDamage += Math.round(pressureGain);
+    state.scenarioProfit += Math.round(profitGain);
     const averageDefense = activeCountries().reduce((total, country) => total + country.defense, 0) / Math.max(1, activeCountries().length);
     const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0);
     state.alert = clamp(state.alert + awarenessStep + newSignals * 2.2, 0, 100);
@@ -686,6 +642,7 @@
     renderAll();
   }
 
+  /** Сбрасывает только текущую кампанию, сохраняя выбранный игроком сценарий. */
   function resetSimulation() {
     state.selectedCountry = null;
     state.inspectedCountry = null;
@@ -696,10 +653,13 @@
     state.signal = 4;
     state.alert = 8;
     state.upgrades = [];
+    state.economicDamage = 0;
+    state.scenarioProfit = 0;
     state.log = ["Песочница сброшена. Выбери новую страну старта на мировой карте."];
     renderAll();
   }
 
+  /** Открывает одну из нижних информационных панелей и скрывает остальные. */
   function openDock(name) {
     document.querySelectorAll(".dock-tab").forEach(tab => {
       const active = tab.dataset.dock === name;
@@ -715,12 +675,8 @@
 
   element("strain-name").addEventListener("input", event => {
     state.scenarioName = event.target.value.trim().toUpperCase() || "СЕРАЯ ПЕТЛЯ";
-    element("creation-name").value = state.scenarioName;
     updatePreview();
     saveGame();
-  });
-  element("creation-name").addEventListener("input", event => {
-    state.scenarioName = event.target.value.trim().toUpperCase() || "СЕРАЯ ПЕТЛЯ";
   });
   ["stealth", "speed", "resilience"].forEach(key => {
     element(`${key}-input`).addEventListener("input", event => {
@@ -753,17 +709,17 @@
     updatePreview();
     saveGame();
   });
-  element("new-game").addEventListener("click", prepareNewGame);
+  element("new-game").addEventListener("click", openCreator);
   element("continue-game").addEventListener("click", continueGame);
-  element("create-game").addEventListener("click", createGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
   document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
 
-  renderThreatCreator();
   renderStartScreen();
-  renderAll();
-  showScreen("start");
+  if (!consumeScenarioDraft()) {
+    renderAll();
+    showScreen("start");
+  }
 })();
