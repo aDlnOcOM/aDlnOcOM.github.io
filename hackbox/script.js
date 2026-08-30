@@ -250,6 +250,11 @@
     };
   }
 
+  /** Возвращает множитель профильного результата от ветки сценария. */
+  function scenarioResultMultiplier() {
+    return 1 + (hasUpgrade("scenarioFocus") ? .08 : 0) + (hasUpgrade("scenarioMastery") ? .12 : 0);
+  }
+
   /** Добавляет заметку в журнал и сохраняет компактный размер истории. */
   function pushLog(message) {
     state.log.unshift(message);
@@ -740,7 +745,12 @@
       `Внутренний ритм сети ${country.name} изменился: контур ненадолго потерял точность.`
     ];
     pushLog(randomItem(events));
-    state.alert = clamp(state.alert - 4, 0, 100);
+    const alertRelief = 4 + (hasUpgrade("adaptiveRhythm") ? 3 : 0);
+    state.alert = clamp(state.alert - alertRelief, 0, 100);
+    if (hasUpgrade("responseWindow")) {
+      state.signal += 1;
+      pushLog("Окно ответа преобразовало фоновое событие в 1 Compute Point.");
+    }
     return .17;
   }
 
@@ -758,6 +768,17 @@
     }
   }
 
+  /** Иногда возвращает один изолированный узел в модель после развития устойчивости. */
+  function recoverContainedNode() {
+    if (!hasUpgrade("recoveryLoop") || state.turn % 4 !== 0 || Math.random() > .35) return;
+    const candidates = COUNTRIES.filter(country => state.countries[country.id] === "contained");
+    if (!candidates.length) return;
+    const target = randomItem(candidates);
+    state.countries[target.id] = "infected";
+    state.alert = clamp(state.alert + 2, 0, 100);
+    pushLog(`Контур восстановления вернул в модель узел «${target.name}», повысив внимание на 2%.`);
+  }
+
   /** Продвигает кампанию на один игровой цикл и пересчитывает её абстрактные показатели. */
   function advanceCycle() {
     if (!state.active) return;
@@ -765,14 +786,14 @@
     const stats = effectiveStats();
     const targets = openNeighbors();
     const backgroundBonus = resolveBackgroundEvent();
-    const attempts = Math.min(targets.length, 1 + Math.floor(stats.speed / 4) + (hasUpgrade("relayMap") ? 1 : 0));
+    const attempts = Math.min(targets.length, 1 + Math.floor(stats.speed / 4) + (hasUpgrade("relayMap") ? 1 : 0) + (hasUpgrade("wideMap") ? 1 : 0));
     let newSignals = 0;
     const sourceActivity = activeCountries().reduce((total, country) => total + country.activity, 0) / Math.max(1, activeCountries().length);
     for (let index = 0; index < attempts; index += 1) {
       const candidates = openNeighbors();
       if (!candidates.length) break;
       const target = randomItem(candidates);
-      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundBonus + (hasUpgrade("cascade") ? .11 : 0) - target.defense * .0027;
+      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundBonus + (hasUpgrade("cascade") ? .08 : 0) - target.defense * .0027;
       if (Math.random() < chance) {
         state.countries[target.id] = "infected";
         newSignals += 1;
@@ -780,17 +801,25 @@
       }
     }
     if (!newSignals) pushLog("Связи дрожат, но контур не пропускает новый устойчивый импульс в этом цикле.");
-    state.signal += 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
+    let computeGain = 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
+    if (hasUpgrade("resourceCache") && state.turn % 3 === 0) computeGain += 1;
     const scenarioEconomy = activeThreatType().economy;
     const activeCount = activeCountries().length;
-    const pressureGain = (4 + activeCount * 3 + newSignals * 9) * scenarioEconomy.impact / 100;
-    const profitGain = (1 + newSignals + Math.max(0, 35 - state.alert) / 35) * scenarioEconomy.yield / 100;
+    const profileMultiplier = scenarioResultMultiplier();
+    const pressureMultiplier = scenarioEconomy.impact >= scenarioEconomy.yield ? profileMultiplier : 1;
+    const profitMultiplier = scenarioEconomy.yield > scenarioEconomy.impact ? profileMultiplier : 1;
+    const pressureGain = (4 + activeCount * 3 + newSignals * 9) * scenarioEconomy.impact / 100 * pressureMultiplier;
+    const profitGain = (1 + newSignals + Math.max(0, 35 - state.alert) / 35) * scenarioEconomy.yield / 100 * profitMultiplier;
+    if (hasUpgrade("compoundYield") && Math.round(pressureGain) + Math.round(profitGain) >= 8) computeGain += 1;
+    state.signal += computeGain;
     state.economicDamage += Math.round(pressureGain);
     state.scenarioProfit += Math.round(profitGain);
     const averageDefense = activeCountries().reduce((total, country) => total + country.defense, 0) / Math.max(1, activeCountries().length);
-    const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0);
-    state.alert = clamp(state.alert + awarenessStep + newSignals * 2.2, 0, 100);
+    const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0) - (hasUpgrade("shadowBalance") ? .7 : 0);
+    const markAttention = newSignals * (hasUpgrade("shadowBalance") ? 1.5 : 2.2);
+    state.alert = clamp(state.alert + awarenessStep + markAttention, 0, 100);
     containSignal();
+    recoverContainedNode();
     const influenced = activeCountries().length;
     if (evaluateScenarioObjective()) {
       // Завершение и запись в журнал выполняются внутри проверки цели.
