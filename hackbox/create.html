@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071015">
+  <title>HackBox — создать сценарий</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="catalog-shell" aria-labelledby="catalog-title">
+    <header class="catalog-header">
+      <a class="brand" href="index.html" aria-label="Вернуться на стартовый экран HackBox"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
+      <p>Отдельная страница конструктора безопасных учебных сценариев</p>
+    </header>
+
+    <section class="catalog-intro">
+      <div><p class="eyebrow">ШАГ 01 / НОВАЯ ИГРА</p><h1 id="catalog-title">Выбрать<br><span>тип сценария</span></h1></div>
+      <p>Каталог основан на общеизвестных названиях классов вредоносного ПО. Здесь они представлены только как абстрактные игровые сценарии — без технических инструкций, кода и способов реального распространения.</p>
+    </section>
+
+    <section class="catalog-workspace">
+      <div class="catalog-controls">
+        <label class="creation-name" for="scenario-name"><span>НАЗВАНИЕ СЦЕНАРИЯ</span><input id="scenario-name" maxlength="18" value="СЕРАЯ ПЕТЛЯ" autocomplete="off"></label>
+        <div class="catalog-label"><span>КЛАСС СЦЕНАРИЯ</span><b id="catalog-count">23 ТИПА</b></div>
+        <div id="scenario-type-grid" class="scenario-type-grid" role="radiogroup" aria-label="Тип учебного игрового сценария"></div>
+      </div>
+
+      <aside class="scenario-profile" aria-live="polite">
+        <p class="eyebrow">ПРОФИЛЬ СЦЕНАРИЯ</p>
+        <span id="scenario-profile-index">01 / УЧЕБНАЯ МОДЕЛЬ</span>
+        <h2 id="scenario-profile-name">Вирусы</h2>
+        <p id="scenario-profile-description">Выбери тип, чтобы увидеть его игровую роль.</p>
+        <div class="scenario-cycle"><span>ИГРОВОЙ ЦИКЛ</span><p id="scenario-cycle-text"></p></div>
+        <div class="scenario-economy"><div><span>ЭКОНОМИЧЕСКОЕ ДАВЛЕНИЕ</span><b id="scenario-impact">00</b></div><div><span>УСЛОВНАЯ ПРИБЫЛЬ</span><b id="scenario-yield">00</b></div></div>
+        <p class="scenario-disclaimer">Показатели — исключительно для вымышленной симуляции. Они не описывают реальные атаки, доходы или уязвимости.</p>
+        <button id="start-scenario" class="entry-primary" type="button">Создать сценарий <span>→</span></button>
+      </aside>
+    </section>
+  </main>
+  <script src="assets/scenario-catalog.js"></script>
+  <script src="creation.js"></script>
+</body>
+</html>
