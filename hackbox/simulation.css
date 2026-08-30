@@ -48,7 +48,145 @@
   width: 0;
 }
 
-/* Строит читаемое дерево безопасных адаптаций поверх базовой сетки интерфейса. */
+/* Переносит журнал в компактную раскрывающуюся строку непосредственно над картой. */
+.event-drawer {
+  background: rgba(10, 22, 27, .9);
+  border: 1px solid var(--line);
+  margin-top: 16px;
+}
+
+.event-drawer summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 15px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  list-style: none;
+  min-height: 42px;
+  padding: 0 13px;
+}
+
+.event-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-summary-title,
+.event-drawer summary strong,
+.event-drawer summary em,
+.event-summary-toggle {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.event-summary-title {
+  color: var(--cyan);
+  font-size: 8px;
+  letter-spacing: .09em;
+  white-space: nowrap;
+}
+
+.event-summary-title i {
+  background: var(--lime);
+  border-radius: 50%;
+  box-shadow: 0 0 9px rgba(199, 232, 121, .8);
+  display: inline-block;
+  height: 5px;
+  margin-right: 7px;
+  width: 5px;
+}
+
+.event-drawer summary strong {
+  color: #a8bec0;
+  font-size: 9px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-drawer summary em {
+  border-left: 1px solid #314e56;
+  color: var(--muted);
+  font-size: 7px;
+  font-style: normal;
+  letter-spacing: .07em;
+  padding-left: 14px;
+  white-space: nowrap;
+}
+
+.event-summary-toggle {
+  color: var(--lime);
+  font-size: 7px;
+  letter-spacing: .08em;
+  min-width: 58px;
+  text-align: right;
+}
+
+.event-summary-toggle b {
+  font-weight: 400;
+}
+
+.event-summary-toggle b:last-child,
+.event-drawer[open] .event-summary-toggle b:first-child {
+  display: none;
+}
+
+.event-drawer[open] .event-summary-toggle b:last-child {
+  display: inline;
+}
+
+.event-drawer .event-log {
+  border-top: 1px solid #29464e;
+  margin: 0 13px;
+  max-height: 240px;
+}
+
+/* Перестраивает нижнюю панель в полную стратегическую карту развития кампании. */
+.evolution-dock {
+  padding: 20px;
+}
+
+.evolution-factors {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 15px;
+}
+
+.evolution-factors div {
+  background: linear-gradient(135deg, rgba(17, 38, 44, .9), rgba(8, 20, 25, .9));
+  border: 1px solid #29474f;
+  min-height: 86px;
+  padding: 10px;
+}
+
+.evolution-factors span,
+.evolution-factors b,
+.evolution-factors em {
+  display: block;
+}
+
+.evolution-factors span {
+  color: var(--cyan);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.evolution-factors b {
+  color: var(--ink);
+  font-size: 13px;
+  margin: 8px 0 5px;
+}
+
+.evolution-factors em {
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+/* Строит полное дерево стратегических улучшений поверх базовой сетки интерфейса. */
 .upgrade-grid.evolution-tree {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -79,6 +217,7 @@
 }
 
 .evolution-branch > header span,
+.evolution-branch > header b,
 .evolution-branch > header small {
   display: block;
   font-family: ui-monospace, Consolas, monospace;
@@ -89,6 +228,14 @@
   font-size: 10px;
   letter-spacing: .08em;
   text-transform: uppercase;
+}
+
+.evolution-branch > header b {
+  color: var(--ink);
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  font-size: 14px;
+  letter-spacing: .01em;
+  margin-top: 6px;
 }
 
 .evolution-branch > header small {
@@ -105,7 +252,7 @@
 .trait-card {
   position: relative;
   width: 100%;
-  min-height: 92px;
+  min-height: 130px;
   text-align: left;
 }
 
@@ -133,13 +280,40 @@
   color: var(--lime);
 }
 
+.trait-card .trait-tradeoff {
+  border-top: 1px solid rgba(70, 105, 111, .65);
+  color: #708c90;
+  display: block;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  line-height: 1.38;
+  margin-top: 10px;
+  padding-top: 7px;
+}
+
 @media (max-width: 980px) {
+  .evolution-factors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .upgrade-grid.evolution-tree {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 620px) {
+  .event-drawer summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .event-drawer summary em {
+    display: none;
+  }
+
+  .evolution-factors {
+    grid-template-columns: 1fr;
+  }
+
   .upgrade-grid.evolution-tree {
     grid-template-columns: 1fr;
   }

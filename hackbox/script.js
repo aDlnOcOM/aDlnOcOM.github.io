@@ -9,18 +9,6 @@
   /** Выбирает случайный элемент из непустого массива для безопасного игрового события. */
   const randomItem = items => items[Math.floor(Math.random() * items.length)];
 
-  const ARCHETYPES = {
-    specter: { name: "Спектр", description: "Осторожная схема: копит импульс в затенённых узлах и медленнее поднимает тревогу.", stealth: 1, speed: 0, resilience: 0 },
-    swarm: { name: "Улей", description: "Роевая схема: быстрее размыкает связи, но создаёт заметные всплески сигнала.", stealth: -1, speed: 1, resilience: 0 },
-    prism: { name: "Призма", description: "Адаптивная схема: удерживает нестабильные маршруты и лучше переживает блокировки.", stealth: 0, speed: 0, resilience: 1 }
-  };
-
-  const APPLICATORS = {
-    relay: { name: "Релейная петля", description: "Связывает близкие узлы в предсказуемую цепь.", speed: 0, resilience: 0 },
-    archive: { name: "Архивный импульс", description: "Преобразует случайный фон сети в короткие возможности.", speed: 1, resilience: -1 },
-    fabric: { name: "Ткань узлов", description: "Формирует более устойчивые, но медленные связи.", speed: -1, resilience: 1 }
-  };
-
   // Получает единый набор сценариев из доменного слоя вместо данных интерфейса.
   const THREAT_TYPES = Object.fromEntries(listScenarioIds().map(id => [id, findScenario(id)]));
 
@@ -142,32 +130,33 @@
   const LINKS = createWorldLinks();
 
   const UPGRADE_BRANCHES = [
-    { id: "connectivity", name: "Связность", hint: "охват и темп карты" },
-    { id: "observability", name: "Наблюдаемость", hint: "контроль заметности" },
-    { id: "stability", name: "Устойчивость", hint: "сопротивление изоляции" },
-    { id: "efficiency", name: "Эффективность", hint: "экономика Compute Points" },
-    { id: "adaptation", name: "Адаптация", hint: "реакция на события" },
-    { id: "scenario", name: "Профиль", hint: "особенности сценария" }
+    { id: "surface", code: "01 / ATTACK SURFACE", name: "Поверхность", hint: "география связей, охват среды и темп развития карты" },
+    { id: "detection", code: "02 / DETECTION", name: "Наблюдаемость", hint: "вероятность обнаружения и качество защитного мониторинга" },
+    { id: "resilience", code: "03 / RESILIENCE", name: "Устойчивость", hint: "надёжность модели при сегментации и изоляции узлов" },
+    { id: "impact", code: "04 / IMPACT", name: "Воздействие", hint: "условный эффект инцидента и экономика учебного сценария" },
+    { id: "response", code: "05 / DEFENCE RESPONSE", name: "Реакция защиты", hint: "патчи, расследования и изменения поведения среды" },
+    { id: "campaign", code: "06 / CAMPAIGN", name: "Кампания", hint: "планирование целей и дисциплина долгого сценария" }
   ];
 
   const UPGRADES = [
-    { id: "relayMap", branch: "connectivity", tier: 1, cost: 2, name: "Карта связности", effect: "+1 выбор связи за цикл" },
-    { id: "cascade", branch: "connectivity", tier: 2, cost: 4, alert: 2, requires: "relayMap", name: "Каскадный отклик", effect: "+8% к шансу нового эха" },
-    { id: "wideMap", branch: "connectivity", tier: 3, cost: 7, alert: 4, requires: "cascade", name: "Широкий контур", effect: "ещё один выбор связи за цикл" },
-    { id: "veil", branch: "observability", tier: 1, cost: 2, name: "Фильтр наблюдаемости", effect: "меньше внимания за цикл" },
-    { id: "quietCore", branch: "observability", tier: 2, cost: 4, requires: "veil", name: "Тихое ядро", effect: "+1 к скрытности модели" },
-    { id: "shadowBalance", branch: "observability", tier: 3, cost: 7, requires: "quietCore", name: "Баланс тени", effect: "сдерживает резкие всплески внимания" },
-    { id: "anchor", branch: "stability", tier: 1, cost: 3, name: "Якорь состояния", effect: "+1 к устойчивости модели" },
-    { id: "lattice", branch: "stability", tier: 2, cost: 5, requires: "anchor", name: "Решётка резерва", effect: "слабее эффект изоляции" },
-    { id: "recoveryLoop", branch: "stability", tier: 3, cost: 8, alert: 1, requires: "lattice", name: "Контур восстановления", effect: "редкий возврат закрытого узла" },
-    { id: "chorus", branch: "efficiency", tier: 1, cost: 3, name: "Хор отражений", effect: "+1 CP за цикл с новой отметкой" },
-    { id: "resourceCache", branch: "efficiency", tier: 2, cost: 5, requires: "chorus", name: "Буфер вычислений", effect: "+1 CP каждый третий цикл" },
-    { id: "compoundYield", branch: "efficiency", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Составной результат", effect: "+1 CP за сильный экономический такт" },
-    { id: "switchback", branch: "adaptation", tier: 1, cost: 3, name: "Смена ритма", effect: "фоновые события происходят чаще" },
-    { id: "adaptiveRhythm", branch: "adaptation", tier: 2, cost: 5, requires: "switchback", name: "Адаптивный ритм", effect: "события сильнее снижают внимание" },
-    { id: "responseWindow", branch: "adaptation", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно ответа", effect: "события могут принести +1 CP" },
-    { id: "scenarioFocus", branch: "scenario", tier: 1, cost: 4, alert: 1, name: "Фокус сценария", effect: "+8% к профильному результату" },
-    { id: "scenarioMastery", branch: "scenario", tier: 2, cost: 8, alert: 3, requires: "scenarioFocus", name: "Мастерство профиля", effect: "ещё +12% к профильному результату" }
+    { id: "relayMap", branch: "surface", tier: 1, cost: 2, name: "Карта поверхности", effect: "+1 кандидат на развитие карты за цикл", tradeoff: "Широкая поверхность повышает объём наблюдаемой активности." },
+    { id: "cascade", branch: "surface", tier: 2, cost: 4, alert: 2, requires: "relayMap", name: "Связность экосистемы", effect: "+8% к вероятности новой отметки", tradeoff: "Рост связности ускоряет реакцию защитных команд." },
+    { id: "wideMap", branch: "surface", tier: 3, cost: 7, alert: 4, requires: "cascade", name: "Многоконтурный охват", effect: "ещё один кандидат на развитие карты", tradeoff: "Масштабирование увеличивает заметность кампании." },
+    { id: "veil", branch: "detection", tier: 1, cost: 2, name: "Снижение наблюдаемости", effect: "меньше роста внимания за цикл", tradeoff: "Низкий профиль означает более осторожный темп." },
+    { id: "quietCore", branch: "detection", tier: 2, cost: 4, requires: "veil", name: "Низкошумный профиль", effect: "+1 к скрытности модели", tradeoff: "Защитные команды всё равно адаптируются со временем." },
+    { id: "shadowBalance", branch: "detection", tier: 3, cost: 7, requires: "quietCore", name: "Контроль аномалий", effect: "сдерживает всплески внимания при расширении", tradeoff: "Не исключает расследование при высокой активности." },
+    { id: "anchor", branch: "resilience", tier: 1, cost: 3, name: "Целостность исполнения", effect: "+1 к устойчивости модели", tradeoff: "Устойчивость требует больше Compute Points." },
+    { id: "lattice", branch: "resilience", tier: 2, cost: 5, requires: "anchor", name: "Резервирование состояния", effect: "изоляция узла причиняет меньше вреда кампании", tradeoff: "Резервные контуры могут вызвать дополнительное внимание." },
+    { id: "recoveryLoop", branch: "resilience", tier: 3, cost: 8, alert: 1, requires: "lattice", name: "Контур восстановления", effect: "редко возвращает изолированный узел в модель", tradeoff: "Возвращение узла оставляет дополнительный след в журнале защиты." },
+    { id: "chorus", branch: "impact", tier: 1, cost: 3, name: "Приоритизация телеметрии", effect: "+1 CP за цикл с новой отметкой", tradeoff: "Модель вознаграждает качество результата, а не скорость любой ценой." },
+    { id: "resourceCache", branch: "impact", tier: 2, cost: 5, requires: "chorus", name: "Пул вычислений", effect: "+1 CP каждый третий цикл", tradeoff: "Накопление ресурса не снижает вероятность обнаружения." },
+    { id: "compoundYield", branch: "impact", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Модель последствий", effect: "+1 CP за сильный экономический такт", tradeoff: "Сильное воздействие повышает приоритет расследования." },
+    { id: "switchback", branch: "response", tier: 1, cost: 3, name: "Контекст среды", effect: "изменения среды учитываются чаще", tradeoff: "Часть событий работает в пользу защитного контура." },
+    { id: "adaptiveRhythm", branch: "response", tier: 2, cost: 5, requires: "switchback", name: "Адаптивная модель", effect: "благоприятные события сильнее снижают внимание", tradeoff: "Региональные обновления и мониторинг всё ещё могут замедлять кампанию." },
+    { id: "responseWindow", branch: "response", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно принятия решений", effect: "благоприятные события могут принести +1 CP", tradeoff: "Нельзя предсказать, каким будет следующее событие среды." },
+    { id: "scenarioFocus", branch: "campaign", tier: 1, cost: 4, alert: 1, name: "Профилирование цели", effect: "+8% к профильному результату", tradeoff: "Фокус на результате увеличивает ценность кампании для защитного анализа." },
+    { id: "scenarioMastery", branch: "campaign", tier: 2, cost: 8, alert: 3, requires: "scenarioFocus", name: "Операционное планирование", effect: "ещё +12% к профильному результату", tradeoff: "Планирование не отменяет глобальные защитные контрмеры." },
+    { id: "campaignDiscipline", branch: "campaign", tier: 3, cost: 10, requires: "scenarioMastery", name: "Дисциплина кампании", effect: "−1 внимания в спокойный цикл", tradeoff: "Работает только без нового расширения карты в этом цикле." }
   ];
 
   const upgradesById = new Map(UPGRADES.map(upgrade => [upgrade.id, upgrade]));
@@ -184,8 +173,6 @@
     scenarioName: "СЕРАЯ ПЕТЛЯ",
     threatType: "virus",
     threatVariant: "standard",
-    archetype: "specter",
-    applicator: "relay",
     stealth: 3,
     speed: 3,
     resilience: 2,
@@ -204,7 +191,7 @@
     upgrades: [],
     economicDamage: 0,
     scenarioProfit: 0,
-    log: ["Песочница готова. Выбери страну старта на мировой карте."]
+    log: ["Учебная среда готова. Выбери страну старта на мировой карте."]
   };
   let geographyLoading = false;
   let geographyReady = false;
@@ -238,15 +225,13 @@
     return state.upgrades.includes(id);
   }
 
-  /** Рассчитывает итоговые игровые параметры с учётом выбранной конфигурации. */
+  /** Рассчитывает итоговые параметры кампании с учётом сценария и приобретённых улучшений. */
   function effectiveStats() {
-    const archetype = ARCHETYPES[state.archetype];
-    const applicator = APPLICATORS[state.applicator];
     const threat = threatModifiers();
     return {
-      stealth: clamp(state.stealth + archetype.stealth + threat.stealth + (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
-      speed: clamp(state.speed + archetype.speed + applicator.speed + threat.speed, 1, 8),
-      resilience: clamp(state.resilience + archetype.resilience + applicator.resilience + threat.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
+      stealth: clamp(state.stealth + threat.stealth + (hasUpgrade("quietCore") ? 1 : 0), 1, 8),
+      speed: clamp(state.speed + threat.speed, 1, 8),
+      resilience: clamp(state.resilience + threat.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
     };
   }
 
@@ -261,23 +246,12 @@
     state.log = state.log.slice(0, 12);
   }
 
-  /** Обновляет визуальную сводку параметров в панели конструктора карты. */
-  function updatePreview() {
-    const stats = effectiveStats();
-    const name = element("strain-name").value.trim().toUpperCase() || "БЕЗЫМЯННАЯ СХЕМА";
-    const archetype = ARCHETYPES[state.archetype];
-    const applicator = APPLICATORS[state.applicator];
+  /** Отражает в заголовке выбранный тип и вариант учебного сценария. */
+  function renderScenarioIdentity() {
     const threat = activeThreatType();
     const variant = activeThreatVariant();
-    element("preview-name").textContent = name;
-    element("preview-stealth").textContent = String(stats.stealth).padStart(2, "0");
-    element("preview-speed").textContent = String(stats.speed).padStart(2, "0");
-    element("preview-resilience").textContent = String(stats.resilience).padStart(2, "0");
-    element("preview-description").textContent = `${threat.name} / ${variant.name}: ${threat.role} Архитектура: ${archetype.name.toLowerCase()}; аппликатор: ${applicator.name.toLowerCase()}.`;
-    element("strain-id").textContent = `HB-${String(7 + stats.stealth * 3 + stats.speed).padStart(3, "0")}`;
-    ["stealth", "speed", "resilience"].forEach(key => {
-      element(`${key}-value`).textContent = String(state[key]).padStart(2, "0");
-    });
+    element("scenario-title").textContent = state.scenarioName || threat.name.toUpperCase();
+    element("scenario-context").textContent = `SCENARIO / ${threat.name.toUpperCase()} · ${variant.name.toUpperCase()}`;
   }
 
   /** Рендерит краткий профиль выбранной или просматриваемой страны. */
@@ -495,7 +469,6 @@
     const country = countriesById.get(state.selectedCountry);
     const inspectedCountry = countriesById.get(state.inspectedCountry);
     const campaignLabel = state.active ? state.timeScale === 0 ? "ПАУЗА" : "СИГНАЛ В ПУТИ" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
-    element("turn-count").textContent = String(state.turn).padStart(2, "0");
     element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
     element("global-alert").textContent = `${Math.round(state.alert)}%`;
@@ -503,7 +476,6 @@
     element("scenario-profit").textContent = String(Math.round(state.scenarioProfit || 0)).padStart(2, "0");
     element("map-country-count").textContent = String(COUNTRIES.length);
     element("campaign-state").textContent = campaignLabel;
-    element("dock-state").textContent = campaignLabel;
     element("mission-mode").textContent = state.active ? state.timeScale === 0 ? "СИМУЛЯЦИЯ НА ПАУЗЕ" : "ОПЕРАЦИЯ АКТИВНА" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
     element("network-readout").textContent = state.started ? `${influenced} ИЗ ${COUNTRIES.length} ОТМЕЧЕНО` : country ? `СТАРТ: ${country.name.toUpperCase()}` : "ВЫБЕРИ СТРАНУ СТАРТА";
     element("signal-points").textContent = String(state.signal).padStart(2, "0");
@@ -539,7 +511,7 @@
     UPGRADE_BRANCHES.forEach(branch => {
       const section = document.createElement("section");
       section.className = "evolution-branch";
-      section.innerHTML = `<header><span>${branch.name}</span><small>${branch.hint}</small></header>`;
+      section.innerHTML = `<header><span>${branch.code}</span><b>${branch.name}</b><small>${branch.hint}</small></header>`;
       const stack = document.createElement("div");
       stack.className = "trait-stack";
       UPGRADES.filter(upgrade => upgrade.branch === branch.id).forEach(upgrade => {
@@ -551,7 +523,7 @@
         button.className = `upgrade-card trait-card tier-${upgrade.tier} ${unlocked ? "unlocked" : ""} ${!requirementMet ? "locked" : ""}`;
         button.disabled = unlocked || !state.started || !requirementMet || !affordable;
         const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(upgrade)}` : `${upgrade.cost} CP${upgrade.alert ? ` · +${upgrade.alert}% ВНИМАНИЯ` : ""}`;
-        button.innerHTML = `<small>УРОВЕНЬ ${upgrade.tier} · ${status}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em>`;
+        button.innerHTML = `<small>${upgrade.tier === 1 ? "БАЗОВЫЙ УРОВЕНЬ" : `УРОВЕНЬ ${upgrade.tier}`} · ${status}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em><span class="trait-tradeoff">${upgrade.tradeoff}</span>`;
         button.addEventListener("click", () => buyUpgrade(upgrade));
         stack.appendChild(button);
       });
@@ -570,7 +542,8 @@
       item.innerHTML = `<time>ЦИКЛ ${String(Math.max(0, state.turn - index)).padStart(2, "0")}</time>${message}`;
       log.appendChild(item);
     });
-    element("log-status").textContent = state.active ? "СИГНАЛ ЖИВОЙ" : state.started ? "КОНТУР ОСТАНОВЛЕН" : "ПЕСКИ ГОТОВЫ";
+    element("latest-event").textContent = state.log[0] || "В журнале пока нет событий.";
+    element("log-status").textContent = state.active ? "СЦЕНАРИЙ АКТИВЕН" : state.started ? "КОНТУР ОСТАНОВЛЕН" : "СРЕДА ГОТОВА";
   }
 
   /** Перенаправляет чтение сохранения в отдельный модуль локальных данных. */
@@ -593,7 +566,7 @@
   function renderStartScreen() {
     const saved = readSavedGame();
     element("continue-game").disabled = !saved;
-    element("save-hint").textContent = saved ? "Найдено локальное сохранение сценария. Продолжение восстановит карту и выбранную модель." : "Сохранения пока нет. Новая игра начнётся с конструктора модели.";
+    element("save-hint").textContent = saved ? "Найдено локальное сохранение сценария. Продолжение восстановит карту, дерево развития и ход времени." : "Сохранения пока нет. Новая игра начнётся с выбора учебного сценария.";
   }
 
   /**
@@ -611,8 +584,6 @@
       scenarioName: draft.scenarioName || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ",
       threatType: scenarioId,
       threatVariant: variant?.id || "standard",
-      archetype: "specter",
-      applicator: "relay",
       stealth: 3,
       speed: 3,
       resilience: 2,
@@ -633,7 +604,6 @@
       scenarioProfit: 0,
       log: [`Учебная модель «${scenario?.name || "Сценарий"}» подготовлена. Выбери страну старта на мировой карте.`]
     });
-    element("strain-name").value = state.scenarioName;
     showScreen("game");
     renderAll();
   }
@@ -665,8 +635,6 @@
       scenarioProfit: Number.isFinite(loaded.scenarioProfit) ? loaded.scenarioProfit : 0,
       log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
     });
-    const name = state.scenarioName || "СЕРАЯ ПЕТЛЯ";
-    element("strain-name").value = name;
     previousFrameTime = performance.now();
     showScreen("game");
     renderAll();
@@ -674,7 +642,7 @@
 
   /** Перерисовывает все игровые панели и сохраняет актуальное состояние. */
   function renderAll() {
-    updatePreview();
+    renderScenarioIdentity();
     renderCampaign();
     renderUpgrades();
     renderLog();
@@ -690,7 +658,7 @@
     }
     state.selectedCountry = id;
     const country = countriesById.get(id);
-    pushLog(`Стартовая точка выбрана: ${country.name}. Профиль загружен в песочницу.`);
+    pushLog(`Выбрана стартовая страна: ${country.name}. Контекст региона добавлен в учебную модель.`);
     renderAll();
   }
 
@@ -704,7 +672,7 @@
     previousFrameTime = performance.now();
     const country = countriesById.get(state.selectedCountry);
     state.alert = clamp(5 + country.defense * .13 - effectiveStats().stealth + threatModifiers().alert, 3, 25);
-    pushLog(`Сценарий запущен в стране «${country.name}». Первый импульс стабилен.`);
+    pushLog(`Сценарий активирован в стране «${country.name}». Начальная отметка внесена в карту.`);
     renderAll();
   }
 
@@ -734,24 +702,26 @@
     return [...targets].map(id => countriesById.get(id));
   }
 
-  /** Разыгрывает безопасное фоновое событие и возвращает его балансный бонус. */
+  /** Разыгрывает безопасное контекстное событие и возвращает его влияние на развитие карты. */
   function resolveBackgroundEvent() {
     const country = randomItem(activeCountries());
     const chance = .12 + country.noise * .0025 + (hasUpgrade("switchback") ? .12 : 0);
     if (Math.random() > chance) return 0;
     const events = [
-      `Фоновая активность в ${country.name} усилила один из маршрутов.`,
-      `Обычные сигналы пользователей в ${country.name} создали короткое окно для эха.`,
-      `Внутренний ритм сети ${country.name} изменился: контур ненадолго потерял точность.`
+      { message: `Пользовательская активность в ${country.name} изменила поведенческий профиль среды.`, spread: .17, alert: -4, positive: true },
+      { message: `Региональный цикл обновлений в ${country.name} сузил доступную учебную поверхность.`, spread: -.07, alert: 3, positive: false },
+      { message: `Защитный мониторинг в ${country.name} повысил качество наблюдения за аномалиями.`, spread: -.04, alert: 5, positive: false },
+      { message: `Неоднородность цифровой среды в ${country.name} кратко ослабила точность защитного контура.`, spread: .08, alert: -2, positive: true }
     ];
-    pushLog(randomItem(events));
-    const alertRelief = 4 + (hasUpgrade("adaptiveRhythm") ? 3 : 0);
-    state.alert = clamp(state.alert - alertRelief, 0, 100);
-    if (hasUpgrade("responseWindow")) {
+    const event = randomItem(events);
+    const adaptiveAlert = event.alert < 0 && hasUpgrade("adaptiveRhythm") ? -3 : 0;
+    pushLog(event.message);
+    state.alert = clamp(state.alert + event.alert + adaptiveAlert, 0, 100);
+    if (event.positive && hasUpgrade("responseWindow")) {
       state.signal += 1;
       pushLog("Окно ответа преобразовало фоновое событие в 1 Compute Point.");
     }
-    return .17;
+    return event.spread;
   }
 
   /** Моделирует игровую ответную реакцию контура при высокой тревоге. */
@@ -797,10 +767,10 @@
       if (Math.random() < chance) {
         state.countries[target.id] = "infected";
         newSignals += 1;
-        pushLog(`Эхо достигло страны «${target.name}». Её игровой профиль добавлен к карте.`);
+        pushLog(`Модель зафиксировала новую затронутую территорию: «${target.name}». Регион добавлен в карту кампании.`);
       }
     }
-    if (!newSignals) pushLog("Связи дрожат, но контур не пропускает новый устойчивый импульс в этом цикле.");
+    if (!newSignals) pushLog("Новая отметка не появилась: условия среды и защитный контур удержали текущую границу кампании.");
     let computeGain = 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
     if (hasUpgrade("resourceCache") && state.turn % 3 === 0) computeGain += 1;
     const scenarioEconomy = activeThreatType().economy;
@@ -818,6 +788,7 @@
     const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0) - (hasUpgrade("shadowBalance") ? .7 : 0);
     const markAttention = newSignals * (hasUpgrade("shadowBalance") ? 1.5 : 2.2);
     state.alert = clamp(state.alert + awarenessStep + markAttention, 0, 100);
+    if (hasUpgrade("campaignDiscipline") && !newSignals) state.alert = clamp(state.alert - 1, 0, 100);
     containSignal();
     recoverContainedNode();
     const influenced = activeCountries().length;
@@ -853,60 +824,10 @@
     state.upgrades = [];
     state.economicDamage = 0;
     state.scenarioProfit = 0;
-    state.log = ["Песочница сброшена. Выбери новую страну старта на мировой карте."];
+    state.log = ["Учебная среда сброшена. Выбери новую страну старта на мировой карте."];
     renderAll();
   }
 
-  /** Открывает одну из нижних информационных панелей и скрывает остальные. */
-  function openDock(name) {
-    document.querySelectorAll(".dock-tab").forEach(tab => {
-      const active = tab.dataset.dock === name;
-      tab.classList.toggle("active", active);
-      tab.setAttribute("aria-selected", String(active));
-    });
-    document.querySelectorAll(".dock-panel").forEach(panel => {
-      const active = panel.id === `dock-${name}`;
-      panel.classList.toggle("active", active);
-      panel.hidden = !active;
-    });
-  }
-
-  element("strain-name").addEventListener("input", event => {
-    state.scenarioName = event.target.value.trim().toUpperCase() || "СЕРАЯ ПЕТЛЯ";
-    updatePreview();
-    saveGame();
-  });
-  ["stealth", "speed", "resilience"].forEach(key => {
-    element(`${key}-input`).addEventListener("input", event => {
-      state[key] = Number(event.target.value);
-      updatePreview();
-      saveGame();
-    });
-  });
-  element("archetype-options").addEventListener("click", event => {
-    const button = event.target.closest("[data-archetype]");
-    if (!button || state.started) return;
-    state.archetype = button.dataset.archetype;
-    document.querySelectorAll("[data-archetype]").forEach(option => {
-      const selected = option === button;
-      option.classList.toggle("selected", selected);
-      option.setAttribute("aria-pressed", String(selected));
-    });
-    updatePreview();
-    saveGame();
-  });
-  element("applicator-options").addEventListener("click", event => {
-    const button = event.target.closest("[data-applicator]");
-    if (!button || state.started) return;
-    state.applicator = button.dataset.applicator;
-    document.querySelectorAll("[data-applicator]").forEach(option => {
-      const selected = option === button;
-      option.classList.toggle("selected", selected);
-      option.setAttribute("aria-pressed", String(selected));
-    });
-    updatePreview();
-    saveGame();
-  });
   element("continue-game").addEventListener("click", continueGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("advance-turn").addEventListener("click", advanceCycle);
@@ -915,7 +836,6 @@
     const button = event.target.closest("[data-time-scale]");
     if (button) setTimeScale(button.dataset.timeScale);
   });
-  document.querySelectorAll(".dock-tab").forEach(tab => tab.addEventListener("click", () => openDock(tab.dataset.dock)));
   window.addEventListener("resize", renderWorldMap);
   window.addEventListener("pagehide", saveGame);
   document.addEventListener("visibilitychange", () => {

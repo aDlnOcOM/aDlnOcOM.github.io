@@ -18,7 +18,7 @@
         <a id="new-game" class="entry-primary" href="create.html">Новая игра <span>→</span></a>
         <button id="continue-game" class="entry-secondary" type="button" disabled>Продолжить игру</button>
       </div>
-      <p id="save-hint" class="entry-note">Сохранения пока нет. Новая игра начнётся с конструктора модели.</p>
+      <p id="save-hint" class="entry-note">Сохранения пока нет. Новая игра начнётся с выбора учебного сценария.</p>
     </div>
   </section>
 
@@ -36,10 +36,20 @@
     </header>
 
     <section class="situation-strip" aria-labelledby="scenario-title">
-      <div><p class="eyebrow">ОПЕРАЦИЯ / PANORAMA-177</p><h1 id="scenario-title">Карта сигнала</h1></div>
+      <div><p id="scenario-context" class="eyebrow">ОПЕРАЦИЯ / PANORAMA-177</p><h1 id="scenario-title">Карта сигнала</h1></div>
       <p>Выбери стартовую страну, выстраивай игровую схему и проводи её через связанную мировую сеть. Реакция контуров и фоновых событий меняется от региона к региону.</p>
       <b id="mission-mode" class="mission-mode">ВЫБОР СТАРТА</b>
     </section>
+
+    <details class="event-drawer" aria-label="Журнал учебной симуляции">
+      <summary>
+        <span class="event-summary-title"><i></i>ЖУРНАЛ ИНЦИДЕНТОВ</span>
+        <strong id="latest-event">Учебная среда готова. Выбери страну старта на мировой карте.</strong>
+        <em id="log-status">СРЕДА ГОТОВА</em>
+        <span class="event-summary-toggle"><b>РАСКРЫТЬ</b><b>СВЕРНУТЬ</b></span>
+      </summary>
+      <ol id="event-log" class="event-log" aria-live="polite"></ol>
+    </details>
 
     <section class="map-command" aria-label="Оперативная карта">
       <aside class="country-rail">
@@ -96,59 +106,16 @@
       </aside>
     </section>
 
-    <section class="decision-dock" aria-label="Панель решений">
-      <nav class="dock-tabs" aria-label="Разделы решений">
-        <button class="dock-tab active" type="button" data-dock="evolution" aria-selected="true"><span>01</span> Адаптации</button>
-        <button class="dock-tab" type="button" data-dock="builder" aria-selected="false"><span>02</span> Конструктор</button>
-        <button class="dock-tab" type="button" data-dock="intel" aria-selected="false"><span>03</span> Журнал</button>
-        <div class="dock-status"><span>ЦИКЛ</span><b id="turn-count">00</b><em id="dock-state">ОЖИДАНИЕ</em></div>
-      </nav>
-
-      <div class="dock-body">
-        <section id="dock-evolution" class="dock-panel active" aria-labelledby="evolution-title">
-          <div class="dock-heading"><div><p class="eyebrow">compute / trait tree</p><h2 id="evolution-title">Эволюция модели</h2></div><span id="upgrade-note">ЗАПУСТИ СЦЕНАРИЙ</span></div>
-          <p class="evolution-earn-note">CP начисляются за прожитые циклы, новые отметки карты, особые события и сильный профильный результат.</p>
-          <div id="upgrade-grid" class="upgrade-grid evolution-tree" aria-label="Дерево безопасных игровых адаптаций"></div>
-        </section>
-
-        <section id="dock-builder" class="dock-panel" aria-labelledby="builder-title" hidden>
-          <div class="dock-heading"><div><p class="eyebrow">конструктор / до запуска</p><h2 id="builder-title">Собрать схему</h2></div><span id="strain-id">HB-013</span></div>
-          <div class="builder-grid">
-            <form id="strain-form" class="builder-form">
-              <label class="field-label" for="strain-name">Имя штамма</label>
-              <input id="strain-name" name="strain-name" maxlength="18" value="СЕРАЯ ПЕТЛЯ" autocomplete="off">
-              <span class="field-label">Архитектура</span>
-              <div id="archetype-options" class="option-grid" role="radiogroup" aria-label="Архитектура штамма">
-                <button class="option-card selected" type="button" data-archetype="specter" aria-pressed="true"><small>01 / ТИХИЙ</small><strong>Спектр</strong><em>маскировка и дрейф</em></button>
-                <button class="option-card" type="button" data-archetype="swarm" aria-pressed="false"><small>02 / РОЕВОЙ</small><strong>Улей</strong><em>темп и каскады</em></button>
-                <button class="option-card" type="button" data-archetype="prism" aria-pressed="false"><small>03 / ПРИЗМАТИЧЕСКИЙ</small><strong>Призма</strong><em>скачки и адаптация</em></button>
-              </div>
-              <span class="field-label">Аппликатор</span>
-              <div id="applicator-options" class="applicator-grid">
-                <button class="chip selected" type="button" data-applicator="relay" aria-pressed="true">↗ Релейная петля</button>
-                <button class="chip" type="button" data-applicator="archive" aria-pressed="false">▣ Архивный импульс</button>
-                <button class="chip" type="button" data-applicator="fabric" aria-pressed="false">⌁ Ткань узлов</button>
-              </div>
-            </form>
-            <aside class="pattern-console">
-              <div class="preview-core" aria-hidden="true"><i></i><i></i><i></i><b>◌</b></div>
-              <div class="preview-name"><small>ОБЪЕКТ</small><strong id="preview-name">СЕРАЯ ПЕТЛЯ</strong></div>
-              <p id="preview-description">Осторожная схема: копит импульс в затенённых узлах и медленнее поднимает тревогу.</p>
-              <div class="dial-list" aria-label="Параметры штамма">
-                <label><span>ТИХИЙ ДРЕЙФ</span><input id="stealth-input" type="range" min="1" max="6" value="3"><b id="stealth-value">03</b></label>
-                <label><span>ТЕМП КАСКАДА</span><input id="speed-input" type="range" min="1" max="6" value="3"><b id="speed-value">03</b></label>
-                <label><span>УСТОЙЧИВОСТЬ</span><input id="resilience-input" type="range" min="1" max="6" value="2"><b id="resilience-value">02</b></label>
-              </div>
-              <div class="preview-stats"><div><span>ДРЕЙФ</span><b id="preview-stealth">03</b></div><div><span>КАСКАД</span><b id="preview-speed">03</b></div><div><span>ЩИТ</span><b id="preview-resilience">02</b></div></div>
-            </aside>
-          </div>
-        </section>
-
-        <section id="dock-intel" class="dock-panel" aria-labelledby="log-title" hidden>
-          <div class="dock-heading"><div><p class="eyebrow">журнал эмулятора</p><h2 id="log-title">Лента событий</h2></div><span id="log-status">ПЕСКИ ГОТОВЫ</span></div>
-          <ol id="event-log" class="event-log" aria-live="polite"></ol>
-        </section>
+    <section class="decision-dock evolution-dock" aria-labelledby="evolution-title">
+      <div class="dock-heading"><div><p class="eyebrow">CAMPAIGN DEVELOPMENT / STRATEGIC MODEL</p><h2 id="evolution-title">Карта развития кампании</h2></div><span id="upgrade-note">ЗАПУСТИ СЦЕНАРИЙ</span></div>
+      <div class="evolution-factors" aria-label="Факторы реалистичной учебной симуляции">
+        <div><span>ATTACK SURFACE</span><b>Охват</b><em>масштаб учебной поверхности и связанность регионов</em></div>
+        <div><span>DETECTION</span><b>Обнаружение</b><em>внимание защитного контура, мониторинг и реакция</em></div>
+        <div><span>RESILIENCE</span><b>Устойчивость</b><em>надёжность модели при изоляции отдельных узлов</em></div>
+        <div><span>IMPACT</span><b>Воздействие</b><em>условный экономический эффект выбранного сценария</em></div>
       </div>
+      <p class="evolution-earn-note">Compute Points начисляются за время жизни модели, новые отметки карты, редкие контекстные события и результат сценария. Каждое заметное улучшение делает защитную реакцию быстрее.</p>
+      <div id="upgrade-grid" class="upgrade-grid evolution-tree" aria-label="Дерево стратегического развития учебной кампании"></div>
     </section>
   </main>
   <script src="assets/world-countries.js"></script>
