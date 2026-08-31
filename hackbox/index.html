@@ -26,7 +26,6 @@
     <header class="command-bar">
       <a class="brand" href="#top" aria-label="HackBox, карта сценария"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
       <div class="global-readouts" aria-label="Сводка сценария">
-        <div><span>ЦИКЛ</span><b id="global-turn-top">00</b></div>
         <div><span>ОТМЕЧЕНО</span><b id="global-coverage">00<span>/177</span></b></div>
         <div><span>ВНИМАНИЕ</span><b id="global-alert">08%</b></div>
         <div><span>ЭКОНОМ. ДАВЛЕНИЕ</span><b id="economic-damage">00</b></div>
@@ -89,10 +88,16 @@
           <p id="objective-text">Подготовь модель и подтверди стартовую страну.</p>
           <small id="objective-value">00 / 00</small>
         </div>
-        <div class="resource-card"><span>COMPUTE POINTS</span><b id="signal-points">04</b><small>ресурс безопасной игровой эволюции</small></div>
+        <div class="resource-card"><span>ОЧКИ ЗНАНИЙ</span><b id="signal-points">04</b><small>ресурс развития учебной модели</small></div>
+        <section class="world-reaction-card" aria-labelledby="world-reaction-title">
+          <div class="rail-heading"><span id="world-reaction-title">ГЛОБАЛЬНАЯ РЕАКЦИЯ</span><em id="world-reaction-stage">ФОНОВАЯ</em></div>
+          <div class="world-response-row"><span>ПАТЧИ И ОБНОВЛЕНИЯ</span><b id="world-patching-value">08%</b><i><em id="world-patching-meter"></em></i></div>
+          <div class="world-response-row"><span>МОНИТОРИНГ И EDR</span><b id="world-monitoring-value">07%</b><i><em id="world-monitoring-meter"></em></i></div>
+          <div class="world-response-row"><span>ОСВЕДОМЛЁННОСТЬ</span><b id="world-awareness-value">04%</b><i><em id="world-awareness-meter"></em></i></div>
+          <div class="world-response-row"><span>КООРДИНАЦИЯ CERT</span><b id="world-coordination-value">03%</b><i><em id="world-coordination-meter"></em></i></div>
+        </section>
         <section class="realtime-card" aria-label="Управление скоростью симуляции">
           <div><span>ВРЕМЯ СИМУЛЯЦИИ</span><b id="simulation-clock">T+00:00</b><em id="realtime-state">ОЖИДАНИЕ</em></div>
-          <div class="meter timeline-meter"><i id="tick-progress"></i></div>
           <div id="time-controls" class="time-controls" role="radiogroup" aria-label="Скорость симуляции">
             <button type="button" data-time-scale="0" aria-pressed="false">Ⅱ</button>
             <button type="button" data-time-scale="0.5" aria-pressed="false">0.5×</button>
@@ -101,7 +106,6 @@
             <button type="button" data-time-scale="4" aria-pressed="false">4×</button>
           </div>
         </section>
-        <button id="advance-turn" class="advance-button" type="button" disabled>Следующий такт <span>↯</span></button>
         <button id="reset-simulation" class="quiet-button" type="button">Сбросить сценарий</button>
       </aside>
     </section>
@@ -114,7 +118,7 @@
         <div><span>RESILIENCE</span><b>Устойчивость</b><em>надёжность модели при изоляции отдельных узлов</em></div>
         <div><span>IMPACT</span><b>Воздействие</b><em>условный экономический эффект выбранного сценария</em></div>
       </div>
-      <p class="evolution-earn-note">Compute Points начисляются за время жизни модели, новые отметки карты, редкие контекстные события и результат сценария. Каждое заметное улучшение делает защитную реакцию быстрее.</p>
+      <p class="evolution-earn-note">Очки знаний начисляются за время жизни модели, новые отметки карты, редкие контекстные события и результат сценария. Каждое заметное улучшение делает защитную реакцию быстрее.</p>
       <div id="upgrade-grid" class="upgrade-grid evolution-tree" aria-label="Дерево стратегического развития учебной кампании"></div>
     </section>
   </main>

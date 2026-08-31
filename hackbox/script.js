@@ -145,15 +145,15 @@
     { id: "veil", branch: "detection", tier: 1, cost: 2, name: "Снижение наблюдаемости", effect: "меньше роста внимания за цикл", tradeoff: "Низкий профиль означает более осторожный темп." },
     { id: "quietCore", branch: "detection", tier: 2, cost: 4, requires: "veil", name: "Низкошумный профиль", effect: "+1 к скрытности модели", tradeoff: "Защитные команды всё равно адаптируются со временем." },
     { id: "shadowBalance", branch: "detection", tier: 3, cost: 7, requires: "quietCore", name: "Контроль аномалий", effect: "сдерживает всплески внимания при расширении", tradeoff: "Не исключает расследование при высокой активности." },
-    { id: "anchor", branch: "resilience", tier: 1, cost: 3, name: "Целостность исполнения", effect: "+1 к устойчивости модели", tradeoff: "Устойчивость требует больше Compute Points." },
+    { id: "anchor", branch: "resilience", tier: 1, cost: 3, name: "Целостность исполнения", effect: "+1 к устойчивости модели", tradeoff: "Устойчивость требует больше очков знаний." },
     { id: "lattice", branch: "resilience", tier: 2, cost: 5, requires: "anchor", name: "Резервирование состояния", effect: "изоляция узла причиняет меньше вреда кампании", tradeoff: "Резервные контуры могут вызвать дополнительное внимание." },
     { id: "recoveryLoop", branch: "resilience", tier: 3, cost: 8, alert: 1, requires: "lattice", name: "Контур восстановления", effect: "редко возвращает изолированный узел в модель", tradeoff: "Возвращение узла оставляет дополнительный след в журнале защиты." },
-    { id: "chorus", branch: "impact", tier: 1, cost: 3, name: "Приоритизация телеметрии", effect: "+1 CP за цикл с новой отметкой", tradeoff: "Модель вознаграждает качество результата, а не скорость любой ценой." },
-    { id: "resourceCache", branch: "impact", tier: 2, cost: 5, requires: "chorus", name: "Пул вычислений", effect: "+1 CP каждый третий цикл", tradeoff: "Накопление ресурса не снижает вероятность обнаружения." },
-    { id: "compoundYield", branch: "impact", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Модель последствий", effect: "+1 CP за сильный экономический такт", tradeoff: "Сильное воздействие повышает приоритет расследования." },
+    { id: "chorus", branch: "impact", tier: 1, cost: 3, name: "Приоритизация телеметрии", effect: "+1 очко знаний за цикл с новой отметкой", tradeoff: "Модель вознаграждает качество результата, а не скорость любой ценой." },
+    { id: "resourceCache", branch: "impact", tier: 2, cost: 5, requires: "chorus", name: "Пул вычислений", effect: "+1 очко знаний каждый третий цикл", tradeoff: "Накопление ресурса не снижает вероятность обнаружения." },
+    { id: "compoundYield", branch: "impact", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Модель последствий", effect: "+1 очко знаний при значимом экономическом результате", tradeoff: "Сильное воздействие повышает приоритет расследования." },
     { id: "switchback", branch: "response", tier: 1, cost: 3, name: "Контекст среды", effect: "изменения среды учитываются чаще", tradeoff: "Часть событий работает в пользу защитного контура." },
     { id: "adaptiveRhythm", branch: "response", tier: 2, cost: 5, requires: "switchback", name: "Адаптивная модель", effect: "благоприятные события сильнее снижают внимание", tradeoff: "Региональные обновления и мониторинг всё ещё могут замедлять кампанию." },
-    { id: "responseWindow", branch: "response", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно принятия решений", effect: "благоприятные события могут принести +1 CP", tradeoff: "Нельзя предсказать, каким будет следующее событие среды." },
+    { id: "responseWindow", branch: "response", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно принятия решений", effect: "благоприятные события могут принести +1 очко знаний", tradeoff: "Нельзя предсказать, каким будет следующее событие среды." },
     { id: "scenarioFocus", branch: "campaign", tier: 1, cost: 4, alert: 1, name: "Профилирование цели", effect: "+8% к профильному результату", tradeoff: "Фокус на результате увеличивает ценность кампании для защитного анализа." },
     { id: "scenarioMastery", branch: "campaign", tier: 2, cost: 8, alert: 3, requires: "scenarioFocus", name: "Операционное планирование", effect: "ещё +12% к профильному результату", tradeoff: "Планирование не отменяет глобальные защитные контрмеры." },
     { id: "campaignDiscipline", branch: "campaign", tier: 3, cost: 10, requires: "scenarioMastery", name: "Дисциплина кампании", effect: "−1 внимания в спокойный цикл", tradeoff: "Работает только без нового расширения карты в этом цикле." }
@@ -166,6 +166,8 @@
   const countriesByCode = new Map(COUNTRIES.map(country => [country.code, country]));
   /** Создаёт исходное нейтральное состояние для всех стран на карте. */
   const countryStates = () => Object.fromEntries(COUNTRIES.map(country => [country.id, "open"]));
+  /** Создаёт исходные уровни глобальной реакции на учебную кампанию. */
+  const createWorldResponse = () => ({ patching: 8, monitoring: 7, awareness: 4, coordination: 3 });
   const BASE_TICK_MS = 6000;
   const TIME_SCALES = new Set([0, 0.5, 1, 2, 4]);
   const state = {
@@ -183,12 +185,13 @@
     active: false,
     result: null,
     turn: 0,
-    signal: 4,
+    knowledge: 4,
     alert: 8,
     timeScale: 1,
     elapsedMilliseconds: 0,
     tickElapsed: 0,
     upgrades: [],
+    worldResponse: createWorldResponse(),
     economicDamage: 0,
     scenarioProfit: 0,
     log: ["Учебная среда готова. Выбери страну старта на мировой карте."]
@@ -240,9 +243,40 @@
     return 1 + (hasUpgrade("scenarioFocus") ? .08 : 0) + (hasUpgrade("scenarioMastery") ? .12 : 0);
   }
 
+  /** Возвращает усреднённую интенсивность мировой защитной реакции. */
+  function worldResponseIntensity() {
+    const response = state.worldResponse;
+    return (response.patching + response.monitoring + response.awareness + response.coordination) / 4;
+  }
+
+  /** Возвращает понятное название текущей стадии мировой реакции. */
+  function worldResponseStage() {
+    const intensity = worldResponseIntensity();
+    if (intensity >= 70) return "СОВМЕСТНЫЙ ОТВЕТ";
+    if (intensity >= 48) return "АКТИВНЫЕ КОНТРМЕРЫ";
+    if (intensity >= 25) return "УСИЛЕННОЕ НАБЛЮДЕНИЕ";
+    return "ФОНОВАЯ";
+  }
+
+  /** Аккуратно применяет изменение к показателям глобальной защитной реакции. */
+  function applyWorldResponse(delta) {
+    Object.keys(createWorldResponse()).forEach(key => {
+      state.worldResponse[key] = clamp((state.worldResponse[key] || 0) + (delta[key] || 0), 0, 100);
+    });
+  }
+
+  /** Нормализует сохранённые показатели мировой реакции для совместимости версий. */
+  function restoreWorldResponse(savedResponse) {
+    const baseline = createWorldResponse();
+    return Object.fromEntries(Object.entries(baseline).map(([key, value]) => {
+      const savedValue = Number(savedResponse?.[key]);
+      return [key, clamp(Number.isFinite(savedValue) ? savedValue : value, 0, 100)];
+    }));
+  }
+
   /** Добавляет заметку в журнал и сохраняет компактный размер истории. */
   function pushLog(message) {
-    state.log.unshift(message);
+    state.log.unshift({ message, time: state.elapsedMilliseconds || 0 });
     state.log = state.log.slice(0, 12);
   }
 
@@ -380,11 +414,10 @@
     return hours ? `T+${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `T+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
-  /** Обновляет таймер, индикатор тика и доступность кнопок скорости. */
+  /** Обновляет непрерывное время симуляции и доступность кнопок скорости. */
   function renderRealtimeControls() {
     element("simulation-clock").textContent = formatSimulationTime(state.elapsedMilliseconds || 0);
-    element("tick-progress").style.width = `${clamp((state.tickElapsed || 0) / BASE_TICK_MS * 100, 0, 100)}%`;
-    element("realtime-state").textContent = !state.started ? "ОЖИДАНИЕ" : !state.active ? "ЗАВЕРШЕНО" : state.timeScale === 0 ? "ПАУЗА" : `${state.timeScale}× / LIVE`;
+    element("realtime-state").textContent = !state.started ? "ОЖИДАНИЕ" : !state.active ? "ЗАВЕРШЕНО" : state.timeScale === 0 ? "ПАУЗА" : `РЕАЛЬНОЕ ВРЕМЯ · ${state.timeScale}×`;
     document.querySelectorAll("[data-time-scale]").forEach(button => {
       const selected = Number(button.dataset.timeScale) === state.timeScale;
       button.classList.toggle("active", selected);
@@ -453,6 +486,22 @@
     element("objective-progress").style.width = `${objective.percent}%`;
   }
 
+  /** Отображает четыре компонента мировой защитной реакции. */
+  function renderWorldResponse() {
+    const response = state.worldResponse;
+    element("world-reaction-stage").textContent = worldResponseStage();
+    [
+      ["patching", "world-patching"],
+      ["monitoring", "world-monitoring"],
+      ["awareness", "world-awareness"],
+      ["coordination", "world-coordination"]
+    ].forEach(([key, prefix]) => {
+      const value = Math.round(response[key]);
+      element(`${prefix}-value`).textContent = `${String(value).padStart(2, "0")}%`;
+      element(`${prefix}-meter`).style.width = `${value}%`;
+    });
+  }
+
   /** Завершает кампанию, когда выбранная игровая цель достигнута. */
   function evaluateScenarioObjective() {
     const objective = scenarioObjectiveProgress();
@@ -469,7 +518,6 @@
     const country = countriesById.get(state.selectedCountry);
     const inspectedCountry = countriesById.get(state.inspectedCountry);
     const campaignLabel = state.active ? state.timeScale === 0 ? "ПАУЗА" : "СИГНАЛ В ПУТИ" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : "ОЖИДАНИЕ";
-    element("global-turn-top").textContent = String(state.turn).padStart(2, "0");
     element("global-coverage").innerHTML = `${String(influenced).padStart(2, "0")}<span>/${COUNTRIES.length}</span>`;
     element("global-alert").textContent = `${Math.round(state.alert)}%`;
     element("economic-damage").textContent = String(Math.round(state.economicDamage || 0)).padStart(2, "0");
@@ -478,11 +526,10 @@
     element("campaign-state").textContent = campaignLabel;
     element("mission-mode").textContent = state.active ? state.timeScale === 0 ? "СИМУЛЯЦИЯ НА ПАУЗЕ" : "ОПЕРАЦИЯ АКТИВНА" : state.result === "objective" ? "ЦЕЛЬ ДОСТИГНУТА" : state.started ? "СЦЕНАРИЙ ЗАВЕРШЁН" : country ? "СТАРТ ПОДТВЕРЖДЁН" : "ВЫБОР СТАРТА";
     element("network-readout").textContent = state.started ? `${influenced} ИЗ ${COUNTRIES.length} ОТМЕЧЕНО` : country ? `СТАРТ: ${country.name.toUpperCase()}` : "ВЫБЕРИ СТРАНУ СТАРТА";
-    element("signal-points").textContent = String(state.signal).padStart(2, "0");
+    element("signal-points").textContent = String(state.knowledge).padStart(2, "0");
     element("alert-value").textContent = `${Math.round(state.alert)}%`;
     element("alert-meter").style.width = `${state.alert}%`;
-    element("alert-text").textContent = state.alert < 32 ? "Контур заметил слабый фон, но пока не понимает его рисунок." : state.alert < 67 ? "Защитный контур анализирует необычные связи. Тихий дрейф особенно важен." : "Контур готовит изоляцию маршрутов. Следующий цикл может закрыть часть сети.";
-    element("advance-turn").disabled = !state.active;
+    element("alert-text").textContent = state.alert < 32 ? "Контур заметил слабый фон, но пока не понимает его рисунок." : state.alert < 67 ? "Защитный контур анализирует необычные связи. Низкий профиль особенно важен." : "Контур готовит изоляцию маршрутов. В ближайшее время часть карты может быть закрыта.";
     element("map-selection-name").textContent = state.started ? `СТАРТ: ${country.name.toUpperCase()}` : country ? country.name.toUpperCase() : "НЕ ВЫБРАНА";
     element("launch-simulation").disabled = state.started || !state.selectedCountry;
     element("launch-simulation").textContent = state.started ? "СТРАНА СТАРТА ПОДТВЕРЖДЕНА" : state.selectedCountry ? `ПОДТВЕРДИТЬ: ${country.name.toUpperCase()} →` : "СНАЧАЛА ВЫБЕРИ СТРАНУ";
@@ -490,6 +537,7 @@
     if (state.started && inspectedCountry) element("network-readout").textContent = `ПРОСМОТР: ${inspectedCountry.name.toUpperCase()}`;
     renderRealtimeControls();
     renderScenarioObjective();
+    renderWorldResponse();
     renderCountryProfile();
     renderWorldMap();
   }
@@ -517,12 +565,12 @@
       UPGRADES.filter(upgrade => upgrade.branch === branch.id).forEach(upgrade => {
         const unlocked = hasUpgrade(upgrade.id);
         const requirementMet = meetsUpgradeRequirement(upgrade);
-        const affordable = state.signal >= upgrade.cost;
+        const affordable = state.knowledge >= upgrade.cost;
         const button = document.createElement("button");
         button.type = "button";
         button.className = `upgrade-card trait-card tier-${upgrade.tier} ${unlocked ? "unlocked" : ""} ${!requirementMet ? "locked" : ""}`;
         button.disabled = unlocked || !state.started || !requirementMet || !affordable;
-        const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(upgrade)}` : `${upgrade.cost} CP${upgrade.alert ? ` · +${upgrade.alert}% ВНИМАНИЯ` : ""}`;
+        const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(upgrade)}` : `${upgrade.cost} ОЧКОВ ЗНАНИЙ${upgrade.alert ? ` · +${upgrade.alert}% ВНИМАНИЯ` : ""}`;
         button.innerHTML = `<small>${upgrade.tier === 1 ? "БАЗОВЫЙ УРОВЕНЬ" : `УРОВЕНЬ ${upgrade.tier}`} · ${status}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em><span class="trait-tradeoff">${upgrade.tradeoff}</span>`;
         button.addEventListener("click", () => buyUpgrade(upgrade));
         stack.appendChild(button);
@@ -530,19 +578,31 @@
       section.appendChild(stack);
       grid.appendChild(section);
     });
-    element("upgrade-note").textContent = state.started ? `${state.signal} CP ДОСТУПНО` : "ЗАПУСТИ СЦЕНАРИЙ";
+    element("upgrade-note").textContent = state.started ? `${state.knowledge} ОЧКОВ ЗНАНИЙ` : "ЗАПУСТИ СЦЕНАРИЙ";
   }
 
-  /** Выводит последние события учебной симуляции. */
+  /** Возвращает текст журнальной записи старого или нового формата сохранения. */
+  function logMessage(entry) {
+    return typeof entry === "string" ? entry : entry.message;
+  }
+
+  /** Возвращает отметку непрерывного времени журнальной записи. */
+  function logTime(entry, index) {
+    const fallback = Math.max(0, state.elapsedMilliseconds - index * BASE_TICK_MS);
+    if (typeof entry === "string") return fallback;
+    return Number.isFinite(entry.time) ? entry.time : fallback;
+  }
+
+  /** Выводит последние события учебной симуляции с отметками непрерывного времени. */
   function renderLog() {
     const log = element("event-log");
     log.innerHTML = "";
-    state.log.forEach((message, index) => {
+    state.log.forEach((entry, index) => {
       const item = document.createElement("li");
-      item.innerHTML = `<time>ЦИКЛ ${String(Math.max(0, state.turn - index)).padStart(2, "0")}</time>${message}`;
+      item.innerHTML = `<time>${formatSimulationTime(logTime(entry, index))}</time>${logMessage(entry)}`;
       log.appendChild(item);
     });
-    element("latest-event").textContent = state.log[0] || "В журнале пока нет событий.";
+    element("latest-event").textContent = state.log.length ? logMessage(state.log[0]) : "В журнале пока нет событий.";
     element("log-status").textContent = state.active ? "СЦЕНАРИЙ АКТИВЕН" : state.started ? "КОНТУР ОСТАНОВЛЕН" : "СРЕДА ГОТОВА";
   }
 
@@ -594,12 +654,13 @@
       active: false,
       result: null,
       turn: 0,
-      signal: 4,
+      knowledge: 4,
       alert: 8,
       timeScale: 1,
       elapsedMilliseconds: 0,
       tickElapsed: 0,
       upgrades: [],
+      worldResponse: createWorldResponse(),
       economicDamage: 0,
       scenarioProfit: 0,
       log: [`Учебная модель «${scenario?.name || "Сценарий"}» подготовлена. Выбери страну старта на мировой карте.`]
@@ -627,6 +688,8 @@
       threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
       countries: { ...countryStates(), ...(loaded.countries || {}) },
       upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
+      knowledge: Number.isFinite(loaded.knowledge) ? loaded.knowledge : Number.isFinite(loaded.signal) ? loaded.signal : 4,
+      worldResponse: restoreWorldResponse(loaded.worldResponse),
       timeScale: TIME_SCALES.has(Number(loaded.timeScale)) ? Number(loaded.timeScale) : 1,
       elapsedMilliseconds: Number.isFinite(loaded.elapsedMilliseconds) ? loaded.elapsedMilliseconds : 0,
       tickElapsed: Number.isFinite(loaded.tickElapsed) ? clamp(loaded.tickElapsed, 0, BASE_TICK_MS) : 0,
@@ -676,13 +739,13 @@
     renderAll();
   }
 
-  /** Покупает доступную адаптацию и применяет её цену заметности. */
+  /** Покупает доступную адаптацию за очки знаний и применяет её цену заметности. */
   function buyUpgrade(upgrade) {
-    if (!state.started || hasUpgrade(upgrade.id) || !meetsUpgradeRequirement(upgrade) || state.signal < upgrade.cost) return;
-    state.signal -= upgrade.cost;
+    if (!state.started || hasUpgrade(upgrade.id) || !meetsUpgradeRequirement(upgrade) || state.knowledge < upgrade.cost) return;
+    state.knowledge -= upgrade.cost;
     state.upgrades.push(upgrade.id);
     state.alert = clamp(state.alert + (upgrade.alert || 0), 0, 100);
-    pushLog(`Адаптация «${upgrade.name}» установлена за ${upgrade.cost} CP${upgrade.alert ? `; внимание контура +${upgrade.alert}%` : ""}.`);
+    pushLog(`Адаптация «${upgrade.name}» установлена за ${upgrade.cost} очков знаний${upgrade.alert ? `; внимание контура +${upgrade.alert}%` : ""}.`);
     renderAll();
   }
 
@@ -702,40 +765,54 @@
     return [...targets].map(id => countriesById.get(id));
   }
 
-  /** Разыгрывает безопасное контекстное событие и возвращает его влияние на развитие карты. */
+  /** Разыгрывает контекстное событие и возвращает его влияние на симуляцию. */
   function resolveBackgroundEvent() {
     const country = randomItem(activeCountries());
     const chance = .12 + country.noise * .0025 + (hasUpgrade("switchback") ? .12 : 0);
-    if (Math.random() > chance) return 0;
+    if (Math.random() > chance) return { spread: 0, knowledge: 0 };
     const events = [
-      { message: `Пользовательская активность в ${country.name} изменила поведенческий профиль среды.`, spread: .17, alert: -4, positive: true },
-      { message: `Региональный цикл обновлений в ${country.name} сузил доступную учебную поверхность.`, spread: -.07, alert: 3, positive: false },
-      { message: `Защитный мониторинг в ${country.name} повысил качество наблюдения за аномалиями.`, spread: -.04, alert: 5, positive: false },
-      { message: `Неоднородность цифровой среды в ${country.name} кратко ослабила точность защитного контура.`, spread: .08, alert: -2, positive: true }
+      { message: `Пользовательская активность в ${country.name} изменила поведенческий профиль среды.`, spread: .17, alert: -4, positive: true, reaction: { awareness: 1 } },
+      { message: `Региональный цикл обновлений в ${country.name} сузил доступную учебную поверхность.`, spread: -.07, alert: 3, positive: false, reaction: { patching: 3, monitoring: 1 } },
+      { message: `Защитный мониторинг в ${country.name} повысил качество наблюдения за аномалиями.`, spread: -.04, alert: 5, positive: false, reaction: { monitoring: 4, coordination: 1 } },
+      { message: `Неоднородность цифровой среды в ${country.name} кратко ослабила точность защитного контура.`, spread: .08, alert: -2, positive: true, reaction: { awareness: 1 } }
     ];
     const event = randomItem(events);
     const adaptiveAlert = event.alert < 0 && hasUpgrade("adaptiveRhythm") ? -3 : 0;
     pushLog(event.message);
     state.alert = clamp(state.alert + event.alert + adaptiveAlert, 0, 100);
-    if (event.positive && hasUpgrade("responseWindow")) {
-      state.signal += 1;
-      pushLog("Окно ответа преобразовало фоновое событие в 1 Compute Point.");
-    }
-    return event.spread;
+    applyWorldResponse(event.reaction);
+    const knowledge = event.positive && hasUpgrade("responseWindow") ? 1 : 0;
+    if (knowledge) pushLog("Окно принятия решений добавило 1 очко знаний за благоприятное событие среды.");
+    return { spread: event.spread, knowledge };
   }
 
-  /** Моделирует игровую ответную реакцию контура при высокой тревоге. */
+  /** Моделирует изоляцию части карты как итог работы защитного контура. */
   function containSignal() {
-    if (state.alert < 53) return;
+    const response = state.worldResponse;
+    if (state.alert < 46 + response.monitoring * .1) return "мониторинг без изоляции";
     const candidates = activeCountries().filter(country => country.id !== state.selectedCountry);
-    if (!candidates.length) return;
+    if (!candidates.length) return "защита наблюдает за стартовым регионом";
     const target = candidates.sort((first, second) => second.defense - first.defense)[0];
     const resistance = effectiveStats().resilience + (hasUpgrade("lattice") ? 2 : 0);
-    const chance = .07 + target.defense * .002 - resistance * .025;
+    const chance = .045 + target.defense * .002 + response.patching * .0013 + response.coordination * .0018 - resistance * .025;
     if (Math.random() < chance) {
       state.countries[target.id] = "contained";
       pushLog(`Контур защиты страны «${target.name}» закрыл один отмеченный узел.`);
+      return `изолирован регион: ${target.name}`;
     }
+    return "защита готовит точечную изоляцию";
+  }
+
+  /** Повышает мировую реакцию вслед за заметностью, охватом и эффектом сценария. */
+  function advanceWorldResponse(newSignals, impact) {
+    const activeCount = activeCountries().length;
+    const visibility = state.alert / 100 + newSignals * .15 + Math.min(impact, 25) / 100;
+    applyWorldResponse({
+      patching: .25 + visibility * 1.1,
+      monitoring: .35 + visibility * 1.45,
+      awareness: .18 + visibility * .9 + activeCount / COUNTRIES.length * 2,
+      coordination: state.turn > 5 ? .15 + visibility * 1.2 : visibility * .35
+    });
   }
 
   /** Иногда возвращает один изолированный узел в модель после развития устойчивости. */
@@ -755,7 +832,8 @@
     state.turn += 1;
     const stats = effectiveStats();
     const targets = openNeighbors();
-    const backgroundBonus = resolveBackgroundEvent();
+    const backgroundEvent = resolveBackgroundEvent();
+    const response = state.worldResponse;
     const attempts = Math.min(targets.length, 1 + Math.floor(stats.speed / 4) + (hasUpgrade("relayMap") ? 1 : 0) + (hasUpgrade("wideMap") ? 1 : 0));
     let newSignals = 0;
     const sourceActivity = activeCountries().reduce((total, country) => total + country.activity, 0) / Math.max(1, activeCountries().length);
@@ -763,7 +841,7 @@
       const candidates = openNeighbors();
       if (!candidates.length) break;
       const target = randomItem(candidates);
-      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundBonus + (hasUpgrade("cascade") ? .08 : 0) - target.defense * .0027;
+      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundEvent.spread + (hasUpgrade("cascade") ? .08 : 0) - target.defense * .0027 - response.patching * .0012 - response.monitoring * .001;
       if (Math.random() < chance) {
         state.countries[target.id] = "infected";
         newSignals += 1;
@@ -771,8 +849,8 @@
       }
     }
     if (!newSignals) pushLog("Новая отметка не появилась: условия среды и защитный контур удержали текущую границу кампании.");
-    let computeGain = 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0);
-    if (hasUpgrade("resourceCache") && state.turn % 3 === 0) computeGain += 1;
+    let knowledgeGain = 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0) + backgroundEvent.knowledge;
+    if (hasUpgrade("resourceCache") && state.turn % 3 === 0) knowledgeGain += 1;
     const scenarioEconomy = activeThreatType().economy;
     const activeCount = activeCountries().length;
     const profileMultiplier = scenarioResultMultiplier();
@@ -780,8 +858,9 @@
     const profitMultiplier = scenarioEconomy.yield > scenarioEconomy.impact ? profileMultiplier : 1;
     const pressureGain = (4 + activeCount * 3 + newSignals * 9) * scenarioEconomy.impact / 100 * pressureMultiplier;
     const profitGain = (1 + newSignals + Math.max(0, 35 - state.alert) / 35) * scenarioEconomy.yield / 100 * profitMultiplier;
-    if (hasUpgrade("compoundYield") && Math.round(pressureGain) + Math.round(profitGain) >= 8) computeGain += 1;
-    state.signal += computeGain;
+    const totalImpact = Math.round(pressureGain) + Math.round(profitGain);
+    if (hasUpgrade("compoundYield") && totalImpact >= 8) knowledgeGain += 1;
+    state.knowledge += knowledgeGain;
     state.economicDamage += Math.round(pressureGain);
     state.scenarioProfit += Math.round(profitGain);
     const averageDefense = activeCountries().reduce((total, country) => total + country.defense, 0) / Math.max(1, activeCountries().length);
@@ -789,8 +868,10 @@
     const markAttention = newSignals * (hasUpgrade("shadowBalance") ? 1.5 : 2.2);
     state.alert = clamp(state.alert + awarenessStep + markAttention, 0, 100);
     if (hasUpgrade("campaignDiscipline") && !newSignals) state.alert = clamp(state.alert - 1, 0, 100);
-    containSignal();
+    advanceWorldResponse(newSignals, totalImpact);
+    const defenseResult = containSignal();
     recoverContainedNode();
+    if (defenseResult !== "мониторинг без изоляции") pushLog(`Статус защитной реакции: ${defenseResult}.`);
     const influenced = activeCountries().length;
     if (evaluateScenarioObjective()) {
       // Завершение и запись в журнал выполняются внутри проверки цели.
@@ -815,13 +896,14 @@
     state.active = false;
     state.result = null;
     state.turn = 0;
-    state.signal = 4;
+    state.knowledge = 4;
     state.alert = 8;
     state.timeScale = 1;
     state.elapsedMilliseconds = 0;
     state.tickElapsed = 0;
     previousFrameTime = performance.now();
     state.upgrades = [];
+    state.worldResponse = createWorldResponse();
     state.economicDamage = 0;
     state.scenarioProfit = 0;
     state.log = ["Учебная среда сброшена. Выбери новую страну старта на мировой карте."];
@@ -830,7 +912,6 @@
 
   element("continue-game").addEventListener("click", continueGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
-  element("advance-turn").addEventListener("click", advanceCycle);
   element("reset-simulation").addEventListener("click", resetSimulation);
   element("time-controls").addEventListener("click", event => {
     const button = event.target.closest("[data-time-scale]");

@@ -48,6 +48,55 @@
   width: 0;
 }
 
+/* Оформляет сводку глобальной защитной реакции. */
+.world-reaction-card {
+  background: linear-gradient(145deg, #0e242a, #09161b);
+  border: 1px solid #31525b;
+  padding: 11px;
+}
+
+.world-reaction-card .rail-heading {
+  margin-bottom: 9px;
+}
+
+.world-response-row {
+  display: grid;
+  gap: 4px 7px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 9px;
+}
+
+.world-response-row span,
+.world-response-row b {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: .04em;
+}
+
+.world-response-row span {
+  color: var(--muted);
+}
+
+.world-response-row b {
+  color: var(--amber);
+  font-weight: 400;
+}
+
+.world-response-row i {
+  background: #263c43;
+  grid-column: 1 / -1;
+  height: 3px;
+  overflow: hidden;
+}
+
+.world-response-row i em {
+  background: linear-gradient(90deg, #6da9ac, var(--amber));
+  display: block;
+  height: 100%;
+  transition: width .3s ease;
+  width: 0;
+}
+
 /* Переносит журнал в компактную раскрывающуюся строку непосредственно над картой. */
 .event-drawer {
   background: rgba(10, 22, 27, .9);
