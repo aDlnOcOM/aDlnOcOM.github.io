@@ -2,6 +2,7 @@
 
 (() => {
 const catalog = window.HACKBOX_SCENARIO_CATALOG || {};
+const traitCatalog = window.HACKBOX_TRAIT_CATALOG;
 
 /**
  * Возвращает идентификаторы сценариев в порядке, заданном каталогом.
@@ -54,11 +55,35 @@ function isKnownScenario(id) {
   return Boolean(catalog[id]);
 }
 
+/**
+ * Возвращает размер библиотеки трейтов и долю комбинированных трейтов в текущей колоде.
+ *
+ * @param {string} scenarioId Основной класс сценария.
+ * @param {string[]} hybridIds Выбранные дополнительные классы.
+ * @returns {{totalTraits: number, deckSize: number, hybridTraitCount: number, hybridShare: number}} Сводка библиотеки.
+ */
+function traitCoverage(scenarioId, hybridIds = []) {
+  return traitCatalog?.traitCoverage(scenarioId, hybridIds) || { totalTraits: 0, deckSize: 0, hybridTraitCount: 0, hybridShare: 0 };
+}
+
+/**
+ * Собирает отображаемую колоду трейтов для выбранного сценария и его гибридов.
+ *
+ * @param {string} scenarioId Основной класс сценария.
+ * @param {string[]} hybridIds Выбранные дополнительные классы.
+ * @returns {{traits: object[], librarySize: number, hybridTraitCount: number, hybridShare: number}} Колода трейтов.
+ */
+function getScenarioTraitDeck(scenarioId, hybridIds = []) {
+  return traitCatalog?.buildTraitDeck(scenarioId, hybridIds) || { traits: [], librarySize: 0, hybridTraitCount: 0, hybridShare: 0 };
+}
+
 window.HackboxDomain = {
   findScenario,
   findScenarioVariant,
   getDefaultScenarioVariant,
+  getScenarioTraitDeck,
   isKnownScenario,
-  listScenarioIds
+  listScenarioIds,
+  traitCoverage
 };
 })();

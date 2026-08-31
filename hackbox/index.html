@@ -89,6 +89,20 @@
           <small id="objective-value">00 / 00</small>
         </div>
         <div class="resource-card"><span>ОЧКИ ЗНАНИЙ</span><b id="signal-points">04</b><small>ресурс развития учебной модели</small></div>
+        <section class="strategy-card" aria-labelledby="strategy-title">
+          <div class="rail-heading"><span id="strategy-title">ОПЕРАТИВНАЯ ДИРЕКТИВА</span><em id="directive-status">НЕТ УКАЗАНИЯ</em></div>
+          <p id="directive-text">Перед следующим циклом выбери, что важнее: расширение карты, снижение внимания или результат сценария.</p>
+          <div id="directive-grid" class="directive-grid" role="group" aria-label="Тактика следующего цикла симуляции">
+            <button type="button" data-directive="expand" aria-pressed="false"><strong>ОХВАТ</strong><span>выше шанс новой отметки, больше внимания</span></button>
+            <button type="button" data-directive="quiet" aria-pressed="false"><strong>ТИШИНА</strong><span>ниже внимание, медленнее рост карты</span></button>
+            <button type="button" data-directive="impact" aria-pressed="false"><strong>РЕЗУЛЬТАТ</strong><span>выше эффект сценария, осторожнее рост</span></button>
+          </div>
+          <div class="strategy-target">
+            <span>ФОКУС КАРТЫ</span>
+            <b id="target-country-name">ВЫБЕРИ ДОСТУПНУЮ СОСЕДНЮЮ СТРАНУ</b>
+            <div><button id="set-strategic-target" type="button" disabled>НАПРАВИТЬ ФОКУС</button><button id="clear-strategic-target" type="button" disabled>СНЯТЬ</button></div>
+          </div>
+        </section>
         <section class="world-reaction-card" aria-labelledby="world-reaction-title">
           <div class="rail-heading"><span id="world-reaction-title">ГЛОБАЛЬНАЯ РЕАКЦИЯ</span><em id="world-reaction-stage">ФОНОВАЯ</em></div>
           <div class="world-response-row"><span>ПАТЧИ И ОБНОВЛЕНИЯ</span><b id="world-patching-value">08%</b><i><em id="world-patching-meter"></em></i></div>
@@ -119,12 +133,14 @@
         <div><span>IMPACT</span><b>Воздействие</b><em>условный экономический эффект выбранного сценария</em></div>
       </div>
       <p class="evolution-earn-note">Очки знаний начисляются за время жизни модели, новые отметки карты, редкие контекстные события и результат сценария. Каждое заметное улучшение делает защитную реакцию быстрее.</p>
+      <div id="upgrade-tabs" class="upgrade-tabs" role="tablist" aria-label="Ветки развития кампании"></div>
       <div id="upgrade-grid" class="upgrade-grid evolution-tree" aria-label="Дерево стратегического развития учебной кампании"></div>
     </section>
   </main>
   <script src="assets/world-countries.js"></script>
   <script src="assets/world-bank-country-model.js"></script>
   <script src="assets/scenario-catalog.js"></script>
+  <script src="assets/trait-catalog.js"></script>
   <script src="modules/domain/scenario-catalog.js"></script>
   <script src="modules/backend/scenario-repository.js"></script>
   <script src="script.js"></script>

@@ -1,6 +1,6 @@
 // Управляет фронтендом карты, ходами кампании и адаптациями безопасной игровой симуляции HackBox.
 (() => {
-  const { findScenario, findScenarioVariant, isKnownScenario, listScenarioIds } = window.HackboxDomain;
+  const { findScenario, findScenarioVariant, getScenarioTraitDeck, isKnownScenario, listScenarioIds } = window.HackboxDomain;
   const { readCampaignSave, takeScenarioDraft, writeCampaignSave } = window.HackboxRepository;
   /** Возвращает элемент игрового интерфейса по его идентификатору. */
   const element = id => document.getElementById(id);
@@ -170,6 +170,29 @@
   const createWorldResponse = () => ({ patching: 8, monitoring: 7, awareness: 4, coordination: 3 });
   const BASE_TICK_MS = 6000;
   const TIME_SCALES = new Set([0, 0.5, 1, 2, 4]);
+  const OPERATIONAL_DIRECTIVES = {
+    expand: {
+      name: "ОХВАТ",
+      description: "Следующие два цикла активнее расширяют карту, но оставляют более заметный след.",
+      spread: .10,
+      attention: 1.6,
+      impactMultiplier: 1
+    },
+    quiet: {
+      name: "ТИШИНА",
+      description: "Следующие два цикла сдерживают рост внимания ценой более осторожного темпа.",
+      spread: -.075,
+      attention: -2.2,
+      impactMultiplier: 1
+    },
+    impact: {
+      name: "РЕЗУЛЬТАТ",
+      description: "Следующие два цикла усиливают условный результат сценария, замедляя рост карты.",
+      spread: -.035,
+      attention: .7,
+      impactMultiplier: 1.35
+    }
+  };
   const state = {
     gameCreated: false,
     scenarioName: "СЕРАЯ ПЕТЛЯ",
@@ -195,6 +218,10 @@
     worldResponse: createWorldResponse(),
     economicDamage: 0,
     scenarioProfit: 0,
+    directive: null,
+    directiveTurns: 0,
+    targetCountry: null,
+    upgradeBranch: "surface",
     log: ["Учебная среда готова. Выбери страну старта на мировой карте."]
   };
   let geographyLoading = false;
@@ -253,6 +280,24 @@
     }), { impact: 0, yield: 0 });
   }
 
+  /** Собирает тематическую колоду трейтов текущего сценария и его гибридов. */
+  function activeTraitDeck() {
+    return getScenarioTraitDeck(state.threatType, state.hybridTypes);
+  }
+
+  /** Объединяет механику существующего улучшения с описанием тематического трейта. */
+  function upgradePresentation(upgrade, traitDeck = activeTraitDeck()) {
+    const trait = traitDeck.traits.find(candidate => candidate.slot.branch === upgrade.branch && candidate.slot.tier === upgrade.tier);
+    if (!trait) return upgrade;
+    return {
+      ...upgrade,
+      name: trait.name,
+      effect: `${upgrade.effect} ${trait.summary}`,
+      tradeoff: `${trait.tradeoff} ${upgrade.tradeoff}`,
+      trait
+    };
+  }
+
   /** Проверяет, приобретена ли конкретная игровая адаптация. */
   function hasUpgrade(id) {
     return state.upgrades.includes(id);
@@ -266,6 +311,77 @@
       speed: clamp(state.speed + threat.speed, 1, 8),
       resilience: clamp(state.resilience + threat.resilience + (hasUpgrade("anchor") ? 1 : 0), 1, 8)
     };
+  }
+
+  /** Возвращает активную директиву или null, когда игрок ещё не принял решение. */
+  function activeDirective() {
+    return OPERATIONAL_DIRECTIVES[state.directive] || null;
+  }
+
+  /** Возвращает нейтральные соседние страны, доступные для ручного фокуса. */
+  function targetableCountries() {
+    if (!state.active) return [];
+    return openNeighbors();
+  }
+
+  /** Устанавливает директиву на два игровых цикла, сохраняя возможность сменить её до следующего хода. */
+  function selectDirective(id) {
+    const directive = OPERATIONAL_DIRECTIVES[id];
+    if (!state.active || !directive) return;
+    state.directive = id;
+    state.directiveTurns = 2;
+    pushLog(`Оперативная директива «${directive.name}» активирована на два цикла.`);
+    renderAll();
+  }
+
+  /** Назначает выбранную соседнюю страну приоритетом следующего игрового цикла. */
+  function setStrategicTarget() {
+    const country = countriesById.get(state.inspectedCountry);
+    if (!country || !targetableCountries().some(candidate => candidate.id === country.id)) return;
+    state.targetCountry = country.id;
+    pushLog(`Фокус кампании направлен на страну «${country.name}». Следующая проверка получит приоритет.`);
+    renderAll();
+  }
+
+  /** Снимает ручной фокус и возвращает выбор цели симуляции в автоматический режим. */
+  function clearStrategicTarget() {
+    if (!state.targetCountry) return;
+    const country = countriesById.get(state.targetCountry);
+    state.targetCountry = null;
+    pushLog(`Фокус на стране «${country?.name || "цели"}» снят.`);
+    renderAll();
+  }
+
+  /** Отображает активную директиву, её срок и доступность ручного фокуса на карте. */
+  function renderStrategyControls() {
+    const directive = activeDirective();
+    const focusedCountry = countriesById.get(state.targetCountry);
+    const inspectedCountry = countriesById.get(state.inspectedCountry);
+    const canFocusInspected = Boolean(inspectedCountry && targetableCountries().some(country => country.id === inspectedCountry.id));
+    const status = !state.started ? "ОЖИДАНИЕ" : !state.active ? "ЗАВЕРШЕНО" : directive ? `${directive.name} · ${state.directiveTurns} ЦИКЛА` : "ЖДЁТ РЕШЕНИЯ";
+    element("directive-status").textContent = status;
+    element("directive-text").textContent = !state.started
+      ? "Запусти сценарий, затем выбирай приоритет между охватом, скрытностью и результатом кампании."
+      : !state.active
+        ? "Сценарий завершён. Сбрось его или создай новую учебную модель."
+        : directive
+          ? directive.description
+          : "Перед следующим циклом выбери директиву. Без неё кампания продолжит базовый, менее эффективный режим.";
+    document.querySelectorAll("[data-directive]").forEach(button => {
+      const selected = button.dataset.directive === state.directive;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.disabled = !state.active;
+    });
+    element("target-country-name").textContent = focusedCountry
+      ? `ФОКУС: ${focusedCountry.name.toUpperCase()} · ПРИОРИТЕТ НА СЛЕДУЮЩИЙ ЦИКЛ`
+      : canFocusInspected
+        ? `ВЫБРАНА: ${inspectedCountry.name.toUpperCase()} · ДОСТУПНА ДЛЯ ФОКУСА`
+        : !state.active
+          ? "ЗАПУСТИ СЦЕНАРИЙ И ВЫБЕРИ СОСЕДНЮЮ НЕЙТРАЛЬНУЮ СТРАНУ"
+          : "НАЖМИ НА ПУНКТИРНУЮ СОСЕДНЮЮ СТРАНУ НА КАРТЕ";
+    element("set-strategic-target").disabled = !state.active || !canFocusInspected || state.targetCountry === inspectedCountry?.id;
+    element("clear-strategic-target").disabled = !state.active || !state.targetCountry;
   }
 
   /** Возвращает множитель профильного результата от ветки сценария. */
@@ -361,11 +477,14 @@
 
   /** Синхронизирует классы контуров стран с текущим состоянием кампании. */
   function updateBoundaryStates() {
+    const targetableIds = new Set(targetableCountries().map(country => country.id));
     document.querySelectorAll("#country-boundaries .country-boundary").forEach(path => {
       const country = countriesById.get(path.dataset.countryId);
-      path.classList.remove("featured", "seed", "infected", "contained", "inspected", "true", "false", "open");
+      path.classList.remove("featured", "seed", "infected", "contained", "inspected", "targetable", "targeted", "true", "false", "open");
       if (!country) return;
       path.classList.toggle("featured", state.countries[country.id] !== "open");
+      path.classList.toggle("targetable", targetableIds.has(country.id));
+      path.classList.toggle("targeted", state.targetCountry === country.id);
       path.classList.add(state.countries[country.id]);
       if (state.inspectedCountry === country.id || (!state.started && state.selectedCountry === country.id)) path.classList.add("inspected");
     });
@@ -570,6 +689,7 @@
     renderRealtimeControls();
     renderScenarioObjective();
     renderWorldResponse();
+    renderStrategyControls();
     renderCountryProfile();
     renderWorldMap();
   }
@@ -581,36 +701,62 @@
 
   /** Возвращает короткое имя требуемой адаптации для подсказки. */
   function upgradeRequirementName(upgrade) {
-    return upgrade.requires ? upgradesById.get(upgrade.requires)?.name || "предыдущий уровень" : "";
+    const requiredUpgrade = upgrade.requires ? upgradesById.get(upgrade.requires) : null;
+    return requiredUpgrade ? upgradePresentation(requiredUpgrade).name : "";
   }
 
-  /** Отрисовывает ветвящееся дерево безопасных игровых адаптаций. */
+  /** Переключает видимую ветвь дерева, не прерывая ход симуляции. */
+  function selectUpgradeBranch(id) {
+    if (!UPGRADE_BRANCHES.some(branch => branch.id === id)) return;
+    state.upgradeBranch = id;
+    renderUpgrades();
+    saveGame();
+  }
+
+  /** Отрисовывает выбранную вкладку и линейную цепочку её адаптаций. */
   function renderUpgrades() {
+    const selectedBranch = UPGRADE_BRANCHES.find(branch => branch.id === state.upgradeBranch) || UPGRADE_BRANCHES[0];
+    state.upgradeBranch = selectedBranch.id;
+    const tabs = element("upgrade-tabs");
+    tabs.innerHTML = "";
+    UPGRADE_BRANCHES.forEach(branch => {
+      const tab = document.createElement("button");
+      const selected = branch.id === selectedBranch.id;
+      tab.type = "button";
+      tab.className = `upgrade-tab ${selected ? "active" : ""}`;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(selected));
+      tab.setAttribute("aria-controls", "upgrade-grid");
+      tab.innerHTML = `<span>${branch.code}</span><b>${branch.name}</b>`;
+      tab.addEventListener("click", () => selectUpgradeBranch(branch.id));
+      tabs.appendChild(tab);
+    });
+    const traitDeck = activeTraitDeck();
     const grid = element("upgrade-grid");
     grid.innerHTML = "";
-    UPGRADE_BRANCHES.forEach(branch => {
-      const section = document.createElement("section");
-      section.className = "evolution-branch";
-      section.innerHTML = `<header><span>${branch.code}</span><b>${branch.name}</b><small>${branch.hint}</small></header>`;
-      const stack = document.createElement("div");
-      stack.className = "trait-stack";
-      UPGRADES.filter(upgrade => upgrade.branch === branch.id).forEach(upgrade => {
-        const unlocked = hasUpgrade(upgrade.id);
-        const requirementMet = meetsUpgradeRequirement(upgrade);
-        const affordable = state.knowledge >= upgrade.cost;
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `upgrade-card trait-card tier-${upgrade.tier} ${unlocked ? "unlocked" : ""} ${!requirementMet ? "locked" : ""}`;
-        button.disabled = unlocked || !state.started || !requirementMet || !affordable;
-        const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(upgrade)}` : `${upgrade.cost} ОЧКОВ ЗНАНИЙ${upgrade.alert ? ` · +${upgrade.alert}% ВНИМАНИЯ` : ""}`;
-        button.innerHTML = `<small>${upgrade.tier === 1 ? "БАЗОВЫЙ УРОВЕНЬ" : `УРОВЕНЬ ${upgrade.tier}`} · ${status}</small><strong>${upgrade.name}</strong><em>${upgrade.effect}</em><span class="trait-tradeoff">${upgrade.tradeoff}</span>`;
-        button.addEventListener("click", () => buyUpgrade(upgrade));
-        stack.appendChild(button);
-      });
-      section.appendChild(stack);
-      grid.appendChild(section);
+    const section = document.createElement("section");
+    section.className = "evolution-branch";
+    section.innerHTML = `<header><span>${selectedBranch.code}</span><b>${selectedBranch.name}</b><small>${selectedBranch.hint}</small></header>`;
+    const stack = document.createElement("div");
+    stack.className = "trait-stack";
+    UPGRADES.filter(upgrade => upgrade.branch === selectedBranch.id).forEach(upgrade => {
+      const displayedUpgrade = upgradePresentation(upgrade, traitDeck);
+      const unlocked = hasUpgrade(displayedUpgrade.id);
+      const requirementMet = meetsUpgradeRequirement(displayedUpgrade);
+      const affordable = state.knowledge >= displayedUpgrade.cost;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `upgrade-card trait-card tier-${displayedUpgrade.tier} ${unlocked ? "unlocked" : ""} ${!requirementMet ? "locked" : ""}`;
+      button.disabled = unlocked || !state.started || !requirementMet || !affordable;
+      const status = unlocked ? "УСТАНОВЛЕНО" : !requirementMet ? `НУЖНО: ${upgradeRequirementName(displayedUpgrade)}` : `${displayedUpgrade.cost} ОЧКОВ ЗНАНИЙ${displayedUpgrade.alert ? ` · +${displayedUpgrade.alert}% ВНИМАНИЯ` : ""}`;
+      button.innerHTML = `<small>${displayedUpgrade.tier === 1 ? "БАЗОВЫЙ УРОВЕНЬ" : `УРОВЕНЬ ${displayedUpgrade.tier}`} · ${status}</small><strong>${displayedUpgrade.name}</strong><em>${displayedUpgrade.effect}</em><span class="trait-tradeoff">${displayedUpgrade.tradeoff}</span>`;
+      button.addEventListener("click", () => buyUpgrade(displayedUpgrade));
+      stack.appendChild(button);
     });
-    element("upgrade-note").textContent = state.started ? `${state.knowledge} ОЧКОВ ЗНАНИЙ` : "ЗАПУСТИ СЦЕНАРИЙ";
+    section.appendChild(stack);
+    grid.appendChild(section);
+    const hybridNote = traitDeck.hybridTraitCount ? ` · ГИБРИД ${traitDeck.hybridTraitCount}/${traitDeck.traits.length}` : "";
+    element("upgrade-note").textContent = state.started ? `${state.knowledge} ОЧКОВ · ${traitDeck.librarySize} ТРЕЙТОВ${hybridNote}` : `${traitDeck.librarySize} ТРЕЙТОВ НА КЛАСС`;
   }
 
   /** Возвращает текст журнальной записи старого или нового формата сохранения. */
@@ -697,6 +843,10 @@
       worldResponse: createWorldResponse(),
       economicDamage: 0,
       scenarioProfit: 0,
+      directive: null,
+      directiveTurns: 0,
+      targetCountry: null,
+      upgradeBranch: "surface",
       log: [`Учебная модель «${scenario?.name || "Сценарий"}» подготовлена. Выбери страну старта на мировой карте.`]
     });
     showScreen("game");
@@ -718,10 +868,12 @@
     if (!saved) return;
     const loaded = saved.state;
     if (!isKnownScenario(loaded.threatType)) return;
+    const restoredCountries = { ...countryStates(), ...(loaded.countries || {}) };
+    const restoredTarget = COUNTRIES.some(country => country.id === loaded.targetCountry) && restoredCountries[loaded.targetCountry] === "open" ? loaded.targetCountry : null;
     Object.assign(state, loaded, {
       threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
       hybridTypes: normalizeHybridTypes(loaded.hybridTypes, loaded.threatType),
-      countries: { ...countryStates(), ...(loaded.countries || {}) },
+      countries: restoredCountries,
       upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
       knowledge: Number.isFinite(loaded.knowledge) ? loaded.knowledge : Number.isFinite(loaded.signal) ? loaded.signal : 4,
       worldResponse: restoreWorldResponse(loaded.worldResponse),
@@ -731,8 +883,17 @@
       result: typeof loaded.result === "string" ? loaded.result : null,
       economicDamage: Number.isFinite(loaded.economicDamage) ? loaded.economicDamage : 0,
       scenarioProfit: Number.isFinite(loaded.scenarioProfit) ? loaded.scenarioProfit : 0,
+      directive: OPERATIONAL_DIRECTIVES[loaded.directive] ? loaded.directive : null,
+      directiveTurns: Number.isFinite(loaded.directiveTurns) ? clamp(Math.floor(loaded.directiveTurns), 0, 2) : 0,
+      targetCountry: restoredTarget,
+      upgradeBranch: UPGRADE_BRANCHES.some(branch => branch.id === loaded.upgradeBranch) ? loaded.upgradeBranch : "surface",
       log: Array.isArray(loaded.log) ? loaded.log.slice(0, 12) : ["Сценарий восстановлен из локального сохранения."]
     });
+    if (!state.active) {
+      state.directive = null;
+      state.directiveTurns = 0;
+      state.targetCountry = null;
+    }
     previousFrameTime = performance.now();
     showScreen("game");
     renderAll();
@@ -866,20 +1027,35 @@
     if (!state.active) return;
     state.turn += 1;
     const stats = effectiveStats();
+    const directive = activeDirective();
     const targets = openNeighbors();
+    if (state.targetCountry && !targets.some(country => country.id === state.targetCountry)) {
+      const previousTarget = countriesById.get(state.targetCountry);
+      state.targetCountry = null;
+      pushLog(`Фокус на стране «${previousTarget?.name || "цели"}» снят: она больше не доступна из активной карты.`);
+    }
     const backgroundEvent = resolveBackgroundEvent();
     const response = state.worldResponse;
     const attempts = Math.min(targets.length, 1 + Math.floor(stats.speed / 4) + (hasUpgrade("relayMap") ? 1 : 0) + (hasUpgrade("wideMap") ? 1 : 0));
     let newSignals = 0;
+    let focusedSignal = false;
     const sourceActivity = activeCountries().reduce((total, country) => total + country.activity, 0) / Math.max(1, activeCountries().length);
     for (let index = 0; index < attempts; index += 1) {
       const candidates = openNeighbors();
       if (!candidates.length) break;
-      const target = randomItem(candidates);
-      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundEvent.spread + (hasUpgrade("cascade") ? .08 : 0) - target.defense * .0027 - response.patching * .0012 - response.monitoring * .001;
+      const target = index === 0 && state.targetCountry
+        ? candidates.find(country => country.id === state.targetCountry) || randomItem(candidates)
+        : randomItem(candidates);
+      const focusedTarget = target.id === state.targetCountry;
+      const chance = .18 + stats.speed * .052 + sourceActivity * .0025 + backgroundEvent.spread + (directive?.spread || 0) + (focusedTarget ? .12 : 0) + (hasUpgrade("cascade") ? .08 : 0) - target.defense * .0027 - response.patching * .0012 - response.monitoring * .001;
       if (Math.random() < chance) {
         state.countries[target.id] = "infected";
         newSignals += 1;
+        if (focusedTarget) {
+          focusedSignal = true;
+          state.targetCountry = null;
+          pushLog(`Ручной фокус помог приоритетной проверке страны «${target.name}».`);
+        }
         pushLog(`Модель зафиксировала новую затронутую территорию: «${target.name}». Регион добавлен в карту кампании.`);
       }
     }
@@ -889,8 +1065,8 @@
     const scenarioEconomy = activeScenarioEconomy();
     const activeCount = activeCountries().length;
     const profileMultiplier = scenarioResultMultiplier();
-    const pressureMultiplier = scenarioEconomy.impact >= scenarioEconomy.yield ? profileMultiplier : 1;
-    const profitMultiplier = scenarioEconomy.yield > scenarioEconomy.impact ? profileMultiplier : 1;
+    const pressureMultiplier = (scenarioEconomy.impact >= scenarioEconomy.yield ? profileMultiplier : 1) * (directive?.impactMultiplier || 1);
+    const profitMultiplier = (scenarioEconomy.yield > scenarioEconomy.impact ? profileMultiplier : 1) * (directive?.impactMultiplier || 1);
     const pressureGain = (4 + activeCount * 3 + newSignals * 9) * scenarioEconomy.impact / 100 * pressureMultiplier;
     const profitGain = (1 + newSignals + Math.max(0, 35 - state.alert) / 35) * scenarioEconomy.yield / 100 * profitMultiplier;
     const totalImpact = Math.round(pressureGain) + Math.round(profitGain);
@@ -901,11 +1077,19 @@
     const averageDefense = activeCountries().reduce((total, country) => total + country.defense, 0) / Math.max(1, activeCountries().length);
     const awarenessStep = 3 + averageDefense * .028 - stats.stealth * .52 - (hasUpgrade("veil") ? 1.1 : 0) - (hasUpgrade("shadowBalance") ? .7 : 0);
     const markAttention = newSignals * (hasUpgrade("shadowBalance") ? 1.5 : 2.2);
-    state.alert = clamp(state.alert + awarenessStep + markAttention, 0, 100);
+    const focusAttention = focusedSignal ? 1.4 : 0;
+    state.alert = clamp(state.alert + awarenessStep + markAttention + (directive?.attention || 0) + focusAttention, 0, 100);
     if (hasUpgrade("campaignDiscipline") && !newSignals) state.alert = clamp(state.alert - 1, 0, 100);
     advanceWorldResponse(newSignals, totalImpact);
     const defenseResult = containSignal();
     recoverContainedNode();
+    if (directive) {
+      state.directiveTurns = Math.max(0, state.directiveTurns - 1);
+      if (!state.directiveTurns) {
+        pushLog(`Действие директивы «${directive.name}» завершено. Выбери следующий приоритет.`);
+        state.directive = null;
+      }
+    }
     if (defenseResult !== "мониторинг без изоляции") pushLog(`Статус защитной реакции: ${defenseResult}.`);
     const influenced = activeCountries().length;
     if (evaluateScenarioObjective()) {
@@ -941,6 +1125,10 @@
     state.worldResponse = createWorldResponse();
     state.economicDamage = 0;
     state.scenarioProfit = 0;
+    state.directive = null;
+    state.directiveTurns = 0;
+    state.targetCountry = null;
+    state.upgradeBranch = "surface";
     state.log = ["Учебная среда сброшена. Выбери новую страну старта на мировой карте."];
     renderAll();
   }
@@ -948,6 +1136,12 @@
   element("continue-game").addEventListener("click", continueGame);
   element("launch-simulation").addEventListener("click", launchSimulation);
   element("reset-simulation").addEventListener("click", resetSimulation);
+  element("directive-grid").addEventListener("click", event => {
+    const button = event.target.closest("[data-directive]");
+    if (button) selectDirective(button.dataset.directive);
+  });
+  element("set-strategic-target").addEventListener("click", setStrategicTarget);
+  element("clear-strategic-target").addEventListener("click", clearStrategicTarget);
   element("time-controls").addEventListener("click", event => {
     const button = event.target.closest("[data-time-scale]");
     if (button) setTimeScale(button.dataset.timeScale);

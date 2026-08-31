@@ -1,7 +1,7 @@
 // Управляет отображением отдельной страницы конструктора учебных сценариев HackBox.
 
 (() => {
-const { findScenario, findScenarioVariant, getDefaultScenarioVariant, listScenarioIds } = window.HackboxDomain;
+const { findScenario, findScenarioVariant, getDefaultScenarioVariant, listScenarioIds, traitCoverage } = window.HackboxDomain;
 const { saveScenarioDraft } = window.HackboxRepository;
 
 const scenarioIds = listScenarioIds();
@@ -132,6 +132,10 @@ function renderScenarioProfile(scenario, variant) {
   element("scenario-profile-description").textContent = `${scenario.role} ${variant.effect}`;
   element("scenario-realtime-text").textContent = scenario.cycle;
   element("scenario-hybrid-text").textContent = hybridSummary();
+  const coverage = traitCoverage(selectedId, selectedHybridIds);
+  element("scenario-trait-text").textContent = coverage.hybridTraitCount
+    ? `${coverage.totalTraits} трейтов базового класса; ${coverage.hybridTraitCount} из ${coverage.deckSize} игровых слотов комбинированы (${Math.round(coverage.hybridShare * 100)}%).`
+    : `${coverage.totalTraits} уникальных игровых трейтов. При совмещении классов не менее 15% колоды станет комбинированной.`;
   const economy = mixedEconomy(scenario);
   element("scenario-impact").textContent = String(Math.round(economy.impact)).padStart(2, "0");
   element("scenario-yield").textContent = String(Math.round(economy.yield)).padStart(2, "0");

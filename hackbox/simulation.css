@@ -367,3 +367,215 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Добавляет выбор тактики между реалтайм-циклами симуляции. */
+.strategy-card {
+  background: linear-gradient(145deg, #10272d, #091419);
+  border: 1px solid #36535b;
+  padding: 11px;
+}
+
+.strategy-card .rail-heading {
+  margin-bottom: 9px;
+}
+
+.strategy-card > p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+
+.directive-grid {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.directive-grid button,
+.strategy-target button {
+  background: #0a161b;
+  border: 1px solid #304b53;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 8px 6px;
+  text-align: left;
+}
+
+.directive-grid button:hover:not(:disabled),
+.strategy-target button:hover:not(:disabled) {
+  border-color: var(--cyan);
+}
+
+.directive-grid button.active {
+  background: #173137;
+  border-color: var(--cyan);
+  box-shadow: inset 0 -2px var(--cyan);
+}
+
+.directive-grid strong,
+.directive-grid span,
+.strategy-target span,
+.strategy-target b {
+  display: block;
+}
+
+.directive-grid strong,
+.strategy-target span,
+.strategy-target button {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: .05em;
+}
+
+.directive-grid strong {
+  color: var(--cyan);
+  margin-bottom: 5px;
+}
+
+.directive-grid span {
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.35;
+}
+
+.directive-grid button:disabled,
+.strategy-target button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.strategy-target {
+  border-top: 1px solid #29464e;
+  margin-top: 10px;
+  padding-top: 9px;
+}
+
+.strategy-target > span {
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: .07em;
+}
+
+.strategy-target > b {
+  color: var(--lime);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 8px;
+  line-height: 1.35;
+  margin: 5px 0 8px;
+}
+
+.strategy-target > div {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.strategy-target button {
+  color: var(--muted);
+  padding: 7px;
+}
+
+.country-boundary.targetable {
+  stroke: #8aa8ad;
+  stroke-dasharray: 2 2;
+}
+
+.country-boundary.targeted {
+  fill: #3d4b27;
+  filter: drop-shadow(0 0 5px rgba(199, 232, 121, .55));
+  stroke: var(--lime);
+  stroke-width: 1.6;
+}
+
+/* Разделяет ветви дерева по вкладкам и показывает одну читаемую ветвь за раз. */
+.upgrade-tabs {
+  display: flex;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-color: #48676e #0a151a;
+}
+
+.upgrade-tab {
+  background: #0a151a;
+  border: 1px solid #29464e;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: .06em;
+  min-width: 156px;
+  padding: 11px 13px;
+  text-align: left;
+}
+
+.upgrade-tab + .upgrade-tab {
+  border-left: 0;
+}
+
+.upgrade-tab:hover {
+  color: var(--cyan);
+}
+
+.upgrade-tab.active {
+  background: #173137;
+  box-shadow: inset 0 -2px var(--cyan);
+  color: var(--cyan);
+}
+
+.upgrade-tab span,
+.upgrade-tab b {
+  display: block;
+}
+
+.upgrade-tab span {
+  color: #5d7d82;
+  font-size: 7px;
+  margin-bottom: 4px;
+}
+
+.upgrade-tab b {
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.upgrade-grid.evolution-tree {
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trait-stack {
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trait-card + .trait-card::before {
+  bottom: auto;
+  height: 1px;
+  left: auto;
+  right: 100%;
+  top: 50%;
+  width: 12px;
+}
+
+@media (max-width: 620px) {
+  .directive-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trait-stack {
+    gap: 19px;
+    grid-template-columns: 1fr;
+  }
+
+  .trait-card + .trait-card::before {
+    bottom: 100%;
+    height: 19px;
+    left: 50%;
+    right: auto;
+    top: auto;
+    width: 1px;
+  }
+}
