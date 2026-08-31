@@ -11,7 +11,7 @@
   <main class="catalog-shell" aria-labelledby="catalog-title">
     <header class="catalog-header">
       <a class="brand" href="index.html" aria-label="Вернуться на стартовый экран HackBox"><span class="brand-mark">HB</span><span><b>HACK</b><strong>BOX</strong><em>GLOBAL SIGNAL SIMULATION</em></span></a>
-      <p>Отдельная страница конструктора безопасных учебных сценариев</p>
+      <p>Отдельная страница создания безопасных учебных сценариев</p>
     </header>
 
     <section class="catalog-intro">
@@ -26,6 +26,9 @@
         <div id="scenario-type-grid" class="scenario-type-grid" role="radiogroup" aria-label="Тип учебного игрового сценария"></div>
         <div class="catalog-label scenario-variant-label"><span>ВАРИАНТ УЧЕБНОЙ МОДЕЛИ</span><b id="variant-count">3 ВАРИАНТА</b></div>
         <div id="scenario-variant-grid" class="scenario-variant-grid" role="radiogroup" aria-label="Вариант учебного игрового сценария"></div>
+        <div class="catalog-label hybrid-scenario-label"><span>СОВМЕЩАЕМЫЕ КЛАССЫ</span><b id="hybrid-count">0 / 2</b></div>
+        <p class="hybrid-scenario-hint">Необязательно: выбери до двух дополнительных классов. Они меняют только условные игровые показатели и не описывают реальные способы создания или распространения ПО.</p>
+        <div id="scenario-hybrid-grid" class="scenario-hybrid-grid" aria-label="Дополнительные классы гибридного учебного сценария"></div>
       </div>
 
       <aside class="scenario-profile" aria-live="polite">
@@ -34,7 +37,8 @@
         <h2 id="scenario-profile-name">Вирусы</h2>
         <b id="scenario-profile-variant" class="scenario-profile-variant">БАЗОВАЯ МОДЕЛЬ</b>
         <p id="scenario-profile-description">Выбери тип, чтобы увидеть его игровую роль.</p>
-        <div class="scenario-cycle"><span>ИГРОВОЙ ЦИКЛ</span><p id="scenario-cycle-text"></p></div>
+        <div class="scenario-cycle"><span>РЕЖИМ В РЕАЛЬНОМ ВРЕМЕНИ</span><p id="scenario-realtime-text"></p></div>
+        <div class="scenario-hybrid-summary"><span>СОВМЕЩЕНИЕ</span><p id="scenario-hybrid-text">Только базовый класс</p></div>
         <div class="scenario-economy"><div><span>ЭКОНОМИЧЕСКОЕ ДАВЛЕНИЕ</span><b id="scenario-impact">00</b></div><div><span>УСЛОВНАЯ ПРИБЫЛЬ</span><b id="scenario-yield">00</b></div></div>
         <p class="scenario-disclaimer">Показатели — исключительно для вымышленной симуляции. Они не описывают реальные атаки, доходы или уязвимости.</p>
         <button id="start-scenario" class="entry-primary" type="button">Создать сценарий <span>→</span></button>

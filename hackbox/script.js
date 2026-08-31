@@ -139,24 +139,24 @@
   ];
 
   const UPGRADES = [
-    { id: "relayMap", branch: "surface", tier: 1, cost: 2, name: "Карта поверхности", effect: "+1 кандидат на развитие карты за цикл", tradeoff: "Широкая поверхность повышает объём наблюдаемой активности." },
+    { id: "relayMap", branch: "surface", tier: 1, cost: 2, name: "Карта поверхности", effect: "+1 кандидат при расширении карты", tradeoff: "Широкая поверхность повышает объём наблюдаемой активности." },
     { id: "cascade", branch: "surface", tier: 2, cost: 4, alert: 2, requires: "relayMap", name: "Связность экосистемы", effect: "+8% к вероятности новой отметки", tradeoff: "Рост связности ускоряет реакцию защитных команд." },
     { id: "wideMap", branch: "surface", tier: 3, cost: 7, alert: 4, requires: "cascade", name: "Многоконтурный охват", effect: "ещё один кандидат на развитие карты", tradeoff: "Масштабирование увеличивает заметность кампании." },
-    { id: "veil", branch: "detection", tier: 1, cost: 2, name: "Снижение наблюдаемости", effect: "меньше роста внимания за цикл", tradeoff: "Низкий профиль означает более осторожный темп." },
+    { id: "veil", branch: "detection", tier: 1, cost: 2, name: "Снижение наблюдаемости", effect: "меньше роста внимания со временем", tradeoff: "Низкий профиль означает более осторожный темп." },
     { id: "quietCore", branch: "detection", tier: 2, cost: 4, requires: "veil", name: "Низкошумный профиль", effect: "+1 к скрытности модели", tradeoff: "Защитные команды всё равно адаптируются со временем." },
     { id: "shadowBalance", branch: "detection", tier: 3, cost: 7, requires: "quietCore", name: "Контроль аномалий", effect: "сдерживает всплески внимания при расширении", tradeoff: "Не исключает расследование при высокой активности." },
     { id: "anchor", branch: "resilience", tier: 1, cost: 3, name: "Целостность исполнения", effect: "+1 к устойчивости модели", tradeoff: "Устойчивость требует больше очков знаний." },
     { id: "lattice", branch: "resilience", tier: 2, cost: 5, requires: "anchor", name: "Резервирование состояния", effect: "изоляция узла причиняет меньше вреда кампании", tradeoff: "Резервные контуры могут вызвать дополнительное внимание." },
     { id: "recoveryLoop", branch: "resilience", tier: 3, cost: 8, alert: 1, requires: "lattice", name: "Контур восстановления", effect: "редко возвращает изолированный узел в модель", tradeoff: "Возвращение узла оставляет дополнительный след в журнале защиты." },
-    { id: "chorus", branch: "impact", tier: 1, cost: 3, name: "Приоритизация телеметрии", effect: "+1 очко знаний за цикл с новой отметкой", tradeoff: "Модель вознаграждает качество результата, а не скорость любой ценой." },
-    { id: "resourceCache", branch: "impact", tier: 2, cost: 5, requires: "chorus", name: "Пул вычислений", effect: "+1 очко знаний каждый третий цикл", tradeoff: "Накопление ресурса не снижает вероятность обнаружения." },
+    { id: "chorus", branch: "impact", tier: 1, cost: 3, name: "Приоритизация телеметрии", effect: "+1 очко знаний при новой отметке", tradeoff: "Модель вознаграждает качество результата, а не скорость любой ценой." },
+    { id: "resourceCache", branch: "impact", tier: 2, cost: 5, requires: "chorus", name: "Пул вычислений", effect: "периодически +1 очко знаний", tradeoff: "Накопление ресурса не снижает вероятность обнаружения." },
     { id: "compoundYield", branch: "impact", tier: 3, cost: 8, alert: 2, requires: "resourceCache", name: "Модель последствий", effect: "+1 очко знаний при значимом экономическом результате", tradeoff: "Сильное воздействие повышает приоритет расследования." },
     { id: "switchback", branch: "response", tier: 1, cost: 3, name: "Контекст среды", effect: "изменения среды учитываются чаще", tradeoff: "Часть событий работает в пользу защитного контура." },
     { id: "adaptiveRhythm", branch: "response", tier: 2, cost: 5, requires: "switchback", name: "Адаптивная модель", effect: "благоприятные события сильнее снижают внимание", tradeoff: "Региональные обновления и мониторинг всё ещё могут замедлять кампанию." },
     { id: "responseWindow", branch: "response", tier: 3, cost: 8, alert: 2, requires: "adaptiveRhythm", name: "Окно принятия решений", effect: "благоприятные события могут принести +1 очко знаний", tradeoff: "Нельзя предсказать, каким будет следующее событие среды." },
     { id: "scenarioFocus", branch: "campaign", tier: 1, cost: 4, alert: 1, name: "Профилирование цели", effect: "+8% к профильному результату", tradeoff: "Фокус на результате увеличивает ценность кампании для защитного анализа." },
     { id: "scenarioMastery", branch: "campaign", tier: 2, cost: 8, alert: 3, requires: "scenarioFocus", name: "Операционное планирование", effect: "ещё +12% к профильному результату", tradeoff: "Планирование не отменяет глобальные защитные контрмеры." },
-    { id: "campaignDiscipline", branch: "campaign", tier: 3, cost: 10, requires: "scenarioMastery", name: "Дисциплина кампании", effect: "−1 внимания в спокойный цикл", tradeoff: "Работает только без нового расширения карты в этом цикле." }
+    { id: "campaignDiscipline", branch: "campaign", tier: 3, cost: 10, requires: "scenarioMastery", name: "Дисциплина кампании", effect: "−1 внимания в спокойное время", tradeoff: "Работает только без нового расширения карты." }
   ];
 
   const upgradesById = new Map(UPGRADES.map(upgrade => [upgrade.id, upgrade]));
@@ -175,6 +175,7 @@
     scenarioName: "СЕРАЯ ПЕТЛЯ",
     threatType: "virus",
     threatVariant: "standard",
+    hybridTypes: [],
     stealth: 3,
     speed: 3,
     resilience: 2,
@@ -211,16 +212,45 @@
     return activeThreatType().variants.find(variant => variant.id === state.threatVariant) || activeThreatType().variants[0];
   }
 
-  /** Складывает балансные модификаторы сценария и его варианта. */
+  /** Возвращает проверенные дополнительные классы смешанного учебного сценария. */
+  function activeHybridThreats() {
+    return Array.isArray(state.hybridTypes)
+      ? state.hybridTypes.filter(id => id !== state.threatType && isKnownScenario(id)).slice(0, 2).map(id => THREAT_TYPES[id])
+      : [];
+  }
+
+  /** Нормализует идентификаторы дополнительных классов, сохраняя не более двух. */
+  function normalizeHybridTypes(ids, primaryId) {
+    return Array.isArray(ids)
+      ? [...new Set(ids.filter(id => id !== primaryId && isKnownScenario(id)))].slice(0, 2)
+      : [];
+  }
+
+  /** Складывает условные модификаторы базового, вариантного и смешанного профилей. */
   function threatModifiers() {
     const type = activeThreatType();
     const variant = activeThreatVariant();
-    return [type.modifiers, variant.modifiers].reduce((total, modifier) => ({
+    const hybrids = activeHybridThreats();
+    const weights = hybrids.length === 2 ? [.58, .21, .21] : hybrids.length === 1 ? [.65, .35] : [1];
+    const scenarioModifiers = [type, ...hybrids].map((item, index) => Object.fromEntries(
+      Object.entries(item.modifiers).map(([key, value]) => [key, value * weights[index]])
+    ));
+    return [...scenarioModifiers, variant.modifiers].reduce((total, modifier) => ({
       stealth: total.stealth + (modifier.stealth || 0),
       speed: total.speed + (modifier.speed || 0),
       resilience: total.resilience + (modifier.resilience || 0),
       alert: total.alert + (modifier.alert || 0)
     }), { stealth: 0, speed: 0, resilience: 0, alert: 0 });
+  }
+
+  /** Возвращает взвешенный условный экономический профиль смешанного сценария. */
+  function activeScenarioEconomy() {
+    const scenarios = [activeThreatType(), ...activeHybridThreats()];
+    const weights = scenarios.length === 3 ? [.62, .19, .19] : scenarios.length === 2 ? [.74, .26] : [1];
+    return scenarios.reduce((total, item, index) => ({
+      impact: total.impact + item.economy.impact * weights[index],
+      yield: total.yield + item.economy.yield * weights[index]
+    }), { impact: 0, yield: 0 });
   }
 
   /** Проверяет, приобретена ли конкретная игровая адаптация. */
@@ -284,8 +314,10 @@
   function renderScenarioIdentity() {
     const threat = activeThreatType();
     const variant = activeThreatVariant();
+    const hybrids = activeHybridThreats();
+    const hybridContext = hybrids.length ? ` · ГИБРИД / ${hybrids.map(item => item.name.toUpperCase()).join(" + ")}` : "";
     element("scenario-title").textContent = state.scenarioName || threat.name.toUpperCase();
-    element("scenario-context").textContent = `SCENARIO / ${threat.name.toUpperCase()} · ${variant.name.toUpperCase()}`;
+    element("scenario-context").textContent = `SCENARIO / ${threat.name.toUpperCase()} · ${variant.name.toUpperCase()}${hybridContext}`;
   }
 
   /** Рендерит краткий профиль выбранной или просматриваемой страны. */
@@ -460,7 +492,7 @@
 
   /** Выбирает безопасную цель кампании по балансному профилю текущего сценария. */
   function activeScenarioObjective() {
-    const economy = activeThreatType().economy;
+    const economy = activeScenarioEconomy();
     if (economy.impact >= 80) {
       return { name: "ПРЕДЕЛ УСТОЙЧИВОСТИ", description: "Накопи игровое экономическое давление до ответа защитного контура.", metric: "economicDamage", target: 900, unit: "ОЧКОВ" };
     }
@@ -632,18 +664,20 @@
   /**
    * Инициализирует игровое состояние по безопасному черновику из конструктора.
    *
-   * @param {{scenarioId: string, variantId: string, scenarioName: string}} draft Данные выбранного игрового сценария.
+   * @param {{scenarioId: string, variantId: string, hybridTypeIds?: string[], scenarioName: string}} draft Данные выбранного игрового сценария.
    * @returns {void}
    */
   function startNewScenario(draft) {
     const scenarioId = isKnownScenario(draft.scenarioId) ? draft.scenarioId : listScenarioIds()[0];
     const scenario = findScenario(scenarioId);
     const variant = findScenarioVariant(scenarioId, draft.variantId);
+    const hybridTypes = normalizeHybridTypes(draft.hybridTypeIds, scenarioId);
     Object.assign(state, {
       gameCreated: true,
       scenarioName: draft.scenarioName || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ",
       threatType: scenarioId,
       threatVariant: variant?.id || "standard",
+      hybridTypes,
       stealth: 3,
       speed: 3,
       resilience: 2,
@@ -686,6 +720,7 @@
     if (!isKnownScenario(loaded.threatType)) return;
     Object.assign(state, loaded, {
       threatVariant: THREAT_TYPES[loaded.threatType].variants.some(variant => variant.id === loaded.threatVariant) ? loaded.threatVariant : THREAT_TYPES[loaded.threatType].variants[0].id,
+      hybridTypes: normalizeHybridTypes(loaded.hybridTypes, loaded.threatType),
       countries: { ...countryStates(), ...(loaded.countries || {}) },
       upgrades: Array.isArray(loaded.upgrades) ? loaded.upgrades.filter(id => UPGRADES.some(upgrade => upgrade.id === id)) : [],
       knowledge: Number.isFinite(loaded.knowledge) ? loaded.knowledge : Number.isFinite(loaded.signal) ? loaded.signal : 4,
@@ -772,7 +807,7 @@
     if (Math.random() > chance) return { spread: 0, knowledge: 0 };
     const events = [
       { message: `Пользовательская активность в ${country.name} изменила поведенческий профиль среды.`, spread: .17, alert: -4, positive: true, reaction: { awareness: 1 } },
-      { message: `Региональный цикл обновлений в ${country.name} сузил доступную учебную поверхность.`, spread: -.07, alert: 3, positive: false, reaction: { patching: 3, monitoring: 1 } },
+      { message: `Региональная волна обновлений в ${country.name} сузила доступную учебную поверхность.`, spread: -.07, alert: 3, positive: false, reaction: { patching: 3, monitoring: 1 } },
       { message: `Защитный мониторинг в ${country.name} повысил качество наблюдения за аномалиями.`, spread: -.04, alert: 5, positive: false, reaction: { monitoring: 4, coordination: 1 } },
       { message: `Неоднородность цифровой среды в ${country.name} кратко ослабила точность защитного контура.`, spread: .08, alert: -2, positive: true, reaction: { awareness: 1 } }
     ];
@@ -851,7 +886,7 @@
     if (!newSignals) pushLog("Новая отметка не появилась: условия среды и защитный контур удержали текущую границу кампании.");
     let knowledgeGain = 1 + newSignals + (newSignals && hasUpgrade("chorus") ? 1 : 0) + backgroundEvent.knowledge;
     if (hasUpgrade("resourceCache") && state.turn % 3 === 0) knowledgeGain += 1;
-    const scenarioEconomy = activeThreatType().economy;
+    const scenarioEconomy = activeScenarioEconomy();
     const activeCount = activeCountries().length;
     const profileMultiplier = scenarioResultMultiplier();
     const pressureMultiplier = scenarioEconomy.impact >= scenarioEconomy.yield ? profileMultiplier : 1;

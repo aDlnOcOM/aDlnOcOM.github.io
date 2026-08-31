@@ -7,6 +7,7 @@ const { saveScenarioDraft } = window.HackboxRepository;
 const scenarioIds = listScenarioIds();
 let selectedId = scenarioIds[0] || "";
 let selectedVariantId = getDefaultScenarioVariant(selectedId)?.id || "standard";
+let selectedHybridIds = [];
 
 /**
  * Возвращает DOM-элемент по его уникальному идентификатору.
@@ -37,6 +38,7 @@ function createScenarioButton(id, index) {
   button.addEventListener("click", () => {
     selectedId = id;
     selectedVariantId = getDefaultScenarioVariant(id)?.id || "standard";
+    selectedHybridIds = selectedHybridIds.filter(hybridId => hybridId !== id);
     renderCatalog();
   });
   return button;
@@ -65,6 +67,57 @@ function createVariantButton(variant, index) {
 }
 
 /**
+ * Создаёт карточку дополнительного класса для безопасного смешанного сценария.
+ *
+ * @param {string} id Идентификатор дополнительного класса.
+ * @returns {HTMLButtonElement} Готовая интерактивная карточка смешения.
+ */
+function createHybridButton(id) {
+  const scenario = findScenario(id);
+  const isSelected = selectedHybridIds.includes(id);
+  const limitReached = selectedHybridIds.length >= 2;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `scenario-hybrid ${isSelected ? "selected" : ""}`;
+  button.setAttribute("aria-pressed", String(isSelected));
+  button.disabled = !isSelected && limitReached;
+  button.innerHTML = `<small>${isSelected ? "ДОБАВЛЕНО" : "ДОПОЛНИТЕЛЬНЫЙ КЛАСС"}</small><strong>${scenario.name}</strong><em>${scenario.role}</em>`;
+  button.addEventListener("click", () => {
+    selectedHybridIds = isSelected
+      ? selectedHybridIds.filter(hybridId => hybridId !== id)
+      : [...selectedHybridIds, id].slice(0, 2);
+    renderCatalog();
+  });
+  return button;
+}
+
+/**
+ * Возвращает смешанные условные показатели без описания реальных технических механизмов.
+ *
+ * @param {object} scenario Основной учебный сценарий.
+ * @returns {{impact: number, yield: number}} Условные показатели итоговой модели.
+ */
+function mixedEconomy(scenario) {
+  const hybrids = selectedHybridIds.map(id => findScenario(id)).filter(Boolean);
+  const sources = [scenario, ...hybrids];
+  const weights = sources.length === 3 ? [.62, .19, .19] : sources.length === 2 ? [.74, .26] : [1];
+  return sources.reduce((total, item, index) => ({
+    impact: total.impact + item.economy.impact * weights[index],
+    yield: total.yield + item.economy.yield * weights[index]
+  }), { impact: 0, yield: 0 });
+}
+
+/**
+ * Формирует короткое безопасное описание выбранного смешения классов.
+ *
+ * @returns {string} Текст для карточки профиля.
+ */
+function hybridSummary() {
+  const hybrids = selectedHybridIds.map(id => findScenario(id)).filter(Boolean);
+  return hybrids.length ? `Базовый класс + ${hybrids.map(item => item.name).join(" + ")}` : "Только базовый класс";
+}
+
+/**
  * Обновляет карточку с игровыми параметрами выбранного сценария.
  *
  * @param {object} scenario Текущий учебный сценарий.
@@ -77,9 +130,11 @@ function renderScenarioProfile(scenario, variant) {
   element("scenario-profile-name").textContent = scenario.name;
   element("scenario-profile-variant").textContent = variant.name.toUpperCase();
   element("scenario-profile-description").textContent = `${scenario.role} ${variant.effect}`;
-  element("scenario-cycle-text").textContent = scenario.cycle;
-  element("scenario-impact").textContent = String(scenario.economy.impact).padStart(2, "0");
-  element("scenario-yield").textContent = String(scenario.economy.yield).padStart(2, "0");
+  element("scenario-realtime-text").textContent = scenario.cycle;
+  element("scenario-hybrid-text").textContent = hybridSummary();
+  const economy = mixedEconomy(scenario);
+  element("scenario-impact").textContent = String(Math.round(economy.impact)).padStart(2, "0");
+  element("scenario-yield").textContent = String(Math.round(economy.yield)).padStart(2, "0");
 }
 
 /**
@@ -96,8 +151,12 @@ function renderCatalog() {
   const variantGrid = element("scenario-variant-grid");
   variantGrid.innerHTML = "";
   selected?.variants.forEach((item, index) => variantGrid.appendChild(createVariantButton(item, index)));
+  const hybridGrid = element("scenario-hybrid-grid");
+  hybridGrid.innerHTML = "";
+  scenarioIds.filter(id => id !== selectedId).forEach(id => hybridGrid.appendChild(createHybridButton(id)));
   element("catalog-count").textContent = `${scenarioIds.length} ТИПА`;
   element("variant-count").textContent = `${selected?.variants.length || 0} ВАРИАНТА`;
+  element("hybrid-count").textContent = `${selectedHybridIds.length} / 2`;
   if (selected && variant) renderScenarioProfile(selected, variant);
 }
 
@@ -109,7 +168,7 @@ function renderCatalog() {
 function startScenario() {
   const input = element("scenario-name");
   const scenarioName = input.value.trim().toUpperCase() || "БЕЗЫМЯННЫЙ СЦЕНАРИЙ";
-  const saved = saveScenarioDraft({ scenarioId: selectedId, variantId: selectedVariantId, scenarioName });
+  const saved = saveScenarioDraft({ scenarioId: selectedId, variantId: selectedVariantId, hybridTypeIds: selectedHybridIds, scenarioName });
   window.location.assign(saved ? "index.html?new=1" : "index.html");
 }
 
