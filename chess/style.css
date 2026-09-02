@@ -396,6 +396,36 @@ body {
   font-weight: 700;
 }
 
+.history-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.history-action {
+  align-items: center;
+  background: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 18px;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  width: 28px;
+}
+
+.history-action:hover:not(:disabled) {
+  background: var(--control-hover);
+}
+
+.history-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
 #move-count,
 #replay-position {
   color: var(--text);

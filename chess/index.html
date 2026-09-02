@@ -32,6 +32,7 @@
             <option value="9">10 · Легенда</option>
             <option value="10">11 · Алекс</option>
             <option value="11">12 · Леотис</option>
+            <option value="12">13 · Алекс Д’ Леотис</option>
           </select>
         </label>
         <label class="setting-control" for="theme">
@@ -59,7 +60,10 @@
       <aside class="move-history" aria-labelledby="history-title">
         <div class="history-heading">
           <h2 id="history-title">История партии</h2>
-          <output id="move-count" aria-live="polite">0 ходов</output>
+          <div class="history-actions">
+            <output id="move-count" aria-live="polite">0 ходов</output>
+            <button id="undo-turn" class="history-action" type="button" aria-label="Отменить последний ход игрока" title="Отменить ход" disabled>↶</button>
+          </div>
         </div>
         <ol id="move-list" class="move-list" aria-label="Список ходов">
           <li class="history-empty">Пока ходов нет</li>

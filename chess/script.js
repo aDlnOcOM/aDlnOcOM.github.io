@@ -22,7 +22,8 @@
     { label: "Гроссмейстер", depth: 3, candidates: 2, mistakeChance: 0.06, mistakePool: 3 },
     { label: "Легенда", depth: 4, candidates: 1, mistakeChance: 0, mistakePool: 1 },
     { label: "Алекс", depth: 5, candidates: 1, mistakeChance: 0, mistakePool: 1, engine: "alex" },
-    { label: "Леотис", depth: 7, candidates: 1, mistakeChance: 0, mistakePool: 1, engine: "leotis" }
+    { label: "Леотис", depth: 7, candidates: 1, mistakeChance: 0, mistakePool: 1, engine: "leotis" },
+    { label: "Алекс Д’ Леотис", depth: 12, candidates: 1, mistakeChance: 0, mistakePool: 1, engine: "stockfish" }
   ];
   const LEOTIS_TIME_LIMIT = 1200;
   const THEMES = new Set(["midnight", "ivory", "forest", "ember", "contrast"]);
@@ -42,6 +43,8 @@
     theme: "midnight",
     aiTimer: null,
     advanceTimer: null,
+    stockfishWorker: null,
+    stockfishSearchId: 0,
     squareGrid: [],
     settingsOpen: false,
     leotisAwakened: false,
@@ -75,7 +78,8 @@
       turn: state.turn,
       castling: { ...state.castling },
       enPassant: state.enPassant ? [...state.enPassant] : null,
-      lastMove: copyMove(state.lastMove)
+      lastMove: copyMove(state.lastMove),
+      leotisAwakened: state.leotisAwakened
     };
   }
 
@@ -85,6 +89,7 @@
     state.castling = { ...snapshot.castling };
     state.enPassant = snapshot.enPassant ? [...snapshot.enPassant] : null;
     state.lastMove = copyMove(snapshot.lastMove);
+    state.leotisAwakened = snapshot.leotisAwakened;
     state.selected = null;
     state.possible = [];
   }
@@ -134,6 +139,7 @@
     if (state.advanceTimer !== null) clearTimeout(state.advanceTimer);
     state.aiTimer = null;
     state.advanceTimer = null;
+    stopStockfish();
   }
 
   function updateDifficultyDisplay() {
@@ -503,10 +509,10 @@
     return `${move.fr}${move.fc}${move.tr}${move.tc}${move.promo || ""}${move.castle || ""}${move.enPassant ? "e" : ""}`;
   }
 
-  function leotisPositionKey(board, color, castling, enPassant) {
+  function leotisPositionKey(board, color, castling, enPassant, extensionsLeft = 0) {
     const pieces = board.map(row => row.map(piece => piece || ".").join("")).join("/");
     const rights = `${Number(castling.K)}${Number(castling.Q)}${Number(castling.k)}${Number(castling.q)}`;
-    return `${pieces}|${color}|${rights}|${enPassant ? enPassant.join("") : "-"}`;
+    return `${pieces}|${color}|${rights}|${enPassant ? enPassant.join("") : "-"}|e${extensionsLeft}`;
   }
 
   function leotisHistoryKey(board, move) {
@@ -551,18 +557,82 @@
     return Math.max(0, 8 - distance * 2) * 5;
   }
 
-  function evaluateLeotis(board, castling, enPassant) {
-    let nonKingMaterial = 0;
+  function nonKingMaterial(board) {
+    let material = 0;
     for (const row of board) {
       for (const piece of row) {
-        if (piece && piece.toLowerCase() !== "k") nonKingMaterial += VALUE[piece.toLowerCase()];
+        if (piece && piece.toLowerCase() !== "k") material += VALUE[piece.toLowerCase()];
       }
     }
-    const endgame = nonKingMaterial < 2600;
+    return material;
+  }
+
+  function evaluateLeotis(board, castling, enPassant) {
+    const endgame = nonKingMaterial(board) < 2600;
     let score = evaluateAlex(board);
     score += (leotisMobility(board, "w", castling, enPassant) - leotisMobility(board, "b", castling, enPassant)) * 3;
     score += leotisRookFiles(board, "w") - leotisRookFiles(board, "b");
     score += leotisKingActivity(board, "w", endgame) - leotisKingActivity(board, "b", endgame);
+    return score;
+  }
+
+  function alexDLeotisCenterControl(board) {
+    let score = 0;
+    for (const [row, col] of [[3, 3], [3, 4], [4, 3], [4, 4]]) {
+      if (isAttacked(board, row, col, "w")) score += 9;
+      if (isAttacked(board, row, col, "b")) score -= 9;
+      if (board[row][col]) score += isWhite(board[row][col]) ? 7 : -7;
+    }
+    return score;
+  }
+
+  function alexDLeotisKingSafety(board, color) {
+    const king = findKing(board, color);
+    if (!king) return -500;
+    let safety = 0;
+    for (const [rowStep, colStep] of KING_STEPS) {
+      const row = king[0] + rowStep;
+      const col = king[1] + colStep;
+      if (!inBounds(row, col)) continue;
+      if (isAttacked(board, row, col, enemy(color))) safety -= 17;
+      if (isAttacked(board, row, col, color)) safety += 4;
+    }
+    return safety;
+  }
+
+  function alexDLeotisHangingPieces(board, color) {
+    let score = 0;
+    for (let row = 0; row < 8; row += 1) {
+      for (let col = 0; col < 8; col += 1) {
+        const piece = board[row][col];
+        if (!piece || !owns(piece, color) || piece.toLowerCase() === "k") continue;
+        if (isAttacked(board, row, col, enemy(color)) && !isAttacked(board, row, col, color)) {
+          score -= Math.round(VALUE[piece.toLowerCase()] * 0.16);
+        }
+      }
+    }
+    return score;
+  }
+
+  function alexDLeotisRookActivity(board, color) {
+    const rook = color === "w" ? "R" : "r";
+    const seventhRank = color === "w" ? 1 : 6;
+    let score = 0;
+    for (let row = 0; row < 8; row += 1) {
+      for (let col = 0; col < 8; col += 1) {
+        if (board[row][col] === rook && row === seventhRank) score += 18;
+      }
+    }
+    return score;
+  }
+
+  function evaluateAlexDLeotis(board, castling, enPassant) {
+    const endgame = nonKingMaterial(board) < 2600;
+    let score = evaluateLeotis(board, castling, enPassant);
+    score += alexDLeotisCenterControl(board);
+    score += alexDLeotisRookActivity(board, "w") - alexDLeotisRookActivity(board, "b");
+    score += alexDLeotisHangingPieces(board, "w") - alexDLeotisHangingPieces(board, "b");
+    if (!endgame) score += alexDLeotisKingSafety(board, "w") - alexDLeotisKingSafety(board, "b");
     return score;
   }
 
@@ -603,7 +673,7 @@
     const legal = legalMoves(board, color, castling, enPassant);
     if (!legal.length) return inCheck(board, color) ? (maximizing ? -99999 + ply : 99999 - ply) : 0;
     const checked = inCheck(board, color);
-    const standPat = evaluateLeotis(board, castling, enPassant);
+    const standPat = context.evaluate(board, castling, enPassant);
     if (!checked) {
       if (maximizing) {
         if (standPat >= beta) return standPat;
@@ -633,11 +703,11 @@
     return score;
   }
 
-  function leotisSearch(board, depth, alpha, beta, maximizing, castling, enPassant, context, ply) {
+  function leotisSearch(board, depth, alpha, beta, maximizing, castling, enPassant, context, ply, extensionsLeft = context.extensions) {
     leotisCheckTimeout(context);
-    if (depth === 0) return leotisQuiescence(board, alpha, beta, maximizing, castling, enPassant, context, ply, 2);
+    if (depth === 0) return leotisQuiescence(board, alpha, beta, maximizing, castling, enPassant, context, ply, context.quiescenceDepth);
     const color = maximizing ? "w" : "b";
-    const position = leotisPositionKey(board, color, castling, enPassant);
+    const position = leotisPositionKey(board, color, castling, enPassant, extensionsLeft);
     const cached = context.table.get(position);
     if (cached?.depth >= depth) return cached.score;
     const moves = legalMoves(board, color, castling, enPassant);
@@ -649,7 +719,11 @@
     for (const move of ordered) {
       leotisCheckTimeout(context);
       const next = applyMove(board, move, castling, enPassant);
-      const candidate = leotisSearch(next.board, depth - 1, alpha, beta, !maximizing, next.castling, next.enPassant, context, ply + 1);
+      const extendsForcingMove = extensionsLeft > 0 && depth <= 4
+        && (Boolean(move.promo) || leotisGivesCheck(board, move, castling, enPassant, color));
+      const nextExtensions = extensionsLeft - Number(extendsForcingMove);
+      const nextDepth = depth - 1 + Number(extendsForcingMove);
+      const candidate = leotisSearch(next.board, nextDepth, alpha, beta, !maximizing, next.castling, next.enPassant, context, ply + 1, nextExtensions);
       if (maximizing ? candidate > score : candidate < score) {
         score = candidate;
         bestMove = moveKey(move);
@@ -662,47 +736,66 @@
         break;
       }
     }
-    if (!cutOff && context.table.size < 90000) context.table.set(position, { depth, score, best: bestMove });
+    if (!cutOff && context.table.size < context.tableLimit) context.table.set(position, { depth, score, best: bestMove });
     return score;
   }
 
-  function leotisRootSearch(board, moves, color, castling, enPassant, depth, context) {
+  function leotisRootSearch(board, moves, color, castling, enPassant, depth, context, alpha = -Infinity, beta = Infinity) {
     const maximizing = color === "w";
-    const rootKey = leotisPositionKey(board, color, castling, enPassant);
+    const rootKey = leotisPositionKey(board, color, castling, enPassant, context.extensions);
     const cached = context.table.get(rootKey);
     const ordered = orderLeotisMoves(board, moves, context, 0, context.principalMove, cached?.best || "");
-    let alpha = -Infinity;
-    let beta = Infinity;
     let bestScore = maximizing ? -Infinity : Infinity;
     let bestMove = ordered[0];
+    let cutOff = false;
     for (const move of ordered) {
       leotisCheckTimeout(context);
       const next = applyMove(board, move, castling, enPassant);
-      const score = leotisSearch(next.board, depth - 1, alpha, beta, !maximizing, next.castling, next.enPassant, context, 1);
+      const score = leotisSearch(next.board, depth - 1, alpha, beta, !maximizing, next.castling, next.enPassant, context, 1, context.extensions);
       if (maximizing ? score > bestScore : score < bestScore) {
         bestScore = score;
         bestMove = move;
       }
       if (maximizing) alpha = Math.max(alpha, bestScore);
       else beta = Math.min(beta, bestScore);
+      if (beta <= alpha) {
+        cutOff = true;
+        break;
+      }
     }
-    if (context.table.size < 90000) context.table.set(rootKey, { depth, score: bestScore, best: moveKey(bestMove) });
+    if (!cutOff && context.table.size < context.tableLimit) context.table.set(rootKey, { depth, score: bestScore, best: moveKey(bestMove) });
     return { move: bestMove, score: bestScore };
   }
 
-  function chooseLeotisMove(board, moves, color, castling, enPassant) {
+  function chooseLeotisMove(board, moves, color, castling, enPassant, profile = {}) {
     const context = {
-      deadline: performance.now() + LEOTIS_TIME_LIMIT,
+      deadline: performance.now() + (profile.timeLimit ?? LEOTIS_TIME_LIMIT),
       table: new Map(),
       history: new Map(),
       killers: new Map(),
       principalMove: "",
-      timeout: Symbol("leotis-timeout")
+      timeout: Symbol("leotis-timeout"),
+      evaluate: profile.evaluate ?? evaluateLeotis,
+      extensions: profile.extensions ?? 0,
+      quiescenceDepth: profile.quiescenceDepth ?? 2,
+      tableLimit: profile.tableLimit ?? 90000
     };
+    const maxDepth = profile.maxDepth ?? 9;
+    const aspirationWindow = profile.aspirationWindow ?? 0;
     let best = { move: moves[0], score: 0, depth: 0 };
-    for (let depth = 1; depth <= 9; depth += 1) {
+    for (let depth = 1; depth <= maxDepth; depth += 1) {
       try {
-        const result = leotisRootSearch(board, moves, color, castling, enPassant, depth, context);
+        let result;
+        if (best.depth > 0 && aspirationWindow) {
+          const lowerBound = best.score - aspirationWindow;
+          const upperBound = best.score + aspirationWindow;
+          result = leotisRootSearch(board, moves, color, castling, enPassant, depth, context, lowerBound, upperBound);
+          if (result.score <= lowerBound || result.score >= upperBound) {
+            result = leotisRootSearch(board, moves, color, castling, enPassant, depth, context);
+          }
+        } else {
+          result = leotisRootSearch(board, moves, color, castling, enPassant, depth, context);
+        }
         best = { ...result, depth };
         context.principalMove = moveKey(result.move);
         if (Math.abs(result.score) > 99000) break;
@@ -712,6 +805,132 @@
       }
     }
     return best;
+  }
+
+  function createAlexDLeotisProfile(board, moves, color, castling, enPassant) {
+    const endgame = nonKingMaterial(board) < 2600;
+    const inCheckNow = inCheck(board, color);
+    const forcingMoves = moves.filter(move => isTacticalMove(board, move) || leotisGivesCheck(board, move, castling, enPassant, color)).length;
+    let timeLimit = 1700;
+    if (forcingMoves >= 4) timeLimit += 700;
+    if (inCheckNow) timeLimit += 650;
+    if (moves.length <= 10) timeLimit += 500;
+    if (endgame) timeLimit += 350;
+    if (moves.length >= 28) timeLimit -= 250;
+    const boundedTime = Math.max(1500, Math.min(3400, timeLimit));
+    const maxDepth = endgame || moves.length <= 10 ? 12 : forcingMoves >= 4 ? 11 : 10;
+    const thinkingText = inCheckNow
+      ? "Алекс Д’ Леотис ищет защиту…"
+      : forcingMoves >= 4
+        ? "Алекс Д’ Леотис рассчитывает тактику…"
+        : endgame
+          ? "Алекс Д’ Леотис анализирует эндшпиль…"
+          : "Алекс Д’ Леотис анализирует позицию…";
+    return {
+      timeLimit: boundedTime,
+      maxDepth,
+      quiescenceDepth: 3,
+      extensions: 2,
+      tableLimit: 180000,
+      aspirationWindow: 70,
+      evaluate: evaluateAlexDLeotis,
+      thinkingText
+    };
+  }
+
+  function positionToFen() {
+    const position = state.board.map(row => {
+      let emptySquares = 0;
+      let fenRow = "";
+      for (const piece of row) {
+        if (piece) {
+          if (emptySquares) fenRow += emptySquares;
+          fenRow += piece;
+          emptySquares = 0;
+        } else {
+          emptySquares += 1;
+        }
+      }
+      return fenRow + (emptySquares || "");
+    }).join("/");
+    const castling = ["K", "Q", "k", "q"].filter(right => state.castling[right]).join("") || "-";
+    const enPassant = state.enPassant ? squareName(state.enPassant[0], state.enPassant[1]) : "-";
+    const fullMove = Math.floor(state.moveHistory.length / 2) + 1;
+    return `${position} ${state.turn} ${castling} ${enPassant} 0 ${fullMove}`;
+  }
+
+  function stockfishMoveTime(board, moves, color, castling, enPassant) {
+    const profile = createAlexDLeotisProfile(board, moves, color, castling, enPassant);
+    return Math.max(2500, Math.min(5600, profile.timeLimit + 1500));
+  }
+
+  function moveFromUci(uci, moves) {
+    if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) return null;
+    const fromRow = 8 - Number(uci[1]);
+    const fromCol = uci.charCodeAt(0) - 97;
+    const toRow = 8 - Number(uci[3]);
+    const toCol = uci.charCodeAt(2) - 97;
+    const promotion = uci[4] || "";
+    return moves.find(move => move.fr === fromRow && move.fc === fromCol && move.tr === toRow && move.tc === toCol
+      && (move.promo ? move.promo.toLowerCase() === promotion : !promotion)) || null;
+  }
+
+  function stopStockfish() {
+    state.stockfishSearchId += 1;
+    if (!state.stockfishWorker) return;
+    state.stockfishWorker.terminate();
+    state.stockfishWorker = null;
+  }
+
+  function getStockfishWorker() {
+    if (state.stockfishWorker) return state.stockfishWorker;
+    const worker = new Worker("stockfish/stockfish-18-lite-single.js");
+    worker.postMessage("uci");
+    worker.postMessage("setoption name Hash value 64");
+    state.stockfishWorker = worker;
+    return worker;
+  }
+
+  function playAlexDLeotisFallback(moves, color) {
+    const profile = createAlexDLeotisProfile(state.board, moves, color, state.castling, state.enPassant);
+    const selected = chooseLeotisMove(state.board, moves, color, state.castling, state.enPassant, profile).move;
+    if (selected) doMove(selected);
+    getElement("thinking").textContent = "";
+  }
+
+  function requestStockfishMove(moves, color) {
+    const searchId = state.stockfishSearchId + 1;
+    const moveTime = stockfishMoveTime(state.board, moves, color, state.castling, state.enPassant);
+    state.stockfishSearchId = searchId;
+    getElement("thinking").textContent = "Алекс Д’ Леотис анализирует позицию…";
+    let worker;
+    try {
+      worker = getStockfishWorker();
+    } catch {
+      playAlexDLeotisFallback(moves, color);
+      return;
+    }
+    worker.onmessage = event => {
+      if (searchId !== state.stockfishSearchId) return;
+      const line = String(event.data);
+      if (!line.startsWith("bestmove ")) return;
+      const selected = moveFromUci(line.split(/\s+/)[1], moves);
+      state.stockfishSearchId += 1;
+      worker.onmessage = null;
+      worker.onerror = null;
+      if (selected && !state.gameOver && state.turn === color) doMove(selected);
+      else playAlexDLeotisFallback(moves, color);
+      getElement("thinking").textContent = "";
+    };
+    worker.onerror = () => {
+      if (searchId !== state.stockfishSearchId) return;
+      worker.terminate();
+      if (state.stockfishWorker === worker) state.stockfishWorker = null;
+      state.stockfishSearchId += 1;
+      playAlexDLeotisFallback(moves, color);
+    };
+    worker.postMessage(`position fen ${positionToFen()}`);
+    worker.postMessage(`go movetime ${moveTime}`);
   }
 
   function chooseLeotisWarmupMove(board, moves, color, castling, enPassant) {
@@ -734,11 +953,27 @@
     if (state.gameOver) return;
     const color = botColor();
     const level = currentDifficulty();
-    getElement("thinking").textContent = level.engine === "leotis" ? "Леотис анализирует позицию…" : "Бот думает…";
+    getElement("thinking").textContent = level.engine === "stockfish" || level.engine === "alex-d-leotis"
+      ? "Алекс Д’ Леотис анализирует позицию…"
+      : level.engine === "leotis"
+        ? "Леотис анализирует позицию…"
+        : "Бот думает…";
     state.aiTimer = setTimeout(() => {
       state.aiTimer = null;
       const moves = legalMoves(state.board, color, state.castling, state.enPassant);
       if (!moves.length) { endGame(inCheck(state.board, color) ? "win" : "draw"); return; }
+      if (level.engine === "stockfish") {
+        requestStockfishMove(moves, color);
+        return;
+      }
+      if (level.engine === "alex-d-leotis") {
+        const profile = createAlexDLeotisProfile(state.board, moves, color, state.castling, state.enPassant);
+        getElement("thinking").textContent = profile.thinkingText;
+        const selected = chooseLeotisMove(state.board, moves, color, state.castling, state.enPassant, profile).move;
+        if (selected) doMove(selected);
+        getElement("thinking").textContent = "";
+        return;
+      }
       if (level.engine === "leotis") {
         const selected = state.leotisAwakened
           ? chooseLeotisMove(state.board, moves, color, state.castling, state.enPassant).move
@@ -787,6 +1022,7 @@
     const list = getElement("move-list");
     const count = getElement("move-count");
     count.textContent = formatMoveCount(state.moveHistory.length);
+    getElement("undo-turn").disabled = lastPlayerMoveIndex() === -1;
     list.innerHTML = "";
     if (!state.moveHistory.length) {
       const empty = document.createElement("li");
@@ -822,6 +1058,31 @@
 
   function describeSquareName(piece) {
     return `${isWhite(piece) ? "Белые" : "Чёрные"}: ${PIECE_NAMES[piece.toLowerCase()]}`;
+  }
+
+  function lastPlayerMoveIndex() {
+    for (let index = state.moveHistory.length - 1; index >= 0; index -= 1) {
+      if (owns(state.moveHistory[index].piece, state.playerColor)) return index;
+    }
+    return -1;
+  }
+
+  function undoPlayerTurn() {
+    const moveIndex = lastPlayerMoveIndex();
+    if (moveIndex === -1 || !state.initialPosition) return;
+    clearTimers();
+    const previousPosition = moveIndex === 0 ? state.initialPosition : state.moveHistory[moveIndex - 1].snapshot;
+    restorePositionSnapshot(previousPosition);
+    state.moveHistory.splice(moveIndex);
+    state.gameOver = false;
+    state.replayIndex = null;
+    state.finalStatus = "";
+    getElement("restart").style.display = "none";
+    getElement("thinking").textContent = "";
+    updateStatus();
+    render();
+    renderMoveHistory();
+    syncReplayControls();
   }
 
   function syncReplayControls() {
@@ -1069,6 +1330,7 @@
 
   getElement("restart").addEventListener("click", init);
   getElement("switch").addEventListener("click", () => { state.playerColor = enemy(state.playerColor); init(); });
+  getElement("undo-turn").addEventListener("click", undoPlayerTurn);
   getElement("move-list").addEventListener("click", event => {
     const entry = event.target.closest("button[data-history-index]");
     if (!entry || !state.gameOver) return;
