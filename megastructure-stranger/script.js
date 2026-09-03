@@ -1686,6 +1686,45 @@
     context.globalAlpha = 1;
   }
 
+  function drawFog() {
+    const map = state.floorMap;
+    const fog = state.fogCanvas.getContext("2d");
+    const vision = state.visionCanvas.getContext("2d");
+    fog.clearRect(0, 0, WIDTH, HEIGHT);
+    const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
+    for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
+      for (let y = 0; y < HEIGHT; y += LONG_FLOOR_CELL) {
+        const key = exploredCellKey(x + LONG_FLOOR_CELL / 2, y + LONG_FLOOR_CELL / 2);
+        fog.fillStyle = map.explored.has(key) ? "rgba(1, 4, 7, .48)" : "rgba(1, 4, 7, .9)";
+        fog.fillRect(Math.round(x - state.cameraX), y, LONG_FLOOR_CELL + 1, LONG_FLOOR_CELL + 1);
+      }
+    }
+
+    vision.clearRect(0, 0, WIDTH, HEIGHT);
+    const settings = visionSettings();
+    const angle = playerAimAngle();
+    const segments = Math.max(20, Math.ceil(settings.fov * 64));
+    vision.save();
+    vision.filter = "blur(" + settings.blur + "px)";
+    vision.fillStyle = "rgba(255,255,255,.98)";
+    vision.beginPath();
+    vision.moveTo(state.player.x - state.cameraX, state.player.y);
+    for (let index = 0; index <= segments; index += 1) {
+      const rayAngle = angle - settings.fov / 2 + settings.fov * index / segments;
+      const range = raycastDistance(state.player.x, state.player.y, rayAngle, settings.range);
+      vision.lineTo(state.player.x - state.cameraX + Math.cos(rayAngle) * range, state.player.y + Math.sin(rayAngle) * range);
+    }
+    vision.closePath();
+    vision.fill();
+    vision.restore();
+
+    fog.save();
+    fog.globalCompositeOperation = "destination-out";
+    fog.drawImage(state.visionCanvas, 0, 0);
+    fog.restore();
+    context.drawImage(state.fogCanvas, 0, 0);
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
