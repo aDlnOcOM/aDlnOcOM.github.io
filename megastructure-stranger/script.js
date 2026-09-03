@@ -1441,6 +1441,76 @@
     }
   }
 
+  function fireEnemy(enemy, unitX, unitY) {
+    const baseAngle = Math.atan2(unitY, unitX);
+    if (enemy.type === "turret") {
+      [-.17, 0, .17].forEach(offset => createEnemyBullet(enemy, baseAngle + offset, enemy.bulletSpeed, enemy.damage, "#d981ec"));
+      return;
+    }
+    createEnemyBullet(enemy, baseAngle, enemy.bulletSpeed, enemy.damage, enemy.color);
+  }
+
+  function createEnemyBullet(enemy, angle, speed, damage, color) {
+    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, color, lifetime: 4 });
+  }
+
+  function bulletHitsWorld(bullet) {
+    return getWorldColliders().some(obstacle => bullet.x >= obstacle.x && bullet.x <= obstacle.x + obstacle.width && bullet.y >= obstacle.y && bullet.y <= obstacle.y + obstacle.height);
+  }
+
+  function updateBullets(delta) {
+    const map = state.floorMap;
+    state.bullets = state.bullets.filter(bullet => {
+      bullet.x += bullet.vx * delta;
+      bullet.y += bullet.vy * delta;
+      bullet.lifetime -= delta;
+      if (bullet.lifetime <= 0 || bullet.x < 0 || bullet.x > map.width || bullet.y < 0 || bullet.y > HEIGHT || bulletHitsWorld(bullet)) return false;
+      if (bullet.owner === "player") {
+        const target = state.enemies.find(enemy => distance(bullet, enemy) < bullet.radius + enemy.radius);
+        if (target) {
+          damageEnemy(target, bullet.damage);
+          return false;
+        }
+      } else if (distance(bullet, state.player) < bullet.radius + state.player.radius) {
+        damagePlayer(bullet.damage);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function damageEnemy(enemy, amount) {
+    enemy.health -= amount;
+    enemy.hitFlash = .12;
+    createParticles(enemy.x, enemy.y, enemy.color, 4, 48);
+    if (enemy.health > 0) return;
+    state.enemies = state.enemies.filter(candidate => candidate !== enemy);
+    state.runSalvage += Math.ceil(enemy.reward * playerStats().salvageMultiplier);
+    createParticles(enemy.x, enemy.y, "#d4ee70", enemy.boss ? 20 : 9, enemy.boss ? 100 : 58);
+    if (enemy.boss) {
+      state.floorMap.bossDefeated = true;
+      state.floorMap.exitOpen = true;
+      element("signal-text").textContent = "Смотритель отключён. Правый шлюз разблокирован: войди в лифт.";
+      return;
+    }
+    if (!state.alarm) triggerAlarm("охранный контур потерял связь с патрулём");
+  }
+
+  function damagePlayer(amount) {
+    const player = state.player;
+    if (!player || player.invulnerability > 0) return;
+    const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
+    player.armor -= armorAbsorb;
+    player.health = Math.max(0, player.health - Math.max(1, amount - armorAbsorb));
+    player.invulnerability = playerStats().invulnerability;
+    createParticles(player.x, player.y, "#ff6d68", 11, 80);
+    if (player.health > 0) return;
+    state.active = false;
+    const recoveryRate = playerStats().deathRetention;
+    const recovered = Math.floor(state.runSalvage * recoveryRate);
+    showOverlay("<div class=\"overlay-card\"><p class=\"eyebrow\">контур контроля обнаружил след</p><h2>Смена окончена.</h2><p>Автономный маршрут выбросил тебя к убежищу. Удалось сохранить " + recovered + " ед. лома.</p><div class=\"overlay-actions\"><button class=\"primary-button\" type=\"button\" data-action=\"return\" data-multiplier=\"" + recoveryRate + "\">В убежище <span>↖</span></button><button class=\"quiet-button\" type=\"button\" data-action=\"retry\">Новый забег</button></div></div>");
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
