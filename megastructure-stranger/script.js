@@ -1389,6 +1389,58 @@
     enemy.angle = enemy.patrolDirection > 0 ? 0 : Math.PI;
   }
 
+  function updateBoss(enemy, delta) {
+    const player = state.player;
+    const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    enemy.angle = targetAngle;
+    const playerDistance = distance(player, enemy);
+    if (playerDistance > 265) moveCircle(enemy, Math.cos(targetAngle) * enemy.speed * delta, Math.sin(targetAngle) * enemy.speed * delta);
+    enemy.fireTimer -= delta;
+    if (enemy.fireTimer > 0) return;
+    for (let index = 0; index < 12; index += 1) {
+      createEnemyBullet(enemy, state.elapsed * .9 + index * Math.PI * 2 / 12, enemy.bulletSpeed * .78, enemy.damage * .7, "#f4ef86");
+    }
+    [-.18, 0, .18].forEach(offset => createEnemyBullet(enemy, targetAngle + offset, enemy.bulletSpeed, enemy.damage, "#ff8078"));
+    enemy.fireTimer = Math.max(.46, .72 - state.floor * .025);
+  }
+
+  function updateEnemies(delta) {
+    const player = state.player;
+    for (const enemy of state.enemies) {
+      enemy.hitFlash = Math.max(0, enemy.hitFlash - delta);
+      if (enemy.boss) {
+        updateBoss(enemy, delta);
+        continue;
+      }
+      if (!state.alarm) {
+        if (enemy.type !== "turret") patrolGuard(enemy, delta, false);
+        const seesPlayer = hasLineOfSight(enemy.x, enemy.y, player.x, player.y, player.radius)
+          && distance(enemy, player) <= (enemy.type === "turret" ? 340 : 300)
+          && Math.abs(normalizedAngle(Math.atan2(player.y - enemy.y, player.x - enemy.x) - enemy.angle)) <= (enemy.type === "turret" ? .42 : .54);
+        enemy.sighting = seesPlayer ? enemy.sighting + delta : Math.max(0, enemy.sighting - delta * 2);
+        if (enemy.sighting > .38) triggerAlarm(enemy.type === "turret" ? "турель зафиксировала движение" : "патруль заметил нарушителя");
+        continue;
+      }
+
+      if (enemy.type === "turret") {
+        enemy.angle = enemy.homeAngle + Math.sin(state.elapsed * 2.4 + enemy.phase) * 1.28;
+      } else {
+        patrolGuard(enemy, delta, true);
+        const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+        enemy.angle += normalizedAngle(targetAngle - enemy.angle) * Math.min(1, delta * 5);
+      }
+
+      enemy.fireTimer -= delta;
+      const angleToPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      const inArc = Math.abs(normalizedAngle(angleToPlayer - enemy.angle)) <= (enemy.type === "turret" ? .62 : .8);
+      if (enemy.fireTimer <= 0 && distance(enemy, player) < (enemy.type === "turret" ? 520 : 430) && inArc && hasLineOfSight(enemy.x, enemy.y, player.x, player.y, player.radius)) {
+        fireEnemy(enemy, Math.cos(angleToPlayer), Math.sin(angleToPlayer));
+        enemy.fireTimer = enemy.fireRate;
+      }
+      if (distance(enemy, player) < enemy.radius + player.radius + 5) damagePlayer(enemy.damage * .48);
+    }
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
