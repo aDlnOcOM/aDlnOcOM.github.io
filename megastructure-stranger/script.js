@@ -1211,6 +1211,48 @@
     return raycastDistance(fromX, fromY, angle, targetDistance) >= targetDistance - targetRadius - 3;
   }
 
+  function visionSettings() {
+    const stats = playerStats();
+    if (state.alarm) {
+      if (!state.flashlight) return { fov: Math.PI * 2, range: 58, blur: 4 };
+      return { fov: stats.flashlightAngle * Math.PI / 180, range: stats.flashlightRange, blur: 13 };
+    }
+    return { fov: 62 * Math.PI / 180, range: state.floorMap.width, blur: 7 };
+  }
+
+  function isPointVisible(point) {
+    const player = state.player;
+    if (!player) return false;
+    const settings = visionSettings();
+    const differenceX = point.x - player.x;
+    const differenceY = point.y - player.y;
+    const targetDistance = Math.hypot(differenceX, differenceY);
+    if (targetDistance < player.radius + 8) return true;
+    if (targetDistance > settings.range) return false;
+    const angleDifference = Math.abs(normalizedAngle(Math.atan2(differenceY, differenceX) - playerAimAngle()));
+    if (angleDifference > settings.fov / 2) return false;
+    return hasLineOfSight(player.x, player.y, point.x, point.y, point.radius || 0);
+  }
+
+  function exploredCellKey(worldX, worldY) {
+    return Math.floor(worldX / LONG_FLOOR_CELL) + ":" + Math.floor(worldY / LONG_FLOOR_CELL);
+  }
+
+  function updateExploration(delta) {
+    state.visionTimer += delta;
+    if (state.visionTimer < .12) return;
+    state.visionTimer = 0;
+    const map = state.floorMap;
+    const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
+    for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
+      for (let y = 28; y < HEIGHT - 28; y += LONG_FLOOR_CELL) {
+        const point = { x: x + LONG_FLOOR_CELL / 2, y: y + LONG_FLOOR_CELL / 2 };
+        if (isPointVisible(point)) map.explored.add(exploredCellKey(point.x, point.y));
+      }
+    }
+    map.explored.add(exploredCellKey(state.player.x, state.player.y));
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
