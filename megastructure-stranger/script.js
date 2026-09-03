@@ -203,7 +203,9 @@
       knifeDamage: 34 + (hasUpgrade("knife", "blade", "serrated") ? 10 : 0) + (hasTier("knife", "blade", "serrated") ? 14 : 0),
       knifeDelay: .42 * (hasUpgrade("knife", "blade", "shock-grip") ? (hasTier("knife", "blade", "shock-grip") ? .58 : .82) : 1),
       salvageMultiplier: hasUpgrade("bag", "carry", "molle") ? (hasTier("bag", "carry", "molle") ? 1.3 : 1.15) : 1,
-      deathRetention: hasUpgrade("bag", "carry", "sealed") ? (hasTier("bag", "carry", "sealed") ? .8 : .6) : .4
+      deathRetention: hasUpgrade("bag", "carry", "sealed") ? (hasTier("bag", "carry", "sealed") ? .8 : .6) : .4,
+      flashlightAngle: hasUpgrade("helmet", "helmet-core", "lamp") ? (hasTier("helmet", "helmet-core", "lamp") ? 42 : 35) : 29,
+      flashlightRange: hasUpgrade("helmet", "helmet-core", "lamp") ? (hasTier("helmet", "helmet-core", "lamp") ? 510 : 420) : 336
     };
   }
 
@@ -891,7 +893,7 @@
     updateRunUi();
   }
   // Длинный этаж: скрытное исследование, единая тревога и шлюзовой босс.
-  const LONG_FLOOR_CELL = 72;
+  const LONG_FLOOR_CELL = 32;
 
   function randomInteger(minimum, maximum) {
     return Math.floor(randomBetween(minimum, maximum + 1));
@@ -1040,7 +1042,7 @@
     state.particles = [];
     state.alarm = false;
     state.alarmReason = "";
-    state.flashlight = true;
+    state.flashlight = false;
     state.visionTimer = 0;
     resetPlayer();
     state.cameraX = 0;
@@ -1217,7 +1219,7 @@
       if (!state.flashlight) return { fov: Math.PI * 2, range: 58, blur: 4 };
       return { fov: stats.flashlightAngle * Math.PI / 180, range: stats.flashlightRange, blur: 13 };
     }
-    return { fov: 62 * Math.PI / 180, range: state.floorMap.width, blur: 7 };
+    return { fov: 68 * Math.PI / 180, range: state.floorMap.width, blur: 9 };
   }
 
   function isPointVisible(point) {
@@ -1319,7 +1321,7 @@
   function triggerAlarm(reason) {
     if (state.alarm || !state.floorMap) return;
     state.alarm = true;
-    state.flashlight = true;
+    state.flashlight = false;
     state.alarmReason = reason;
     element("signal-text").textContent = "ТРЕВОГА: " + reason + ". Аварийное освещение включено; фонарь ограничивает обзор.";
     createParticles(state.player.x, state.player.y, "#ff6d68", 18, 66);
@@ -1715,7 +1717,12 @@
     const segments = Math.max(20, Math.ceil(settings.fov * 64));
     vision.save();
     vision.filter = "blur(" + settings.blur + "px)";
-    vision.fillStyle = "rgba(255,255,255,.98)";
+    const visionGradient = vision.createRadialGradient(state.player.x - state.cameraX, state.player.y, Math.max(0, settings.range * .06), state.player.x - state.cameraX, state.player.y, Math.max(1, settings.range));
+    visionGradient.addColorStop(0, "rgba(255,255,255,.99)");
+    visionGradient.addColorStop(state.alarm ? .54 : .92, "rgba(255,255,255,.96)");
+    visionGradient.addColorStop(state.alarm ? .86 : .995, "rgba(255,255,255,.16)");
+    visionGradient.addColorStop(1, "rgba(255,255,255,0)");
+    vision.fillStyle = visionGradient;
     vision.beginPath();
     vision.moveTo(state.player.x - state.cameraX, state.player.y);
     for (let index = 0; index <= segments; index += 1) {
