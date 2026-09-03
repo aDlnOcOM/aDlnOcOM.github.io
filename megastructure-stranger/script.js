@@ -1576,6 +1576,58 @@
     updateRunUi();
   }
 
+  function drawGrid() {
+    const emergency = state.alarm;
+    context.strokeStyle = emergency ? "rgba(255, 117, 101, .075)" : "rgba(208, 229, 238, .055)";
+    context.lineWidth = 1;
+    const offset = -(state.cameraX % 64);
+    for (let x = offset; x <= WIDTH; x += 64) {
+      context.beginPath();
+      context.moveTo(x, 28);
+      context.lineTo(x, HEIGHT - 28);
+      context.stroke();
+    }
+    for (let y = 28; y <= HEIGHT - 28; y += 64) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(WIDTH, y);
+      context.stroke();
+    }
+  }
+
+  function drawStaticWorld() {
+    const map = state.floorMap;
+    context.save();
+    context.translate(-state.cameraX, 0);
+    for (const wall of map.walls) {
+      context.fillStyle = wall.outer ? "#080b0d" : wall.console ? "#15191c" : "#0b0e10";
+      context.fillRect(wall.x, wall.y, wall.width, wall.height);
+      context.strokeStyle = wall.outer ? "#242a2d" : "#2c3438";
+      context.strokeRect(wall.x + .5, wall.y + .5, wall.width - 1, wall.height - 1);
+    }
+    const drawGate = (gate, open, label) => {
+      context.fillStyle = open ? "rgba(125, 236, 194, .24)" : "rgba(255, 109, 104, .34)";
+      context.fillRect(gate.x, gate.y, gate.width, gate.height);
+      context.strokeStyle = open ? "#9dfdc4" : "#ff6d68";
+      context.lineWidth = 2;
+      context.strokeRect(gate.x + 1, gate.y + 1, gate.width - 2, gate.height - 2);
+      context.fillStyle = open ? "#a8ffca" : "#ffb0ab";
+      context.font = "10px Consolas, monospace";
+      context.save();
+      context.translate(gate.x + gate.width / 2, HEIGHT / 2);
+      context.rotate(-Math.PI / 2);
+      context.fillText(label, -42, 0);
+      context.restore();
+    };
+    drawGate(map.entryGate, false, map.bossStarted ? "ШЛЮЗ ЗАПЕРТ" : "ВХОД В ШЛЮЗ");
+    drawGate(map.exitGate, map.exitOpen, map.exitOpen ? "ЛИФТ" : "ЛИФТ ЗАБЛОКИРОВАН");
+    if (map.exitOpen) {
+      context.fillStyle = "rgba(159, 253, 243, .15)";
+      context.fillRect(map.exitGate.x + map.exitGate.width, 34, 72, HEIGHT - 68);
+    }
+    context.restore();
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
