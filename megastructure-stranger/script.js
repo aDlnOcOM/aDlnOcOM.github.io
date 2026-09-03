@@ -1285,6 +1285,46 @@
     }
   }
 
+  function updatePlayer(delta) {
+    const player = state.player;
+    let horizontal = 0;
+    let vertical = 0;
+    if (state.input.keys.has("KeyA") || state.input.keys.has("ArrowLeft")) horizontal -= 1;
+    if (state.input.keys.has("KeyD") || state.input.keys.has("ArrowRight")) horizontal += 1;
+    if (state.input.keys.has("KeyW") || state.input.keys.has("ArrowUp")) vertical -= 1;
+    if (state.input.keys.has("KeyS") || state.input.keys.has("ArrowDown")) vertical += 1;
+    if (horizontal || vertical) {
+      const length = Math.hypot(horizontal, vertical);
+      moveCircle(player, horizontal / length * player.speed * delta, vertical / length * player.speed * delta);
+    }
+    player.invulnerability = Math.max(0, player.invulnerability - delta);
+    player.fireCooldown = Math.max(0, player.fireCooldown - delta);
+    player.knifeCooldown = Math.max(0, player.knifeCooldown - delta);
+    player.knifeFlash = Math.max(0, player.knifeFlash - delta);
+    if (player.reload > 0) {
+      player.reload -= delta;
+      if (player.reload <= 0) player.ammo = player.magazine;
+      return;
+    }
+    if (player.weapon === "smg" && state.input.mouseDown && player.fireCooldown <= 0) fireSmg();
+  }
+
+  function emitNoise(x, y, radius, reason) {
+    if (state.alarm) return;
+    const listeners = state.enemies.concat(state.sensors);
+    const heard = listeners.some(listener => Math.hypot(listener.x - x, listener.y - y) <= radius && hasLineOfSight(x, y, listener.x, listener.y, 8));
+    if (heard) triggerAlarm(reason);
+  }
+
+  function triggerAlarm(reason) {
+    if (state.alarm || !state.floorMap) return;
+    state.alarm = true;
+    state.flashlight = true;
+    state.alarmReason = reason;
+    element("signal-text").textContent = "ТРЕВОГА: " + reason + ". Аварийное освещение включено; фонарь ограничивает обзор.";
+    createParticles(state.player.x, state.player.y, "#ff6d68", 18, 66);
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
