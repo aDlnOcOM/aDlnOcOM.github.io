@@ -1365,6 +1365,30 @@
     if (hit) emitNoise(player.x, player.y, 135, "охранный контур услышал рукопашную схватку");
   }
 
+  function updateSensors(delta) {
+    const player = state.player;
+    for (const sensor of state.sensors) {
+      sensor.angle = state.alarm
+        ? sensor.homeAngle + Math.sin(state.elapsed * 2.3 + sensor.phase) * 1.12
+        : sensor.homeAngle;
+      const difference = Math.abs(normalizedAngle(Math.atan2(player.y - sensor.y, player.x - sensor.x) - sensor.angle));
+      const seen = Math.hypot(player.x - sensor.x, player.y - sensor.y) <= sensor.range
+        && difference <= sensor.fov / 2
+        && hasLineOfSight(sensor.x, sensor.y, player.x, player.y, player.radius);
+      sensor.exposure = seen ? sensor.exposure + delta : Math.max(0, sensor.exposure - delta * 1.8);
+      if (!state.alarm && sensor.exposure > .42) triggerAlarm("камера захватила тепловой контур");
+    }
+  }
+
+  function patrolGuard(enemy, delta, alerted) {
+    const start = alerted ? enemy.alertStart : enemy.patrolStart;
+    const end = alerted ? enemy.alertEnd : enemy.patrolEnd;
+    if (enemy.x <= start) enemy.patrolDirection = 1;
+    if (enemy.x >= end) enemy.patrolDirection = -1;
+    moveCircle(enemy, enemy.patrolDirection * enemy.speed * delta, 0);
+    enemy.angle = enemy.patrolDirection > 0 ? 0 : Math.PI;
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
