@@ -1162,6 +1162,55 @@
     updateHome();
   }
 
+  function getWorldColliders() {
+    const map = state.floorMap;
+    if (!map) return [];
+    const colliders = map.walls.slice();
+    colliders.push(map.entryGate);
+    if (!map.exitOpen) colliders.push(map.exitGate);
+    return colliders;
+  }
+
+  function rayRectDistance(originX, originY, directionX, directionY, rectangle, maxDistance) {
+    let near = -Infinity;
+    let far = Infinity;
+    const axes = [
+      { origin: originX, direction: directionX, minimum: rectangle.x, maximum: rectangle.x + rectangle.width },
+      { origin: originY, direction: directionY, minimum: rectangle.y, maximum: rectangle.y + rectangle.height }
+    ];
+    for (const axis of axes) {
+      if (Math.abs(axis.direction) < .00001) {
+        if (axis.origin < axis.minimum || axis.origin > axis.maximum) return null;
+        continue;
+      }
+      const first = (axis.minimum - axis.origin) / axis.direction;
+      const second = (axis.maximum - axis.origin) / axis.direction;
+      near = Math.max(near, Math.min(first, second));
+      far = Math.min(far, Math.max(first, second));
+    }
+    if (far < .01 || near > far) return null;
+    const result = near > .01 ? near : far;
+    return result <= maxDistance ? result : null;
+  }
+
+  function raycastDistance(originX, originY, angle, maximum) {
+    const directionX = Math.cos(angle);
+    const directionY = Math.sin(angle);
+    let nearest = maximum;
+    for (const collider of getWorldColliders()) {
+      const hit = rayRectDistance(originX, originY, directionX, directionY, collider, nearest);
+      if (hit !== null) nearest = hit;
+    }
+    return nearest;
+  }
+
+  function hasLineOfSight(fromX, fromY, toX, toY, targetRadius = 0) {
+    const targetDistance = Math.hypot(toX - fromX, toY - fromY);
+    if (!targetDistance) return true;
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    return raycastDistance(fromX, fromY, angle, targetDistance) >= targetDistance - targetRadius - 3;
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
