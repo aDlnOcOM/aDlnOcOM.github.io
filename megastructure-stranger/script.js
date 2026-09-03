@@ -944,6 +944,80 @@
     };
   }
 
+  function createLongFloor(floor) {
+    const sectorCount = randomInteger(10, 12);
+    const bodyLength = Math.round(sectorCount * WIDTH * Math.pow(1.2, floor - 1));
+    const sectorWidth = bodyLength / sectorCount;
+    const bossWidth = Math.round(WIDTH / 1.5);
+    const worldWidth = bodyLength + bossWidth + 140;
+    const walls = [
+      { x: 0, y: 0, width: worldWidth, height: 28, outer: true },
+      { x: 0, y: HEIGHT - 28, width: worldWidth, height: 28, outer: true },
+      { x: 0, y: 0, width: 28, height: HEIGHT, outer: true },
+      { x: worldWidth - 28, y: 0, width: 28, height: HEIGHT, outer: true }
+    ];
+    const guards = [];
+    const sensors = [];
+
+    for (let index = 0; index < sectorCount; index += 1) {
+      const start = index * sectorWidth;
+      const fromTop = index % 2 === 0;
+      const verticalHeight = randomInteger(174, 286);
+      const wallX = Math.round(start + sectorWidth * randomBetween(.28, .42));
+      const wallY = fromTop ? 28 : HEIGHT - 28 - verticalHeight;
+      walls.push({ x: wallX, y: wallY, width: 42, height: verticalHeight, anchor: true });
+
+      const consoleWidth = randomInteger(126, 230);
+      const consoleY = fromTop ? randomInteger(300, 410) : randomInteger(150, 258);
+      const consoleX = Math.round(start + sectorWidth * randomBetween(.56, .7));
+      walls.push({ x: consoleX, y: consoleY, width: consoleWidth, height: 38, console: true });
+
+      const patrolY = fromTop ? HEIGHT - 126 : 126;
+      const patrolStart = Math.round(start + sectorWidth * .1);
+      const patrolEnd = Math.round(start + sectorWidth * .78);
+      guards.push(createGuard("watcher", patrolStart + 34, patrolY, patrolStart, patrolEnd, 0));
+      guards.push(createGuard("drone", patrolEnd - 48, HEIGHT - patrolY, patrolStart + 56, patrolEnd, Math.PI));
+
+      if (index % 2 === 0 || index === sectorCount - 1) {
+        const turretX = Math.round(start + sectorWidth * .83);
+        const turretY = fromTop ? 92 : HEIGHT - 92;
+        guards.push(createGuard("turret", turretX, turretY, turretX, turretX, fromTop ? Math.PI / 2 : -Math.PI / 2));
+      }
+
+      sensors.push({
+        x: wallX + (fromTop ? 68 : -24),
+        y: fromTop ? verticalHeight + 46 : HEIGHT - verticalHeight - 46,
+        angle: fromTop ? Math.PI / 2 : -Math.PI / 2,
+        homeAngle: fromTop ? Math.PI / 2 : -Math.PI / 2,
+        phase: Math.random() * Math.PI * 2,
+        range: 168,
+        fov: .84,
+        exposure: 0
+      });
+    }
+
+    const entryGate = { x: bodyLength - 16, y: 28, width: 32, height: HEIGHT - 56 };
+    const exitGate = { x: worldWidth - 122, y: 28, width: 32, height: HEIGHT - 56 };
+    return {
+      floor,
+      sectorCount,
+      sectorWidth,
+      bodyLength,
+      bossWidth,
+      width: worldWidth,
+      walls,
+      guards,
+      sensors,
+      entryGate,
+      exitGate,
+      bossStarted: false,
+      bossDefeated: false,
+      exitOpen: false,
+      explored: new Set(),
+      lastRouteSector: -1
+    };
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
