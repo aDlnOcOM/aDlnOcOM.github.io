@@ -1018,6 +1018,150 @@
     };
   }
 
+  function generateFloor(floor) {
+    return createLongFloor(floor);
+  }
+
+  function beginRun() {
+    state.floor = 1;
+    state.runSalvage = 0;
+    state.runActive = true;
+    state.elapsed = 0;
+    element("home-screen").hidden = true;
+    element("run-screen").hidden = false;
+    beginFloor();
+  }
+
+  function beginFloor() {
+    state.floorMap = generateFloor(state.floor);
+    state.enemies = state.floorMap.guards;
+    state.sensors = state.floorMap.sensors;
+    state.bullets = [];
+    state.particles = [];
+    state.alarm = false;
+    state.alarmReason = "";
+    state.flashlight = true;
+    state.visionTimer = 0;
+    resetPlayer();
+    state.cameraX = 0;
+    state.active = false;
+    renderRoute();
+    updateRunUi();
+    showStartOverlay();
+  }
+
+  function resetPlayer() {
+    const stats = playerStats();
+    state.player = {
+      x: 84,
+      y: HEIGHT * .72,
+      radius: 13,
+      health: stats.maxHealth,
+      maxHealth: stats.maxHealth,
+      armor: stats.armor,
+      maxArmor: stats.armor,
+      speed: stats.speed,
+      invulnerability: 0,
+      weapon: "smg",
+      ammo: stats.magazine,
+      magazine: stats.magazine,
+      fireCooldown: 0,
+      reload: 0,
+      knifeCooldown: 0,
+      knifeFlash: 0
+    };
+  }
+
+  function currentSector() {
+    if (!state.floorMap || !state.player) return 0;
+    return clamp(Math.floor(state.player.x / state.floorMap.sectorWidth), 0, state.floorMap.sectorCount - 1);
+  }
+
+  function renderRoute() {
+    const route = element("floor-route");
+    const map = state.floorMap;
+    if (!map) return;
+    route.innerHTML = "";
+    const sector = currentSector();
+    for (let index = 0; index < map.sectorCount; index += 1) {
+      const node = document.createElement("div");
+      node.className = "route-node" + (index === sector && !map.bossStarted ? " current" : "") + (index < sector ? " cleared" : "");
+      node.textContent = "СЕКТОР " + String(index + 1).padStart(2, "0");
+      route.appendChild(node);
+    }
+    const boss = document.createElement("div");
+    boss.className = "route-node boss" + (map.bossStarted ? " current" : "") + (map.bossDefeated ? " cleared" : "");
+    boss.textContent = map.bossDefeated ? "ШЛЮЗ ОТКРЫТ" : "ШЛЮЗ / БОСС";
+    route.appendChild(boss);
+    map.lastRouteSector = sector;
+  }
+
+  function updateRunUi() {
+    const player = state.player;
+    const map = state.floorMap;
+    if (!player || !map) return;
+    const sector = currentSector();
+    if (map.lastRouteSector !== sector || map.bossStarted || map.bossDefeated) renderRoute();
+
+    element("floor-number").textContent = String(state.floor).padStart(2, "0");
+    element("health-label").textContent = Math.ceil(player.health) + " / " + player.maxHealth;
+    element("health-bar").style.width = (player.health / player.maxHealth) * 100 + "%";
+    element("armor-label").textContent = String(Math.ceil(player.armor)).padStart(2, "0");
+    element("armor-bar").style.width = (player.armor / player.maxArmor) * 100 + "%";
+
+    const knife = player.weapon === "knife";
+    element("weapon-name").textContent = knife ? "НОЖ ОХРАНЫ" : "ПП ОХРАНЫ";
+    element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + "</small>";
+    const lightStatus = state.alarm ? " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ" : "ВЫКЛ") : "";
+    element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
+    element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
+
+    const threat = map.bossStarted && !map.bossDefeated ? "БОСС / ШЛЮЗ" : state.alarm ? "ТРЕВОГА" : "ТИШИНА";
+    element("threat-label").textContent = threat;
+    element("abort-run").disabled = map.bossStarted && !map.bossDefeated;
+  }
+
+  function showStartOverlay() {
+    element("signal-text").textContent = "Тишина. Охрана идёт по штатным маршрутам, сенсоры не отмечают тепловой след.";
+    const estimated = Math.round(state.floorMap.bodyLength / WIDTH);
+    showOverlay("<div class=\"overlay-card\"><p class=\"eyebrow\">этаж " + String(state.floor).padStart(2, "0") + " / " + estimated + " секторов до шлюза</p><h2>Лифт ушёл.</h2><p>Пока на этаже нет тревоги, охрана не атакует. Не стреляй, обходи сенсоры и изучай только то, что попадает в поле зрения.</p><div class=\"overlay-actions\"><button class=\"primary-button\" type=\"button\" data-action=\"deploy\">Выйти в коридор <span>↘</span></button></div></div>");
+  }
+
+  function onOverlayClick(event) {
+    const action = event.target.closest("[data-action]")?.dataset.action;
+    if (action === "deploy") {
+      hideOverlay();
+      state.active = true;
+      return;
+    }
+    if (action === "next-floor") {
+      state.floor += 1;
+      beginFloor();
+      return;
+    }
+    if (action === "return") {
+      finishRun(Number(event.target.closest("[data-multiplier]")?.dataset.multiplier || 1));
+      return;
+    }
+    if (action === "retry") beginRun();
+  }
+
+  function finishRun(multiplier) {
+    const collected = Math.floor(state.runSalvage * multiplier);
+    progression.salvage += collected;
+    progression.bestFloor = Math.max(progression.bestFloor, state.floor);
+    saveProgression();
+    state.active = false;
+    state.runActive = false;
+    state.floorMap = null;
+    state.enemies = [];
+    state.sensors = [];
+    hideOverlay();
+    element("run-screen").hidden = true;
+    element("home-screen").hidden = false;
+    updateHome();
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
