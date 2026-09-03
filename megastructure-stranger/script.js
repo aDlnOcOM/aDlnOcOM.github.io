@@ -1325,6 +1325,46 @@
     createParticles(state.player.x, state.player.y, "#ff6d68", 18, 66);
   }
 
+  function fireSmg() {
+    const player = state.player;
+    if (!state.active || !player) return;
+    if (!player.ammo) {
+      reloadSmg();
+      return;
+    }
+    const stats = playerStats();
+    const aim = playerAimAngle() + randomBetween(-stats.spread, stats.spread);
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, color: "#9ffdf3", lifetime: 1.4 });
+    player.ammo -= 1;
+    player.fireCooldown = .105;
+    createParticles(player.x, player.y, "#8df8ee", 2, 22);
+    triggerAlarm("акустические датчики зарегистрировали выстрел");
+  }
+
+  function reloadSmg() {
+    const player = state.player;
+    if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
+    player.reload = playerStats().reload;
+  }
+
+  function knifeAttack() {
+    const player = state.player;
+    if (!state.active || !player || player.knifeCooldown > 0) return;
+    player.knifeCooldown = playerStats().knifeDelay;
+    player.knifeFlash = .16;
+    const angle = playerAimAngle();
+    let hit = false;
+    state.enemies.forEach(enemy => {
+      const enemyAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+      const difference = normalizedAngle(enemyAngle - angle);
+      if (distance(player, enemy) < 83 && Math.abs(difference) < .92) {
+        damageEnemy(enemy, playerStats().knifeDamage);
+        hit = true;
+      }
+    });
+    if (hit) emitNoise(player.x, player.y, 135, "охранный контур услышал рукопашную схватку");
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
