@@ -890,6 +890,60 @@
     state.player.weapon = weapon;
     updateRunUi();
   }
+  // Длинный этаж: скрытное исследование, единая тревога и шлюзовой босс.
+  const LONG_FLOOR_CELL = 72;
+
+  function randomInteger(minimum, maximum) {
+    return Math.floor(randomBetween(minimum, maximum + 1));
+  }
+
+  function normalizedAngle(angle) {
+    return Math.atan2(Math.sin(angle), Math.cos(angle));
+  }
+
+  function worldPositionFromPointer() {
+    return {
+      x: state.input.mouseX + state.cameraX,
+      y: state.input.mouseY
+    };
+  }
+
+  function playerAimAngle() {
+    const pointer = worldPositionFromPointer();
+    return Math.atan2(pointer.y - state.player.y, pointer.x - state.player.x);
+  }
+
+  function createGuard(type, x, y, patrolStart, patrolEnd, angle) {
+    const template = ENEMY_TYPES[type];
+    const multiplier = 1 + (state.floor - 1) * .18;
+    return {
+      type,
+      x,
+      y,
+      radius: template.radius,
+      color: template.color,
+      health: Math.round(template.hp * multiplier),
+      maxHealth: Math.round(template.hp * multiplier),
+      speed: template.speed * (type === "turret" ? 1 : multiplier),
+      fireRate: type === "turret" ? Math.max(.72, template.fire - state.floor * .035) : template.fire,
+      fireTimer: randomBetween(.2, template.fire),
+      bulletSpeed: template.bulletSpeed * (1 + (state.floor - 1) * .04),
+      damage: template.damage + Math.floor((state.floor - 1) / 2),
+      reward: template.reward + state.floor * 2,
+      patrolStart,
+      patrolEnd,
+      patrolDirection: Math.random() > .5 ? 1 : -1,
+      alertStart: Math.max(46, patrolStart - 180),
+      alertEnd: patrolEnd + 180,
+      homeAngle: angle,
+      angle,
+      phase: Math.random() * Math.PI * 2,
+      sighting: 0,
+      hitFlash: 0,
+      boss: false
+    };
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
