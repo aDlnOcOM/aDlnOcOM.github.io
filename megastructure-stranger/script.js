@@ -1563,6 +1563,19 @@
       : "Фонарь выключен. В аварийном свете виден только тепловой контур.";
   }
 
+  function update(delta) {
+    if (!state.active || !state.player || !state.floorMap) return;
+    state.elapsed += delta;
+    updatePlayer(delta);
+    updateSensors(delta);
+    updateEnemies(delta);
+    updateBullets(delta);
+    updateParticles(delta);
+    state.cameraX += (clamp(state.player.x - WIDTH * .42, 0, state.floorMap.width - WIDTH) - state.cameraX) * Math.min(1, delta * 7);
+    updateExploration(delta);
+    updateRunUi();
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
