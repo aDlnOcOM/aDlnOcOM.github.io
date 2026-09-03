@@ -1628,6 +1628,64 @@
     context.restore();
   }
 
+  function drawSensor(sensor) {
+    const screenX = sensor.x - state.cameraX;
+    context.save();
+    context.translate(screenX, sensor.y);
+    context.rotate(sensor.angle);
+    context.fillStyle = "#b9d0df";
+    context.fillRect(-7, -7, 14, 14);
+    context.fillStyle = state.alarm ? "#ff6d68" : "#63e4dd";
+    context.fillRect(3, -2, 11, 4);
+    context.restore();
+  }
+
+  function drawBullet(bullet) {
+    const screenX = bullet.x - state.cameraX;
+    context.fillStyle = bullet.color;
+    context.shadowBlur = bullet.owner === "player" ? 12 : 8;
+    context.shadowColor = bullet.color;
+    context.beginPath();
+    context.arc(screenX, bullet.y, bullet.radius, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+  }
+
+  function drawEnemy(enemy) {
+    const screenX = enemy.x - state.cameraX;
+    context.save();
+    context.translate(screenX, enemy.y);
+    context.rotate(enemy.angle || 0);
+    context.fillStyle = enemy.hitFlash ? "#ffffff" : enemy.color;
+    context.shadowBlur = enemy.boss ? 20 : 8;
+    context.shadowColor = enemy.color;
+    if (enemy.type === "turret") {
+      context.fillRect(-enemy.radius, -enemy.radius, enemy.radius * 2, enemy.radius * 2);
+      context.fillStyle = "#19232c";
+      context.fillRect(0, -4, enemy.radius + 11, 8);
+    } else {
+      context.beginPath();
+      context.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#18232c";
+      context.fillRect(0, -3, enemy.radius + 8, 6);
+    }
+    context.restore();
+    context.shadowBlur = 0;
+    const healthRatio = enemy.health / enemy.maxHealth;
+    context.fillStyle = "rgba(0, 0, 0, .52)";
+    context.fillRect(screenX - enemy.radius, enemy.y - enemy.radius - 12, enemy.radius * 2, 4);
+    context.fillStyle = enemy.boss ? "#e8ed83" : "#ff9a8d";
+    context.fillRect(screenX - enemy.radius, enemy.y - enemy.radius - 12, enemy.radius * 2 * healthRatio, 4);
+  }
+
+  function drawParticle(particle) {
+    context.globalAlpha = clamp(particle.lifetime * 3, 0, 1);
+    context.fillStyle = particle.color;
+    context.fillRect(particle.x - state.cameraX - 2, particle.y - 2, 4, 4);
+    context.globalAlpha = 1;
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
