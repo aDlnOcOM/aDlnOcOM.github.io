@@ -1782,6 +1782,34 @@
     }
   }
 
+  function draw() {
+    const alarmLight = state.alarm ? .55 + Math.sin(state.elapsed * 7) * .09 : 0;
+    const gradient = context.createLinearGradient(0, 0, WIDTH, HEIGHT);
+    gradient.addColorStop(0, state.alarm ? "rgb(" + Math.round(37 + alarmLight * 38) + ",20,23)" : "#3a3d3f");
+    gradient.addColorStop(1, state.alarm ? "#150d10" : "#262b2e");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+    drawGrid();
+    drawStaticWorld();
+    drawFog();
+    drawDynamicWorld();
+    drawPlayer();
+    drawRoomLabel();
+  }
+
+  function frame(time) {
+    const delta = Math.min(.035, (time - state.lastFrame) / 1000 || 0);
+    state.lastFrame = time;
+    update(delta);
+    if (!element("run-screen").hidden) draw();
+    window.requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("keydown", event => {
+    if (event.code === "KeyE" && !event.repeat) tryInteract();
+    if (event.code === "KeyF" && !event.repeat) toggleFlashlight();
+  });
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
