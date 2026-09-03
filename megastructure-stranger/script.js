@@ -1511,6 +1511,58 @@
     showOverlay("<div class=\"overlay-card\"><p class=\"eyebrow\">контур контроля обнаружил след</p><h2>Смена окончена.</h2><p>Автономный маршрут выбросил тебя к убежищу. Удалось сохранить " + recovered + " ед. лома.</p><div class=\"overlay-actions\"><button class=\"primary-button\" type=\"button\" data-action=\"return\" data-multiplier=\"" + recoveryRate + "\">В убежище <span>↖</span></button><button class=\"quiet-button\" type=\"button\" data-action=\"retry\">Новый забег</button></div></div>");
   }
 
+  function startBossAirlock() {
+    const map = state.floorMap;
+    if (map.bossStarted) return;
+    map.bossStarted = true;
+    state.player.x = map.entryGate.x + 84;
+    state.player.y = HEIGHT / 2;
+    const template = ENEMY_TYPES.warden;
+    const multiplier = 1 + (state.floor - 1) * .22;
+    const boss = {
+      type: "warden",
+      x: map.entryGate.x + map.bossWidth * .52,
+      y: HEIGHT / 2,
+      radius: template.radius,
+      color: template.color,
+      health: Math.round(template.hp * multiplier),
+      maxHealth: Math.round(template.hp * multiplier),
+      speed: template.speed * multiplier,
+      fireTimer: .8,
+      bulletSpeed: template.bulletSpeed * (1 + state.floor * .04),
+      damage: template.damage + Math.floor((state.floor - 1) / 2),
+      reward: template.reward + state.floor * 18,
+      angle: Math.PI,
+      boss: true,
+      hitFlash: 0
+    };
+    state.enemies.push(boss);
+    triggerAlarm("шлюз герметизирован. Смотритель активирован");
+    element("signal-text").textContent = "Шлюз заперт. Смотритель не даст пройти к лифту, пока не будет уничтожен.";
+    renderRoute();
+  }
+
+  function tryInteract() {
+    if (!state.active || !state.floorMap || !state.player) return;
+    const map = state.floorMap;
+    if (!map.bossStarted && state.player.x > map.entryGate.x - 96) {
+      startBossAirlock();
+      return;
+    }
+    if (map.bossDefeated && state.player.x > map.exitGate.x - 84) {
+      state.floor += 1;
+      beginFloor();
+    }
+  }
+
+  function toggleFlashlight() {
+    if (!state.active || !state.alarm) return;
+    state.flashlight = !state.flashlight;
+    element("signal-text").textContent = state.flashlight
+      ? "Фонарь включён. Узкий луч подсвечивает только ближайший маршрут."
+      : "Фонарь выключен. В аварийном свете виден только тепловой контур.";
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
