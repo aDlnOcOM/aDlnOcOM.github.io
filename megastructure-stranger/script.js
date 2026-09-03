@@ -1253,6 +1253,38 @@
     map.explored.add(exploredCellKey(state.player.x, state.player.y));
   }
 
+  function moveCircle(entity, horizontal, vertical) {
+    entity.x += horizontal;
+    resolveObstacleCollision(entity);
+    entity.y += vertical;
+    resolveObstacleCollision(entity);
+  }
+
+  function resolveObstacleCollision(entity) {
+    for (const obstacle of getWorldColliders()) {
+      const closestX = clamp(entity.x, obstacle.x, obstacle.x + obstacle.width);
+      const closestY = clamp(entity.y, obstacle.y, obstacle.y + obstacle.height);
+      const differenceX = entity.x - closestX;
+      const differenceY = entity.y - closestY;
+      const gap = Math.hypot(differenceX, differenceY);
+      if (gap >= entity.radius) continue;
+      if (gap > .001) {
+        entity.x += differenceX / gap * (entity.radius - gap + .2);
+        entity.y += differenceY / gap * (entity.radius - gap + .2);
+        continue;
+      }
+      const options = [
+        { distance: Math.abs(entity.x - obstacle.x), x: obstacle.x - entity.radius - .2, y: entity.y },
+        { distance: Math.abs(obstacle.x + obstacle.width - entity.x), x: obstacle.x + obstacle.width + entity.radius + .2, y: entity.y },
+        { distance: Math.abs(entity.y - obstacle.y), x: entity.x, y: obstacle.y - entity.radius - .2 },
+        { distance: Math.abs(obstacle.y + obstacle.height - entity.y), x: entity.x, y: obstacle.y + obstacle.height + entity.radius + .2 }
+      ];
+      const nearest = options.reduce((first, second) => first.distance < second.distance ? first : second);
+      entity.x = nearest.x;
+      entity.y = nearest.y;
+    }
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
