@@ -1689,6 +1689,14 @@
   function drawFog() {
     const map = state.floorMap;
     const fog = state.fogCanvas.getContext("2d");
+    if (!state.fogCanvas) {
+      state.fogCanvas = document.createElement("canvas");
+      state.visionCanvas = document.createElement("canvas");
+      state.fogCanvas.width = WIDTH;
+      state.fogCanvas.height = HEIGHT;
+      state.visionCanvas.width = WIDTH;
+      state.visionCanvas.height = HEIGHT;
+    }
     const vision = state.visionCanvas.getContext("2d");
     fog.clearRect(0, 0, WIDTH, HEIGHT);
     const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
