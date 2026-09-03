@@ -1101,7 +1101,7 @@
     const map = state.floorMap;
     if (!player || !map) return;
     const sector = currentSector();
-    if (map.lastRouteSector !== sector || map.bossStarted || map.bossDefeated) renderRoute();
+    if (map.lastRouteSector !== sector) renderRoute();
 
     element("floor-number").textContent = String(state.floor).padStart(2, "0");
     element("health-label").textContent = Math.ceil(player.health) + " / " + player.maxHealth;
@@ -1490,6 +1490,7 @@
     if (enemy.boss) {
       state.floorMap.bossDefeated = true;
       state.floorMap.exitOpen = true;
+      renderRoute();
       element("signal-text").textContent = "Смотритель отключён. Правый шлюз разблокирован: войди в лифт.";
       return;
     }
