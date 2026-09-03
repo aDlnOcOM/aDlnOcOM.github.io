@@ -1725,6 +1725,63 @@
     context.drawImage(state.fogCanvas, 0, 0);
   }
 
+  function drawPlayer() {
+    const player = state.player;
+    const angle = playerAimAngle();
+    context.save();
+    context.translate(player.x - state.cameraX, player.y);
+    context.rotate(angle);
+    context.fillStyle = "#8ff7ef";
+    context.shadowBlur = 14;
+    context.shadowColor = "#63e4dd";
+    context.fillRect(-7, -10, 14, 20);
+    context.fillStyle = "#d4ee70";
+    context.fillRect(4, -3, 19, 6);
+    context.restore();
+    context.shadowBlur = 0;
+    if (player.knifeFlash > 0) {
+      context.strokeStyle = "#f4fbbe";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.arc(player.x - state.cameraX, player.y, 64, angle - .9, angle + .9);
+      context.stroke();
+    }
+  }
+
+  function drawDynamicWorld() {
+    for (const sensor of state.sensors) {
+      if (isPointVisible(sensor)) drawSensor(sensor);
+    }
+    for (const bullet of state.bullets) {
+      if (isPointVisible(bullet)) drawBullet(bullet);
+    }
+    for (const enemy of state.enemies) {
+      if (isPointVisible(enemy)) drawEnemy(enemy);
+    }
+    for (const particle of state.particles) {
+      if (isPointVisible(particle)) drawParticle(particle);
+    }
+  }
+
+  function drawRoomLabel() {
+    const map = state.floorMap;
+    if (!map) return;
+    let label = "СЕКТОР " + String(currentSector() + 1).padStart(2, "0") + " / " + String(map.sectorCount).padStart(2, "0");
+    if (map.bossStarted && !map.bossDefeated) label = "ШЛЮЗ СМОТРИТЕЛЯ // ВЫХОД ЗАПЕРТ";
+    if (map.bossDefeated) label = "ШЛЮЗ ОЧИЩЕН // ЛИФТ СПРАВА";
+    context.fillStyle = state.alarm ? "rgba(255, 182, 172, .78)" : "rgba(220, 236, 244, .62)";
+    context.font = "11px Consolas, monospace";
+    context.fillText(label + " // " + (state.alarm ? "ТРЕВОГА" : "ТИШИНА"), 16, 25);
+
+    if (!map.bossStarted && state.player.x > map.entryGate.x - 126) {
+      context.fillStyle = "#d4ee70";
+      context.fillText("E — ВОЙТИ В ШЛЮЗ", WIDTH - 210, 25);
+    } else if (map.bossDefeated && state.player.x > map.exitGate.x - 126) {
+      context.fillStyle = "#d4ee70";
+      context.fillText("E — ПЕРЕЙТИ В ЛИФТ", WIDTH - 210, 25);
+    }
+  }
+
 
   element("start-run").addEventListener("click", beginRun);
   element("room-overlay").addEventListener("click", onOverlayClick);
