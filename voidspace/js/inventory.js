@@ -4,16 +4,16 @@
   const VS = (window.Voidspace = window.Voidspace || {});
 
   const ORES = {
-    feNi: { name: "Железо-никель", value: 6, color: "#b9c2c7", sprite: "assets/ores/ore_iron.svg" },
-    cobalt: { name: "Кобальт", value: 12, color: "#6fa5ff", sprite: "assets/ores/ore_cobalt.svg" },
-    silicates: { name: "Силикаты", value: 4, color: "#b7a17f", sprite: "assets/ores/ore_silicate.svg" },
-    olivine: { name: "Оливин", value: 9, color: "#a9d65f", sprite: "assets/ores/ore_olivine.svg" },
-    sulfur: { name: "Сера", value: 8, color: "#f2cb55", sprite: "assets/ores/ore_sulfur.svg" },
-    carbon: { name: "Углерод", value: 7, color: "#7e8b93", sprite: "assets/ores/ore_carbon.svg" },
-    ice: { name: "Водяной лёд", value: 11, color: "#8fe8ff", sprite: "assets/ores/ore_ice.svg" },
-    organics: { name: "Органика", value: 18, color: "#ce6dca", sprite: "assets/ores/ore_organics.svg" },
-    platinum: { name: "Платиновая группа", value: 32, color: "#f6f0e0", sprite: "assets/ores/ore_platinum.svg" },
-    rareEarths: { name: "Редкоземы", value: 26, color: "#ff8e6e", sprite: "assets/ores/ore_rare.svg" },
+    feNi: { name: "Железо-никель", value: 6, color: "#b9c2c7", sprite: "assets/ores/ore_iron.png" },
+    cobalt: { name: "Кобальт", value: 12, color: "#6fa5ff", sprite: "assets/ores/ore_cobalt.png" },
+    silicates: { name: "Силикаты", value: 4, color: "#b7a17f", sprite: "assets/ores/ore_silicate.png" },
+    olivine: { name: "Оливин", value: 9, color: "#a9d65f", sprite: "assets/ores/ore_olivine.png" },
+    sulfur: { name: "Сера", value: 8, color: "#f2cb55", sprite: "assets/ores/ore_sulfur.png" },
+    carbon: { name: "Углерод", value: 7, color: "#7e8b93", sprite: "assets/ores/ore_carbon.png" },
+    ice: { name: "Водяной лёд", value: 11, color: "#8fe8ff", sprite: "assets/ores/ore_ice.png" },
+    organics: { name: "Органика", value: 18, color: "#ce6dca", sprite: "assets/ores/ore_organics.png" },
+    platinum: { name: "Платиновая группа", value: 32, color: "#f6f0e0", sprite: "assets/ores/ore_platinum.png" },
+    rareEarths: { name: "Редкоземы", value: 26, color: "#ff8e6e", sprite: "assets/ores/ore_rare.png" },
   };
 
   class Inventory {

@@ -14,7 +14,7 @@
       energyUse: 0,
       energy: 6,
       cargo: 8,
-      sprite: "assets/modules/core.svg",
+      sprite: "assets/modules/core.png",
       unlock: 0,
     },
     laser: {
@@ -25,7 +25,7 @@
       hp: 42,
       energyUse: 3,
       mining: 1,
-      sprite: "assets/modules/laser.svg",
+      sprite: "assets/modules/laser.png",
       unlock: 0,
     },
     thruster: {
@@ -36,7 +36,7 @@
       hp: 50,
       energyUse: 2,
       thrust: 1,
-      sprite: "assets/modules/thruster.svg",
+      sprite: "assets/modules/thruster.png",
       unlock: 0,
     },
     booster: {
@@ -47,7 +47,7 @@
       hp: 62,
       energyUse: 4,
       thrust: 2.25,
-      sprite: "assets/modules/booster.svg",
+      sprite: "assets/modules/booster.png",
       unlock: 125,
     },
     hull: {
@@ -57,7 +57,7 @@
       cost: 24,
       hp: 85,
       energyUse: 0,
-      sprite: "assets/modules/hull.svg",
+      sprite: "assets/modules/hull.png",
       unlock: 0,
     },
     beam: {
@@ -67,7 +67,7 @@
       cost: 12,
       hp: 38,
       energyUse: 0,
-      sprite: "assets/modules/beam.svg",
+      sprite: "assets/modules/beam.png",
       unlock: 35,
     },
     cargo: {
@@ -78,7 +78,7 @@
       hp: 58,
       energyUse: 1,
       cargo: 18,
-      sprite: "assets/modules/cargo.svg",
+      sprite: "assets/modules/cargo.png",
       unlock: 0,
     },
     drill: {
@@ -89,7 +89,7 @@
       hp: 55,
       energyUse: 3,
       mining: 0.6,
-      sprite: "assets/modules/drill.svg",
+      sprite: "assets/modules/drill.png",
       unlock: 140,
     },
     rtg: {
@@ -100,7 +100,7 @@
       hp: 48,
       energyUse: 0,
       energy: 12,
-      sprite: "assets/modules/rtg.svg",
+      sprite: "assets/modules/rtg.png",
       unlock: 110,
     },
     shield: {
@@ -111,7 +111,7 @@
       hp: 45,
       energyUse: 5,
       shield: 45,
-      sprite: "assets/modules/shield.svg",
+      sprite: "assets/modules/shield.png",
       unlock: 180,
     },
   };
