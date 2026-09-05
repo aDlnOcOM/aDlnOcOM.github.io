@@ -5,6 +5,66 @@
   const { Utils, ModuleSystem, Inventory } = VS;
   const { MODULES, MODULE_SIZE, calculateStats, isAdjacentToShip, isConnected } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
+  const LASER_SWAY = Math.PI / 24;
+  const LASER_SWAY_SPEED = 1.8;
+  const LASER_MUZZLE_OFFSET = 21;
+  const MODULE_LAYER_CACHE = new WeakMap();
+
+  function createSpriteLayer(image, crop, warmTone = null) {
+    const canvas = document.createElement("canvas");
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    if (!warmTone) return canvas;
+
+    const imageData = context.getImageData(0, 0, crop.width, crop.height);
+    const pixels = imageData.data;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const alpha = pixels[index + 3];
+      const isWarm = alpha > 0 && red > 110 && green > 45 && red > green * 1.05 && red > blue * 1.45;
+      if (!isWarm) continue;
+      const intensity = Math.max(red, green);
+      if (warmTone === "bright") {
+        pixels[index] = Math.round(intensity * 0.18);
+        pixels[index + 1] = Math.min(255, Math.round(intensity * 0.86 + 38));
+        pixels[index + 2] = 255;
+      } else {
+        pixels[index] = Math.round(intensity * 0.1);
+        pixels[index + 1] = Math.round(intensity * 0.28);
+        pixels[index + 2] = Math.round(intensity * 0.43);
+      }
+    }
+    context.putImageData(imageData, 0, 0);
+    return canvas;
+  }
+
+  function getAnimatedModuleLayers(type, image) {
+    const cached = MODULE_LAYER_CACHE.get(image);
+    if (cached) return cached;
+    let layers = null;
+    if (type === "laser") {
+      layers = {
+        body: createSpriteLayer(image, { x: 7, y: 18, width: 49, height: 44 }, "muted"),
+        tool: createSpriteLayer(image, { x: 24, y: 2, width: 16, height: 29 }, "bright"),
+      };
+    }
+    if (type === "drill") {
+      layers = {
+        body: createSpriteLayer(image, { x: 10, y: 13, width: 43, height: 35 }),
+        tool: createSpriteLayer(image, { x: 21, y: 48, width: 21, height: 14 }),
+      };
+    }
+    if (layers) MODULE_LAYER_CACHE.set(image, layers);
+    return layers;
+  }
+
+  function laserSway(time) {
+    return Math.sin(time * LASER_SWAY_SPEED) * LASER_SWAY;
+  }
 
   function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
     if (!image) return;
@@ -30,6 +90,32 @@
       MODULE_SIZE,
     );
     ctx.restore();
+  }
+
+  function drawAnimatedModule(ctx, image, module, definition, time, alpha = 1) {
+    if (!image || !definition) return false;
+    const layers = getAnimatedModuleLayers(module.type, image);
+    if (!layers) return false;
+    const x = module.gx * MODULE_SIZE;
+    const y = module.gy * MODULE_SIZE;
+    const baseRotation = (module.rotation + (definition.spriteRotation || 0)) * (Math.PI / 2);
+    Utils.drawImage(ctx, layers.body, x, y, MODULE_SIZE, MODULE_SIZE, baseRotation, alpha);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    if (module.type === "laser") {
+      ctx.rotate(baseRotation + laserSway(time));
+      ctx.drawImage(layers.tool, -4, -21, 8, 24);
+    } else {
+      const cycle = time * 13;
+      const extension = Math.sin(cycle) * 1.2;
+      const vibration = Math.sin(cycle * 0.73) * (Math.PI / 90);
+      ctx.rotate(baseRotation + vibration);
+      ctx.drawImage(layers.tool, -5, -3, 10, 22 + extension);
+    }
+    ctx.restore();
+    return true;
   }
 
   class Ship {
@@ -114,16 +200,15 @@
       return { x: dx * cosine - dy * sine, y: dx * sine + dy * cosine };
     }
 
-    getLaserMount() {
+    getLaserMount(time = 0) {
       const laser = this.modules.find((module) => module.type === "laser");
       if (!laser) return { origin: this.localToWorld(MODULE_SIZE, 0), angle: this.angle };
       const center = this.localToWorld(laser.gx * MODULE_SIZE, laser.gy * MODULE_SIZE);
-      const angle = this.angle + (Number(laser.rotation) || 0) * (Math.PI / 2);
-      const muzzleOffset = MODULE_SIZE * 0.48;
+      const angle = this.angle + (Number(laser.rotation) || 0) * (Math.PI / 2) + laserSway(time);
       return {
         origin: {
-          x: center.x + Math.cos(angle) * muzzleOffset,
-          y: center.y + Math.sin(angle) * muzzleOffset,
+          x: center.x + Math.cos(angle) * LASER_MUZZLE_OFFSET,
+          y: center.y + Math.sin(angle) * LASER_MUZZLE_OFFSET,
         },
         angle,
       };
@@ -163,7 +248,7 @@
       this.collisionCooldown = 0.45;
     }
 
-    draw(ctx, camera, viewport, images, buildMode = false, buildHover = null) {
+    draw(ctx, camera, viewport, images, buildMode = false, buildHover = null, time = 0) {
       const center = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       ctx.save();
       ctx.translate(center.x, center.y);
@@ -186,7 +271,8 @@
         const image = images[`module_${module.type}`];
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
-        drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
+        const animated = drawAnimatedModule(ctx, image, module, definition, time);
+        if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
           ctx.strokeRect(module.gx * MODULE_SIZE - 17, module.gy * MODULE_SIZE - 17, 34, 34);
@@ -199,7 +285,8 @@
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
+        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, 0.52);
+        if (!animated) drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;
         ctx.strokeRect(buildHover.gx * MODULE_SIZE - MODULE_SIZE / 2, buildHover.gy * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);

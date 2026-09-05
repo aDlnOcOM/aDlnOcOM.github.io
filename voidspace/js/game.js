@@ -219,7 +219,7 @@
 
     fireMiningLaser(dt, mouseWorld) {
       if (!this.ship.modules.some((module) => module.type === "laser") || this.ship.stats.energyUse > this.ship.stats.energy) return;
-      const mount = this.ship.getLaserMount();
+      const mount = this.ship.getLaserMount(this.time);
       const { origin, angle: aimAngle } = mount;
       const maxDistance = MODULES.laser.range;
       const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
@@ -305,7 +305,7 @@
       for (const asteroid of this.asteroids) asteroid.draw(ctx, this.camera, this.viewport, this.images);
       this.drawLaser(time);
       for (const particle of this.particles) particle.draw(ctx, this.camera, this.viewport, this.images);
-      this.ship.draw(ctx, this.camera, this.viewport, this.images, this.buildMode, this.buildHover);
+      this.ship.draw(ctx, this.camera, this.viewport, this.images, this.buildMode, this.buildHover, this.time);
       if (!this.station.isSafe(this.ship)) this.drawStationIndicator();
       this.drawCoordinates();
     }
