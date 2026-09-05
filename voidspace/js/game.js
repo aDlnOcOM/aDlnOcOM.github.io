@@ -10,14 +10,15 @@
     constructor(canvas, images, save = {}) {
       this.canvas = canvas;
       this.ctx = canvas.getContext("2d");
-      this.ctx.imageSmoothingEnabled = false;
       this.images = images;
       this.viewport = { width: canvas.width, height: canvas.height };
+      this.renderScale = { x: 1, y: 1 };
+      this.resizeCanvas();
       this.station = new VS.Station();
       this.ship = new VS.Ship(save.ship || {});
       this.camera = { x: this.ship.x, y: this.ship.y };
       this.input = new Set();
-      this.mouse = { x: canvas.width * 0.7, y: canvas.height * 0.5, down: false };
+      this.mouse = { x: this.viewport.width * 0.7, y: this.viewport.height * 0.5, down: false };
       this.asteroids = [];
       this.pickups = [];
       this.particles = [];
@@ -56,6 +57,24 @@
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
 
+    resizeCanvas() {
+      const bounds = this.canvas.getBoundingClientRect();
+      const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+      const width = Math.max(1, Math.round(bounds.width * pixelRatio));
+      const height = Math.max(1, Math.round(bounds.height * pixelRatio));
+      if (this.canvas.width !== width) this.canvas.width = width;
+      if (this.canvas.height !== height) this.canvas.height = height;
+      this.renderScale.x = width / this.viewport.width;
+      this.renderScale.y = height / this.viewport.height;
+      this.configureRenderer();
+    }
+
+    configureRenderer() {
+      this.ctx.setTransform(this.renderScale.x, 0, 0, this.renderScale.y, 0, 0);
+      this.ctx.imageSmoothingEnabled = true;
+      this.ctx.imageSmoothingQuality = "high";
+    }
+
     bindEvents() {
       window.addEventListener("keydown", (event) => this.onKeyDown(event));
       window.addEventListener("keyup", (event) => this.input.delete(event.code));
@@ -63,6 +82,7 @@
         this.input.clear();
         this.mouse.down = false;
       });
+      window.addEventListener("resize", () => this.resizeCanvas());
       this.canvas.addEventListener("pointermove", (event) => this.updatePointer(event));
       this.canvas.addEventListener("pointerdown", (event) => {
         this.updatePointer(event);
@@ -107,8 +127,8 @@
 
     updatePointer(event) {
       const rect = this.canvas.getBoundingClientRect();
-      this.mouse.x = ((event.clientX - rect.left) / rect.width) * this.canvas.width;
-      this.mouse.y = ((event.clientY - rect.top) / rect.height) * this.canvas.height;
+      this.mouse.x = ((event.clientX - rect.left) / rect.width) * this.viewport.width;
+      this.mouse.y = ((event.clientY - rect.top) / rect.height) * this.viewport.height;
       if (this.buildMode) this.updateBuildHover();
     }
 
@@ -251,7 +271,7 @@
 
     render(time) {
       const ctx = this.ctx;
-      ctx.imageSmoothingEnabled = false;
+      this.configureRenderer();
       ctx.clearRect(0, 0, this.viewport.width, this.viewport.height);
       this.drawBackground(time);
       this.station.draw(ctx, this.camera, this.viewport, this.images, time);
@@ -394,7 +414,7 @@
         .map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
-            <img src="${definition.sprite}" alt="" />
+            <img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)" />
             <span><b>${definition.name}</b><small>${definition.energyUse ? `−${definition.energyUse} энергии` : definition.energy ? `+${definition.energy} энергии` : definition.description}</small></span>
             <strong>${definition.cost} ¤</strong>
           </button>`;
@@ -438,7 +458,7 @@
       container.innerHTML = `<div class="terminal-summary"><p>Покупка чертежа открывает модуль навсегда.<br>Установка выполняется в режиме строительства.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
         <div class="shop-grid">${Object.entries(MODULES).filter(([type]) => !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
-          return `<div class="shop-card"><img src="${definition.sprite}" alt=""><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
+          return `<div class="shop-card"><img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)"><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
         }).join("")}</div>`;
       container.querySelectorAll("[data-unlock]").forEach((button) => {
         button.addEventListener("click", () => this.unlockModule(button.dataset.unlock));

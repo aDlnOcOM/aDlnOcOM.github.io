@@ -46,7 +46,7 @@
     },
 
     worldToScreen(point, camera, width, height) {
-      return { x: Math.round(point.x - camera.x + width / 2), y: Math.round(point.y - camera.y + height / 2) };
+      return { x: point.x - camera.x + width / 2, y: point.y - camera.y + height / 2 };
     },
 
     screenToWorld(point, camera, width, height) {
@@ -81,9 +81,9 @@
       if (!image) return;
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.translate(Math.round(x), Math.round(y));
+      ctx.translate(x, y);
       ctx.rotate(rotation);
-      ctx.drawImage(image, Math.round(-width / 2), Math.round(-height / 2), Math.round(width), Math.round(height));
+      ctx.drawImage(image, -width / 2, -height / 2, width, height);
       ctx.restore();
     },
   };

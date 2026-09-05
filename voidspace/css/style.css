@@ -63,8 +63,7 @@ h2,
   width: 100%;
   height: 100%;
   display: block;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
   cursor: crosshair;
 }
 
@@ -86,7 +85,7 @@ h2,
 .status-card { top: 18px; left: 18px; width: 360px; }
 .resource-card { top: 18px; right: 18px; width: 290px; text-align: right; }
 .resource-card strong { display: flex; align-items: center; justify-content: flex-end; gap: 7px; color: var(--amber); font-size: 25px; margin: 4px 0; }
-.resource-card strong img { width: 20px; height: 20px; image-rendering: pixelated; }
+.resource-card strong img { width: 20px; height: 20px; image-rendering: auto; }
 .resource-card small { color: var(--muted); font-size: 14px; }
 .target-card { top: 125px; right: 18px; width: 300px; }
 .target-card strong { display: block; font-size: 14px; margin: 5px 0 7px; }
@@ -196,7 +195,7 @@ h2,
 .shop-card,
 .service-card { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px; border: 1px solid var(--line); background: #07101a; }
 .ore-line img,
-.shop-card img { width: 32px; height: 32px; image-rendering: pixelated; }
+.shop-card img { width: 32px; height: 32px; image-rendering: auto; }
 .ore-line div,
 .shop-card div { flex: 1; }
 .ore-line b,
@@ -256,7 +255,7 @@ h2,
 .module-option:hover,
 .module-option.selected { border-color: var(--cyan-soft); background: #0c202c; }
 .module-option.locked { opacity: 0.42; }
-.module-option img { width: 32px; height: 32px; image-rendering: pixelated; }
+.module-option img { width: 32px; height: 32px; image-rendering: auto; }
 .module-option b,
 .module-option small { display: block; }
 .module-option b { font-size: 14px; color: white; }

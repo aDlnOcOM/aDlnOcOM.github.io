@@ -15,6 +15,7 @@
       energy: 6,
       cargo: 8,
       sprite: "assets/modules/core.png",
+      spriteRotation: 1,
       unlock: 0,
     },
     laser: {
@@ -26,6 +27,7 @@
       energyUse: 3,
       mining: 1,
       sprite: "assets/modules/laser.png",
+      spriteRotation: 1,
       unlock: 0,
     },
     thruster: {
@@ -37,6 +39,7 @@
       energyUse: 2,
       thrust: 1,
       sprite: "assets/modules/thruster.png",
+      spriteRotation: 1,
       unlock: 0,
     },
     booster: {
@@ -48,6 +51,7 @@
       energyUse: 4,
       thrust: 2.25,
       sprite: "assets/modules/booster.png",
+      spriteRotation: 1,
       unlock: 125,
     },
     hull: {
@@ -90,6 +94,7 @@
       energyUse: 3,
       mining: 0.6,
       sprite: "assets/modules/drill.png",
+      spriteRotation: 3,
       unlock: 140,
     },
     rtg: {
