@@ -24,6 +24,9 @@
   const TURNING_THROTTLE = 0.72;
   const TORQUE_RESPONSE = 4;
   const MAX_ANGULAR_SPEED = 2.4;
+  const LINEAR_VELOCITY_RETENTION = 0.985;
+  const ANGULAR_VELOCITY_RETENTION_IDLE = 0.58;
+  const ANGULAR_VELOCITY_RETENTION_ACTIVE = 0.82;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
@@ -378,7 +381,6 @@
       this.lastLaserAt = 0;
       this.collisionCooldown = 0;
       this.thrusting = false;
-      this.braking = false;
       this.angularVelocity = 0;
       this.engineStates = new Map();
       this.aimWorld = { x: this.x + MODULE_SIZE * 4, y: this.y };
@@ -398,8 +400,9 @@
       const turnInput =
         (input.has("KeyD") || input.has("ArrowRight") ? 1 : 0) -
         (input.has("KeyA") || input.has("ArrowLeft") ? 1 : 0);
-      this.braking = input.has("KeyS") || input.has("ArrowDown");
-      const throttleRequested = (input.has("KeyW") || input.has("ArrowUp")) && !this.braking;
+      const longitudinalInput =
+        (input.has("KeyW") || input.has("ArrowUp") ? 1 : 0) -
+        (input.has("KeyS") || input.has("ArrowDown") ? 1 : 0);
       const massProperties = calculateMassProperties(this.modules);
       const engines = this.modules.filter(isEngine);
       const activeEngineKeys = new Set(engines.map(engineKey));
@@ -414,7 +417,8 @@
         const baseAngle = Math.atan2(baseDirectionY, baseDirectionX);
         const radiusX = engine.gx * MODULE_SIZE - massProperties.centerX;
         const radiusY = engine.gy * MODULE_SIZE - massProperties.centerY;
-        let throttle = throttleRequested ? 1 : 0;
+        const longitudinalAlignment = baseDirectionX * longitudinalInput;
+        let throttle = longitudinalAlignment > 0.5 ? longitudinalAlignment : 0;
         let gimbal = 0;
 
         if (turnInput !== 0) {
@@ -429,7 +433,7 @@
             gimbal = candidate;
           }
           if (bestScore > 0.1) throttle = Math.max(throttle, TURNING_THROTTLE);
-          else if (throttleRequested) throttle *= 0.28;
+          else if (throttle > 0) throttle *= 0.28;
         }
 
         const exhaustConfig = EXHAUST_TEXTURES[engine.type];
@@ -467,23 +471,17 @@
       this.vy += (worldForceY / massProperties.mass) * dt;
       this.angularVelocity += (localTorque / massProperties.inertia) * TORQUE_RESPONSE * dt;
 
-      if (this.braking) {
-        const brakeDamping = Math.pow(0.025, dt);
-        this.vx *= brakeDamping;
-        this.vy *= brakeDamping;
-        this.angularVelocity *= Math.pow(0.02, dt);
-      }
-
       const maxSpeed = 145 + this.stats.thrust * 28;
       const speed = Math.hypot(this.vx, this.vy);
       if (speed > maxSpeed) {
         this.vx = (this.vx / speed) * maxSpeed;
         this.vy = (this.vy / speed) * maxSpeed;
       }
-      const driftDamping = Math.pow(0.94, dt);
+      const driftDamping = Math.pow(LINEAR_VELOCITY_RETENTION, dt);
       this.vx *= driftDamping;
       this.vy *= driftDamping;
-      this.angularVelocity *= Math.pow(turnInput === 0 ? 0.28 : 0.62, dt);
+      const angularRetention = turnInput === 0 ? ANGULAR_VELOCITY_RETENTION_IDLE : ANGULAR_VELOCITY_RETENTION_ACTIVE;
+      this.angularVelocity *= Math.pow(angularRetention, dt);
       this.angularVelocity = Utils.clamp(this.angularVelocity, -MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED);
       this.angle += this.angularVelocity * dt;
       if (Math.abs(this.angle) > Math.PI * 4) this.angle %= Math.PI * 2;
