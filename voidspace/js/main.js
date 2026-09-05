@@ -38,6 +38,8 @@
     particle_spark: "assets/particles/spark.png",
     particle_debris: "assets/particles/debris.png",
     particle_exhaust: "assets/particles/exhaust.png",
+    exhaust_thruster: "assets/particles/exhaust_thruster.png",
+    exhaust_booster: "assets/particles/exhaust_booster.png",
     star_small: "assets/ui/star_small.png",
     star_bright: "assets/ui/star_bright.png",
     ui_arrow: "assets/ui/arrow.png",

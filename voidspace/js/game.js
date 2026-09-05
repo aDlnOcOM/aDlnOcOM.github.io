@@ -3,7 +3,7 @@
 
   const VS = (window.Voidspace = window.Voidspace || {});
   const { Utils, ModuleSystem, Entities, ORES } = VS;
-  const { MODULES, MODULE_SIZE, isAdjacentToShip } = ModuleSystem;
+  const { MODULES, MODULE_SIZE, getPlacementConflict, isAdjacentToShip } = ModuleSystem;
   const { METEOR_TYPES, Asteroid } = Entities;
 
   function moduleArtMarkup(definition) {
@@ -301,6 +301,7 @@
       ctx.clearRect(0, 0, this.viewport.width, this.viewport.height);
       this.drawBackground(time);
       this.station.draw(ctx, this.camera, this.viewport, this.images, time);
+      this.ship.drawExhaust(ctx, this.camera, this.viewport, this.images, this.time, this.buildMode);
       for (const pickup of this.pickups) pickup.draw(ctx, this.camera, this.viewport, this.images);
       for (const asteroid of this.asteroids) asteroid.draw(ctx, this.camera, this.viewport, this.images);
       this.drawLaser(time);
@@ -430,7 +431,9 @@
       const gx = Math.round(local.x / MODULE_SIZE);
       const gy = Math.round(local.y / MODULE_SIZE);
       const occupied = this.ship.modules.some((module) => module.gx === gx && module.gy === gy);
-      const valid = this.deleteMode ? occupied : !occupied && isAdjacentToShip(this.ship.modules, gx, gy);
+      const candidate = { type: this.buildSelected, gx, gy, rotation: this.buildRotation };
+      const conflict = getPlacementConflict(this.ship.modules, candidate);
+      const valid = this.deleteMode ? occupied : !occupied && isAdjacentToShip(this.ship.modules, gx, gy) && !conflict;
       this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
     }
 
@@ -457,7 +460,7 @@
       document.getElementById("delete-module").classList.toggle("active", this.deleteMode);
       this.dom["build-hint"].textContent = this.deleteMode
         ? "Выберите модуль для демонтажа. Возвращается 50% стоимости."
-        : "Модули крепятся к соседним граням. Кликните по сетке корабля.";
+        : "Перед инструментами свободна 1 клетка; позади двигателей — 6 клеток выхлопа.";
       this.updateBuildHover();
     }
 

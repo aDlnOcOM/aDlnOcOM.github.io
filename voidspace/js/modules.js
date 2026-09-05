@@ -30,6 +30,7 @@
       range: 290,
       sprite: "assets/modules/laser.png",
       spriteRotation: 1,
+      reservedZone: { direction: "front", length: 1, kind: "tool" },
       unlock: 0,
     },
     thruster: {
@@ -42,6 +43,7 @@
       thrust: 1,
       sprite: "assets/modules/thruster.png",
       spriteRotation: 1,
+      reservedZone: { direction: "rear", length: 6, kind: "exhaust" },
       unlock: 0,
     },
     booster: {
@@ -54,6 +56,7 @@
       thrust: 2.25,
       sprite: "assets/modules/booster.png",
       spriteRotation: 1,
+      reservedZone: { direction: "rear", length: 6, kind: "exhaust" },
       unlock: 125,
     },
     hull: {
@@ -99,6 +102,7 @@
       mining: 0.6,
       sprite: "assets/modules/drill.png",
       spriteRotation: 3,
+      reservedZone: { direction: "front", length: 1, kind: "tool" },
       unlock: 140,
     },
     rtg: {
@@ -131,6 +135,46 @@
 
   function isAdjacentToShip(modules, gx, gy) {
     return modules.some((module) => Math.abs(module.gx - gx) + Math.abs(module.gy - gy) === 1);
+  }
+
+  function moduleDirection(module) {
+    const rotation = ((Number(module.rotation) || 0) % 4 + 4) % 4;
+    return [[1, 0], [0, 1], [-1, 0], [0, -1]][rotation];
+  }
+
+  function reservedCellsForModule(module) {
+    const reservation = MODULES[module.type]?.reservedZone;
+    if (!reservation) return [];
+    const [forwardX, forwardY] = moduleDirection(module);
+    const sign = reservation.direction === "rear" ? -1 : 1;
+    return Array.from({ length: reservation.length }, (_, index) => ({
+      gx: module.gx + forwardX * sign * (index + 1),
+      gy: module.gy + forwardY * sign * (index + 1),
+      kind: reservation.kind,
+    }));
+  }
+
+  function getPlacementConflict(modules, candidate) {
+    for (const module of modules) {
+      const blocked = reservedCellsForModule(module).find((cell) => cell.gx === candidate.gx && cell.gy === candidate.gy);
+      if (blocked) return { kind: blocked.kind, mode: "target" };
+    }
+
+    const occupied = new Set(modules.map((module) => moduleKey(module.gx, module.gy)));
+    const blocked = reservedCellsForModule(candidate).find((cell) => occupied.has(moduleKey(cell.gx, cell.gy)));
+    return blocked ? { kind: blocked.kind, mode: "clearance" } : null;
+  }
+
+  function placementConflictReason(conflict) {
+    if (!conflict) return "";
+    if (conflict.kind === "exhaust") {
+      return conflict.mode === "target"
+        ? "Клетка занята выхлопом двигателя"
+        : "Позади двигателя нужны 6 свободных клеток для выхлопа";
+    }
+    return conflict.mode === "target"
+      ? "Клетка перед добывающим модулем должна оставаться свободной"
+      : "Перед добывающим модулем нужна свободная клетка";
   }
 
   function isConnected(modules) {
@@ -176,5 +220,16 @@
     return stats;
   }
 
-  VS.ModuleSystem = { MODULE_SIZE, MODULES, moduleKey, isAdjacentToShip, isConnected, calculateStats };
+  VS.ModuleSystem = {
+    MODULE_SIZE,
+    MODULES,
+    moduleKey,
+    moduleDirection,
+    reservedCellsForModule,
+    getPlacementConflict,
+    placementConflictReason,
+    isAdjacentToShip,
+    isConnected,
+    calculateStats,
+  };
 })();

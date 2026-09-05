@@ -3,12 +3,26 @@
 
   const VS = (window.Voidspace = window.Voidspace || {});
   const { Utils, ModuleSystem, Inventory } = VS;
-  const { MODULES, MODULE_SIZE, calculateStats, isAdjacentToShip, isConnected } = ModuleSystem;
+  const {
+    MODULES,
+    MODULE_SIZE,
+    calculateStats,
+    getPlacementConflict,
+    placementConflictReason,
+    isAdjacentToShip,
+    isConnected,
+  } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
+  const EXHAUST_LENGTH = MODULE_SIZE * 6;
   const LASER_SWAY = Math.PI / 24;
   const LASER_SWAY_SPEED = 1.8;
   const LASER_MUZZLE_OFFSET = 21;
   const MODULE_LAYER_CACHE = new WeakMap();
+  const EXHAUST_TEXTURE_CACHE = new WeakMap();
+  const EXHAUST_TEXTURES = {
+    thruster: { crop: { x: 112, y: 392, width: 1320, height: 244 }, width: 512, height: 96, drawHeight: 18 },
+    booster: { crop: { x: 16, y: 256, width: 1520, height: 512 }, width: 512, height: 160, drawHeight: 30 },
+  };
 
   function createSpriteLayer(image, crop, warmTone = null) {
     const canvas = document.createElement("canvas");
@@ -64,6 +78,32 @@
 
   function laserSway(time) {
     return Math.sin(time * LASER_SWAY_SPEED) * LASER_SWAY;
+  }
+
+  function getExhaustTexture(type, image) {
+    if (!image || !EXHAUST_TEXTURES[type]) return null;
+    const cached = EXHAUST_TEXTURE_CACHE.get(image);
+    if (cached) return cached;
+    const config = EXHAUST_TEXTURES[type];
+    const canvas = document.createElement("canvas");
+    canvas.width = config.width;
+    canvas.height = config.height;
+    const context = canvas.getContext("2d");
+    const crop = config.crop;
+    context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, config.width, config.height);
+
+    const imageData = context.getImageData(0, 0, config.width, config.height);
+    const pixels = imageData.data;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const signal = Math.max(blue - red, green - red, 0);
+      pixels[index + 3] = signal <= 2 ? 0 : Math.min(255, Math.round((signal - 2) * 18 + 35));
+    }
+    context.putImageData(imageData, 0, 0);
+    EXHAUST_TEXTURE_CACHE.set(image, canvas);
+    return canvas;
   }
 
   function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
@@ -218,6 +258,8 @@
       if (!MODULES[type] || !this.unlocked.has(type)) return { ok: false, reason: "Чертёж модуля ещё не разблокирован" };
       if (this.modules.some((module) => module.gx === gx && module.gy === gy)) return { ok: false, reason: "Ячейка уже занята" };
       if (!isAdjacentToShip(this.modules, gx, gy)) return { ok: false, reason: "Нужна соседняя точка крепления" };
+      const conflict = getPlacementConflict(this.modules, { type, gx, gy, rotation });
+      if (conflict) return { ok: false, reason: placementConflictReason(conflict) };
       if (this.credits < MODULES[type].cost) return { ok: false, reason: "Недостаточно кредитов" };
       const candidate = [...this.modules, { type, gx, gy, rotation }];
       const stats = calculateStats(candidate, this.upgradeLevel);
@@ -246,6 +288,39 @@
       if (this.collisionCooldown > 0) return;
       this.hp = Math.max(0, this.hp - Math.max(1, amount - this.stats.shield * 0.08));
       this.collisionCooldown = 0.45;
+    }
+
+    drawEngineExhaust(ctx, images, time, buildMode) {
+      for (const module of this.modules) {
+        if (module.type !== "thruster" && module.type !== "booster") continue;
+        const texture = getExhaustTexture(module.type, images[`exhaust_${module.type}`]);
+        if (!texture) continue;
+        const config = EXHAUST_TEXTURES[module.type];
+        const flicker = 0.88 + Math.sin(time * 15 + module.gx * 1.7 + module.gy * 2.3) * 0.12;
+        const alpha = this.thrusting ? 0.5 + flicker * 0.32 : buildMode ? 0.42 : 0.13;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.translate(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
+        ctx.rotate((Number(module.rotation) || 0) * (Math.PI / 2));
+        ctx.drawImage(
+          texture,
+          -MODULE_SIZE / 2 - EXHAUST_LENGTH,
+          -(config.drawHeight * flicker) / 2,
+          EXHAUST_LENGTH,
+          config.drawHeight * flicker,
+        );
+        ctx.restore();
+      }
+    }
+
+    drawExhaust(ctx, camera, viewport, images, time = 0, buildMode = false) {
+      const center = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.rotate(this.angle);
+      this.drawEngineExhaust(ctx, images, time, buildMode);
+      ctx.restore();
     }
 
     draw(ctx, camera, viewport, images, buildMode = false, buildHover = null, time = 0) {
