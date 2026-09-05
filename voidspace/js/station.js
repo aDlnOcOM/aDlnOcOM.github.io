@@ -70,10 +70,10 @@
       ctx.save();
       ctx.textAlign = "center";
       ctx.fillStyle = "#d9f7ff";
-      ctx.font = "bold 9px 'Courier New'";
+      ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
       ctx.fillText(title, Math.round(x), Math.round(y));
       ctx.fillStyle = "#4c8296";
-      ctx.font = "6px 'Courier New'";
+      ctx.font = "14px 'Segoe UI', Arial, sans-serif";
       ctx.fillText(subtitle, Math.round(x), Math.round(y + 11));
       ctx.restore();
     }

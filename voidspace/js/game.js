@@ -314,7 +314,7 @@
       Utils.drawImage(this.ctx, this.images.ui_arrow, x, y, 22, 22, angle);
       this.ctx.save();
       this.ctx.textAlign = "center";
-      this.ctx.font = "bold 7px 'Courier New'";
+      this.ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
       this.ctx.fillStyle = "#5ce8ff";
       this.ctx.fillText("СТАНЦИЯ", Math.round(x), Math.round(y + 20));
       this.ctx.restore();
@@ -323,7 +323,7 @@
     drawCoordinates() {
       this.ctx.save();
       this.ctx.fillStyle = "rgba(83, 132, 151, 0.55)";
-      this.ctx.font = "7px 'Courier New'";
+      this.ctx.font = "14px 'Segoe UI', Arial, sans-serif";
       this.ctx.textAlign = "right";
       this.ctx.fillText(`X ${Math.round(this.ship.x)} // Y ${Math.round(this.ship.y)}`, this.viewport.width - 14, this.viewport.height - 14);
       this.ctx.restore();
