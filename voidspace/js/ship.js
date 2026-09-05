@@ -14,14 +14,21 @@
   } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
   const EXHAUST_LENGTH = MODULE_SIZE * 6;
-  const LASER_SWAY = Math.PI / 24;
-  const LASER_SWAY_SPEED = 1.8;
   const LASER_MUZZLE_OFFSET = 21;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
-    thruster: { crop: { x: 112, y: 392, width: 1320, height: 244 }, width: 512, height: 96, drawHeight: 18 },
-    booster: { crop: { x: 16, y: 256, width: 1520, height: 512 }, width: 512, height: 160, drawHeight: 30 },
+    thruster: {
+      streams: [
+        { crop: { x: 112, y: 392, width: 1320, height: 244 }, width: 512, height: 96, offset: 0, drawHeight: 18 },
+      ],
+    },
+    booster: {
+      streams: [
+        { crop: { x: 16, y: 330, width: 1520, height: 170 }, width: 512, height: 96, offset: -7.6, drawHeight: 18 },
+        { crop: { x: 16, y: 458, width: 1520, height: 172 }, width: 512, height: 96, offset: 7.2, drawHeight: 18 },
+      ],
+    },
   };
 
   function createSpriteLayer(image, crop, warmTone = null) {
@@ -76,23 +83,15 @@
     return layers;
   }
 
-  function laserSway(time) {
-    return Math.sin(time * LASER_SWAY_SPEED) * LASER_SWAY;
-  }
-
-  function getExhaustTexture(type, image) {
-    if (!image || !EXHAUST_TEXTURES[type]) return null;
-    const cached = EXHAUST_TEXTURE_CACHE.get(image);
-    if (cached) return cached;
-    const config = EXHAUST_TEXTURES[type];
+  function createExhaustTexture(image, stream) {
     const canvas = document.createElement("canvas");
-    canvas.width = config.width;
-    canvas.height = config.height;
+    canvas.width = stream.width;
+    canvas.height = stream.height;
     const context = canvas.getContext("2d");
-    const crop = config.crop;
-    context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, config.width, config.height);
+    const crop = stream.crop;
+    context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, stream.width, stream.height);
 
-    const imageData = context.getImageData(0, 0, config.width, config.height);
+    const imageData = context.getImageData(0, 0, stream.width, stream.height);
     const pixels = imageData.data;
     for (let index = 0; index < pixels.length; index += 4) {
       const red = pixels[index];
@@ -102,8 +101,17 @@
       pixels[index + 3] = signal <= 2 ? 0 : Math.min(255, Math.round((signal - 2) * 18 + 35));
     }
     context.putImageData(imageData, 0, 0);
-    EXHAUST_TEXTURE_CACHE.set(image, canvas);
     return canvas;
+  }
+
+  function getExhaustTextures(type, image) {
+    if (!image || !EXHAUST_TEXTURES[type]) return null;
+    const cached = EXHAUST_TEXTURE_CACHE.get(image);
+    if (cached) return cached;
+    const config = EXHAUST_TEXTURES[type];
+    const textures = config.streams.map((stream) => createExhaustTexture(image, stream));
+    EXHAUST_TEXTURE_CACHE.set(image, textures);
+    return textures;
   }
 
   function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
@@ -132,7 +140,7 @@
     ctx.restore();
   }
 
-  function drawAnimatedModule(ctx, image, module, definition, time, alpha = 1) {
+  function drawAnimatedModule(ctx, image, module, definition, time, aimLocal = null, alpha = 1) {
     if (!image || !definition) return false;
     const layers = getAnimatedModuleLayers(module.type, image);
     if (!layers) return false;
@@ -145,14 +153,39 @@
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     if (module.type === "laser") {
-      ctx.rotate(baseRotation + laserSway(time));
+      const targetX = aimLocal?.x - x;
+      const targetY = aimLocal?.y - y;
+      const turretRotation = Math.hypot(targetX, targetY) > 1 ? Math.atan2(targetY, targetX) + Math.PI / 2 : baseRotation;
+      ctx.rotate(turretRotation);
       ctx.drawImage(layers.tool, -4, -21, 8, 24);
     } else {
-      const cycle = time * 13;
-      const extension = Math.sin(cycle) * 1.2;
-      const vibration = Math.sin(cycle * 0.73) * (Math.PI / 90);
-      ctx.rotate(baseRotation + vibration);
-      ctx.drawImage(layers.tool, -5, -3, 10, 22 + extension);
+      ctx.rotate(baseRotation);
+      ctx.drawImage(layers.tool, -5, -3, 10, 22);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-5, -3);
+      ctx.lineTo(5, -3);
+      ctx.lineTo(1.2, 19);
+      ctx.lineTo(-1.2, 19);
+      ctx.closePath();
+      ctx.clip();
+      ctx.globalCompositeOperation = "lighter";
+      const grooveOffset = (time * 18) % 6;
+      for (let grooveY = -9 + grooveOffset; grooveY < 24; grooveY += 6) {
+        ctx.beginPath();
+        ctx.moveTo(-6, grooveY - 2);
+        ctx.lineTo(6, grooveY + 2);
+        ctx.strokeStyle = "rgba(98, 226, 255, 0.72)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-6, grooveY + 0.4);
+        ctx.lineTo(6, grooveY + 4.4);
+        ctx.strokeStyle = "rgba(18, 67, 116, 0.58)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.restore();
     return true;
@@ -181,6 +214,8 @@
       this.lastLaserAt = 0;
       this.collisionCooldown = 0;
       this.thrusting = false;
+      this.engineBurnTime = 0;
+      this.aimWorld = { x: this.x + MODULE_SIZE * 4, y: this.y };
     }
 
     recalculateStats() {
@@ -191,6 +226,7 @@
     }
 
     update(dt, input, mouseWorld, game) {
+      this.aimWorld = { x: mouseWorld.x, y: mouseWorld.y };
       const targetAngle = Math.atan2(mouseWorld.y - this.y, mouseWorld.x - this.x);
       this.angle += Utils.angleDelta(this.angle, targetAngle) * Math.min(1, dt * 12);
       this.collisionCooldown = Math.max(0, this.collisionCooldown - dt);
@@ -204,6 +240,9 @@
       const magnitude = Math.hypot(inputX, inputY) || 1;
       const power = 150 + this.stats.thrust * 58;
       this.thrusting = inputX !== 0 || inputY !== 0;
+      this.engineBurnTime = this.thrusting
+        ? Math.min(4, this.engineBurnTime + dt)
+        : Math.max(0, this.engineBurnTime - dt * 2.4);
       this.vx += (inputX / magnitude) * power * dt;
       this.vy += (inputY / magnitude) * power * dt;
       const maxSpeed = 145 + this.stats.thrust * 28;
@@ -240,11 +279,11 @@
       return { x: dx * cosine - dy * sine, y: dx * sine + dy * cosine };
     }
 
-    getLaserMount(time = 0) {
+    getLaserMount(target = this.aimWorld) {
       const laser = this.modules.find((module) => module.type === "laser");
       if (!laser) return { origin: this.localToWorld(MODULE_SIZE, 0), angle: this.angle };
       const center = this.localToWorld(laser.gx * MODULE_SIZE, laser.gy * MODULE_SIZE);
-      const angle = this.angle + (Number(laser.rotation) || 0) * (Math.PI / 2) + laserSway(time);
+      const angle = Math.atan2(target.y - center.y, target.x - center.x);
       return {
         origin: {
           x: center.x + Math.cos(angle) * LASER_MUZZLE_OFFSET,
@@ -293,23 +332,32 @@
     drawEngineExhaust(ctx, images, time, buildMode) {
       for (const module of this.modules) {
         if (module.type !== "thruster" && module.type !== "booster") continue;
-        const texture = getExhaustTexture(module.type, images[`exhaust_${module.type}`]);
-        if (!texture) continue;
+        const textures = getExhaustTextures(module.type, images[`exhaust_${module.type}`]);
+        if (!textures) continue;
         const config = EXHAUST_TEXTURES[module.type];
+        const enginePower = Utils.clamp(MODULES[module.type].thrust / MODULES.booster.thrust, 0, 1);
+        const burn = 1 - Math.exp(-this.engineBurnTime * 1.35);
+        const minimumLength = MODULE_SIZE * (0.75 + enginePower * 0.45);
+        const maximumLength = MODULE_SIZE * (3.5 + enginePower * 2.5);
+        const exhaustLength = buildMode ? EXHAUST_LENGTH : Utils.lerp(minimumLength, maximumLength, burn);
         const flicker = 0.88 + Math.sin(time * 15 + module.gx * 1.7 + module.gy * 2.3) * 0.12;
-        const alpha = this.thrusting ? 0.5 + flicker * 0.32 : buildMode ? 0.42 : 0.13;
+        const alpha = buildMode ? 0.34 : this.thrusting ? 0.42 + burn * 0.42 : 0.08 + burn * 0.18;
         ctx.save();
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = alpha * flicker;
         ctx.globalCompositeOperation = "lighter";
         ctx.translate(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
         ctx.rotate((Number(module.rotation) || 0) * (Math.PI / 2));
-        ctx.drawImage(
-          texture,
-          -MODULE_SIZE / 2 - EXHAUST_LENGTH,
-          -(config.drawHeight * flicker) / 2,
-          EXHAUST_LENGTH,
-          config.drawHeight * flicker,
-        );
+        for (let index = 0; index < config.streams.length; index += 1) {
+          const stream = config.streams[index];
+          const drawHeight = stream.drawHeight * (0.94 + flicker * 0.06);
+          ctx.drawImage(
+            textures[index],
+            -MODULE_SIZE / 2 - exhaustLength,
+            stream.offset - drawHeight / 2,
+            exhaustLength,
+            drawHeight,
+          );
+        }
         ctx.restore();
       }
     }
@@ -325,6 +373,7 @@
 
     draw(ctx, camera, viewport, images, buildMode = false, buildHover = null, time = 0) {
       const center = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
+      const aimLocal = this.worldToLocal(this.aimWorld.x, this.aimWorld.y);
       ctx.save();
       ctx.translate(center.x, center.y);
       ctx.rotate(this.angle);
@@ -346,7 +395,7 @@
         const image = images[`module_${module.type}`];
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
-        const animated = drawAnimatedModule(ctx, image, module, definition, time);
+        const animated = drawAnimatedModule(ctx, image, module, definition, time, aimLocal);
         if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
@@ -360,7 +409,7 @@
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, 0.52);
+        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52);
         if (!animated) drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;

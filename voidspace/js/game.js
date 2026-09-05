@@ -219,7 +219,7 @@
 
     fireMiningLaser(dt, mouseWorld) {
       if (!this.ship.modules.some((module) => module.type === "laser") || this.ship.stats.energyUse > this.ship.stats.energy) return;
-      const mount = this.ship.getLaserMount(this.time);
+      const mount = this.ship.getLaserMount(mouseWorld);
       const { origin, angle: aimAngle } = mount;
       const maxDistance = MODULES.laser.range;
       const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
