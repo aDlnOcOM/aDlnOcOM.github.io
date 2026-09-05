@@ -11,6 +11,7 @@
     placementConflictReason,
     isAdjacentToShip,
     isConnected,
+    moduleDirection,
   } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
   const EXHAUST_FPS = 16;
@@ -18,6 +19,11 @@
   const EXHAUST_FRAME_WIDTH = 768;
   const EXHAUST_FRAME_HEIGHT = 64;
   const LASER_MUZZLE_OFFSET = 21;
+  const ENGINE_FORCE = 260;
+  const ENGINE_GIMBAL = Math.PI / 10;
+  const TURNING_THROTTLE = 0.72;
+  const TORQUE_RESPONSE = 4;
+  const MAX_ANGULAR_SPEED = 2.4;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
@@ -32,6 +38,43 @@
       drawHeight: 10.5,
     },
   };
+
+  function isEngine(module) {
+    return module.type === "thruster" || module.type === "booster";
+  }
+
+  function engineKey(module) {
+    return `${module.gx},${module.gy}`;
+  }
+
+  function moduleMass(module) {
+    const definition = MODULES[module.type];
+    return 1 + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50;
+  }
+
+  function calculateMassProperties(modules) {
+    const weightedModules = modules.map((module) => ({
+      module,
+      mass: moduleMass(module),
+      x: module.gx * MODULE_SIZE,
+      y: module.gy * MODULE_SIZE,
+    }));
+    const totalMass = weightedModules.reduce((sum, item) => sum + item.mass, 0) || 1;
+    const centerX = weightedModules.reduce((sum, item) => sum + item.x * item.mass, 0) / totalMass;
+    const centerY = weightedModules.reduce((sum, item) => sum + item.y * item.mass, 0) / totalMass;
+    const cellInertia = (MODULE_SIZE * MODULE_SIZE) / 6;
+    const inertia = weightedModules.reduce((sum, item) => {
+      const dx = item.x - centerX;
+      const dy = item.y - centerY;
+      return sum + item.mass * (dx * dx + dy * dy + cellInertia);
+    }, 0);
+    return {
+      centerX,
+      centerY,
+      mass: Math.max(1, totalMass / 3),
+      inertia: Math.max(MODULE_SIZE * MODULE_SIZE, inertia),
+    };
+  }
 
   function createSpriteLayer(image, crop, warmTone = null) {
     const canvas = document.createElement("canvas");
@@ -283,7 +326,9 @@
       this.lastLaserAt = 0;
       this.collisionCooldown = 0;
       this.thrusting = false;
-      this.engineBurnTime = 0;
+      this.braking = false;
+      this.angularVelocity = 0;
+      this.engineStates = new Map();
       this.aimWorld = { x: this.x + MODULE_SIZE * 4, y: this.y };
     }
 
@@ -296,32 +341,93 @@
 
     update(dt, input, mouseWorld) {
       this.aimWorld = { x: mouseWorld.x, y: mouseWorld.y };
-      const targetAngle = Math.atan2(mouseWorld.y - this.y, mouseWorld.x - this.x);
-      this.angle += Utils.angleDelta(this.angle, targetAngle) * Math.min(1, dt * 12);
       this.collisionCooldown = Math.max(0, this.collisionCooldown - dt);
 
-      let inputX = 0;
-      let inputY = 0;
-      if (input.has("KeyA") || input.has("ArrowLeft")) inputX -= 1;
-      if (input.has("KeyD") || input.has("ArrowRight")) inputX += 1;
-      if (input.has("KeyW") || input.has("ArrowUp")) inputY -= 1;
-      if (input.has("KeyS") || input.has("ArrowDown")) inputY += 1;
-      const magnitude = Math.hypot(inputX, inputY) || 1;
-      const power = 150 + this.stats.thrust * 58;
-      this.thrusting = inputX !== 0 || inputY !== 0;
-      this.engineBurnTime = this.thrusting
-        ? Math.min(4, this.engineBurnTime + dt)
-        : Math.max(0, this.engineBurnTime - dt * 2.4);
-      this.vx += (inputX / magnitude) * power * dt;
-      this.vy += (inputY / magnitude) * power * dt;
+      const turnInput =
+        (input.has("KeyD") || input.has("ArrowRight") ? 1 : 0) -
+        (input.has("KeyA") || input.has("ArrowLeft") ? 1 : 0);
+      this.braking = input.has("KeyS") || input.has("ArrowDown");
+      const throttleRequested = (input.has("KeyW") || input.has("ArrowUp")) && !this.braking;
+      const massProperties = calculateMassProperties(this.modules);
+      const engines = this.modules.filter(isEngine);
+      const activeEngineKeys = new Set(engines.map(engineKey));
+      let localForceX = 0;
+      let localForceY = 0;
+      let localTorque = 0;
+
+      for (const engine of engines) {
+        const key = engineKey(engine);
+        const state = this.engineStates.get(key) || { throttle: 0, gimbal: 0, burnTime: 0 };
+        const [baseDirectionX, baseDirectionY] = moduleDirection(engine);
+        const baseAngle = Math.atan2(baseDirectionY, baseDirectionX);
+        const radiusX = engine.gx * MODULE_SIZE - massProperties.centerX;
+        const radiusY = engine.gy * MODULE_SIZE - massProperties.centerY;
+        let throttle = throttleRequested ? 1 : 0;
+        let gimbal = 0;
+
+        if (turnInput !== 0) {
+          let bestScore = -Infinity;
+          for (const candidate of [-ENGINE_GIMBAL, ENGINE_GIMBAL]) {
+            const directionX = Math.cos(baseAngle + candidate);
+            const directionY = Math.sin(baseAngle + candidate);
+            const torque = radiusX * directionY - radiusY * directionX;
+            const score = torque * turnInput;
+            if (score <= bestScore) continue;
+            bestScore = score;
+            gimbal = candidate;
+          }
+          if (bestScore > 0.1) throttle = Math.max(throttle, TURNING_THROTTLE);
+          else if (throttleRequested) throttle *= 0.28;
+        }
+
+        state.throttle = throttle;
+        state.gimbal = throttle > 0 ? gimbal : 0;
+        state.burnTime = throttle > 0 ? Math.min(4, state.burnTime + dt * throttle) : Math.max(0, state.burnTime - dt * 2.4);
+        this.engineStates.set(key, state);
+        if (throttle <= 0) continue;
+
+        const forceAngle = baseAngle + state.gimbal;
+        const forceMagnitude = MODULES[engine.type].thrust * ENGINE_FORCE * throttle;
+        const forceX = Math.cos(forceAngle) * forceMagnitude;
+        const forceY = Math.sin(forceAngle) * forceMagnitude;
+        localForceX += forceX;
+        localForceY += forceY;
+        localTorque += radiusX * forceY - radiusY * forceX;
+      }
+
+      for (const key of this.engineStates.keys()) {
+        if (!activeEngineKeys.has(key)) this.engineStates.delete(key);
+      }
+
+      this.thrusting = [...this.engineStates.values()].some((state) => state.throttle > 0);
+      const cosine = Math.cos(this.angle);
+      const sine = Math.sin(this.angle);
+      const worldForceX = localForceX * cosine - localForceY * sine;
+      const worldForceY = localForceX * sine + localForceY * cosine;
+      this.vx += (worldForceX / massProperties.mass) * dt;
+      this.vy += (worldForceY / massProperties.mass) * dt;
+      this.angularVelocity += (localTorque / massProperties.inertia) * TORQUE_RESPONSE * dt;
+
+      if (this.braking) {
+        const brakeDamping = Math.pow(0.025, dt);
+        this.vx *= brakeDamping;
+        this.vy *= brakeDamping;
+        this.angularVelocity *= Math.pow(0.02, dt);
+      }
+
       const maxSpeed = 145 + this.stats.thrust * 28;
       const speed = Math.hypot(this.vx, this.vy);
       if (speed > maxSpeed) {
         this.vx = (this.vx / speed) * maxSpeed;
         this.vy = (this.vy / speed) * maxSpeed;
       }
-      this.vx *= Math.pow(0.38, dt);
-      this.vy *= Math.pow(0.38, dt);
+      const driftDamping = Math.pow(0.94, dt);
+      this.vx *= driftDamping;
+      this.vy *= driftDamping;
+      this.angularVelocity *= Math.pow(turnInput === 0 ? 0.28 : 0.62, dt);
+      this.angularVelocity = Utils.clamp(this.angularVelocity, -MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED);
+      this.angle += this.angularVelocity * dt;
+      if (Math.abs(this.angle) > Math.PI * 4) this.angle %= Math.PI * 2;
       this.x += this.vx * dt;
       this.y += this.vy * dt;
     }
@@ -397,17 +503,20 @@
       if (!this.thrusting) return;
       for (const module of this.modules) {
         if (module.type !== "thruster" && module.type !== "booster") continue;
+        const state = this.engineStates.get(engineKey(module));
+        if (!state || state.throttle <= 0) continue;
         const frames = getExhaustFrames(images[`exhaust_${module.type}`]);
         if (!frames?.length) continue;
         const config = EXHAUST_TEXTURES[module.type];
         const enginePower = Utils.clamp(MODULES[module.type].thrust / MODULES.booster.thrust, 0, 1);
-        const burn = 1 - Math.exp(-this.engineBurnTime * 1.35);
+        const burn = 1 - Math.exp(-state.burnTime * 1.35);
         const minimumLength = MODULE_SIZE * (0.55 + enginePower * 0.25);
         const maximumLength = MODULE_SIZE * (1.55 + enginePower * 0.45);
-        const exhaustLength = Utils.lerp(minimumLength, maximumLength, burn);
+        const throttleScale = 0.45 + Math.sqrt(state.throttle) * 0.55;
+        const exhaustLength = Utils.lerp(minimumLength, maximumLength, burn) * throttleScale;
         const modulePhase = Math.abs(module.gx * 3 + module.gy * 5);
         const animationTick = Math.floor(time * EXHAUST_FPS) + modulePhase;
-        const alpha = 0.58 + burn * 0.38;
+        const alpha = (0.58 + burn * 0.38) * state.throttle;
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.globalCompositeOperation = "lighter";
@@ -415,13 +524,17 @@
         ctx.rotate((Number(module.rotation) || 0) * (Math.PI / 2));
         for (let index = 0; index < config.nozzleOffsets.length; index += 1) {
           const frame = frames[(animationTick + index * 4) % frames.length];
+          ctx.save();
+          ctx.translate(config.attachmentX, config.nozzleOffsets[index]);
+          ctx.rotate(state.gimbal);
           ctx.drawImage(
             frame,
-            config.attachmentX - exhaustLength,
-            config.nozzleOffsets[index] - config.drawHeight / 2,
+            -exhaustLength,
+            -config.drawHeight / 2,
             exhaustLength,
             config.drawHeight,
           );
+          ctx.restore();
         }
         ctx.restore();
       }
