@@ -64,6 +64,7 @@
       hp: 85,
       energyUse: 0,
       sprite: "assets/modules/hull.png",
+      spriteCrop: { x: 8, y: 0, width: 47, height: 47 },
       unlock: 0,
     },
     beam: {
@@ -74,6 +75,7 @@
       hp: 38,
       energyUse: 0,
       sprite: "assets/modules/beam.png",
+      spriteCrop: { x: 10, y: 2, width: 44, height: 44 },
       unlock: 35,
     },
     cargo: {
