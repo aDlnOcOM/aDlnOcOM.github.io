@@ -201,23 +201,31 @@
 
     fireMiningLaser(dt, mouseWorld) {
       if (!this.ship.modules.some((module) => module.type === "laser") || this.ship.stats.energyUse > this.ship.stats.energy) return;
-      const origin = this.ship.getLaserOrigin();
-      const aimAngle = Math.atan2(mouseWorld.y - origin.y, mouseWorld.x - origin.x);
-      const maxDistance = 290;
-      const endpoint = { x: origin.x + Math.cos(aimAngle) * maxDistance, y: origin.y + Math.sin(aimAngle) * maxDistance };
+      const mount = this.ship.getLaserMount();
+      const { origin, angle: aimAngle } = mount;
+      const maxDistance = MODULES.laser.range;
+      const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
+      const direction = { x: Math.cos(aimAngle), y: Math.sin(aimAngle) };
+      const endpoint = {
+        x: origin.x + direction.x * requestedDistance,
+        y: origin.y + direction.y * requestedDistance,
+      };
       let target = null;
-      let nearest = maxDistance;
+      let nearest = requestedDistance;
       for (const asteroid of this.asteroids) {
-        const projection = (asteroid.x - origin.x) * Math.cos(aimAngle) + (asteroid.y - origin.y) * Math.sin(aimAngle);
-        if (projection < 0 || projection > nearest) continue;
-        if (Utils.pointSegmentDistance(asteroid, origin, endpoint) <= asteroid.radius) {
-          target = asteroid;
-          nearest = projection;
-        }
+        const offsetX = asteroid.x - origin.x;
+        const offsetY = asteroid.y - origin.y;
+        const projection = offsetX * direction.x + offsetY * direction.y;
+        if (projection < 0 || projection - asteroid.radius > nearest) continue;
+        const perpendicularSquared = offsetX * offsetX + offsetY * offsetY - projection * projection;
+        const radiusSquared = asteroid.radius * asteroid.radius;
+        if (perpendicularSquared > radiusSquared) continue;
+        const hitDistance = Math.max(0, projection - Math.sqrt(Math.max(0, radiusSquared - perpendicularSquared)));
+        if (hitDistance > nearest) continue;
+        target = asteroid;
+        nearest = hitDistance;
       }
-      const beamEnd = target
-        ? { x: origin.x + Math.cos(aimAngle) * nearest, y: origin.y + Math.sin(aimAngle) * nearest }
-        : endpoint;
+      const beamEnd = target ? { x: origin.x + direction.x * nearest, y: origin.y + direction.y * nearest } : endpoint;
       this.laserBeam = { origin, end: beamEnd };
       this.target = target;
       if (target) target.damage(33 * Math.max(1, this.ship.stats.mining) * dt, beamEnd.x, beamEnd.y, this);
@@ -277,7 +285,7 @@
       this.station.draw(ctx, this.camera, this.viewport, this.images, time);
       for (const pickup of this.pickups) pickup.draw(ctx, this.camera, this.viewport, this.images);
       for (const asteroid of this.asteroids) asteroid.draw(ctx, this.camera, this.viewport, this.images);
-      this.drawLaser();
+      this.drawLaser(time);
       for (const particle of this.particles) particle.draw(ctx, this.camera, this.viewport, this.images);
       this.ship.draw(ctx, this.camera, this.viewport, this.images, this.buildMode, this.buildHover);
       if (!this.station.isSafe(this.ship)) this.drawStationIndicator();
@@ -318,13 +326,40 @@
       }
     }
 
-    drawLaser() {
+    drawLaser(time) {
       if (!this.laserBeam) return;
       const start = Utils.worldToScreen(this.laserBeam.origin, this.camera, this.viewport.width, this.viewport.height);
       const end = Utils.worldToScreen(this.laserBeam.end, this.camera, this.viewport.width, this.viewport.height);
       const length = Math.hypot(end.x - start.x, end.y - start.y);
-      const angle = Math.atan2(end.y - start.y, end.x - start.x);
-      Utils.drawImage(this.ctx, this.images.laser_beam, (start.x + end.x) / 2, (start.y + end.y) / 2, length, 7, angle);
+      if (length < 1) return;
+
+      const shimmer = 0.5 + Math.sin(time * 11) * 0.5;
+      const gradient = this.ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+      gradient.addColorStop(0, "#6ef4ff");
+      gradient.addColorStop(0.24 + shimmer * 0.42, "#35bfff");
+      gradient.addColorStop(1, "#285cff");
+
+      this.ctx.save();
+      this.ctx.globalCompositeOperation = "lighter";
+      this.ctx.lineCap = "round";
+      this.ctx.beginPath();
+      this.ctx.moveTo(start.x, start.y);
+      this.ctx.lineTo(end.x, end.y);
+      this.ctx.strokeStyle = gradient;
+      this.ctx.globalAlpha = 0.22 + shimmer * 0.08;
+      this.ctx.lineWidth = 7;
+      this.ctx.shadowColor = "#35cfff";
+      this.ctx.shadowBlur = 12;
+      this.ctx.stroke();
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(start.x, start.y);
+      this.ctx.lineTo(end.x, end.y);
+      this.ctx.globalAlpha = 0.9;
+      this.ctx.lineWidth = 2.4;
+      this.ctx.shadowBlur = 5;
+      this.ctx.stroke();
+      this.ctx.restore();
     }
 
     drawStationIndicator() {

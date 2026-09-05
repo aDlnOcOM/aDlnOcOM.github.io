@@ -26,6 +26,7 @@
       hp: 42,
       energyUse: 3,
       mining: 1,
+      range: 290,
       sprite: "assets/modules/laser.png",
       spriteRotation: 1,
       unlock: 0,

@@ -87,13 +87,18 @@
       return { x: dx * cosine - dy * sine, y: dx * sine + dy * cosine };
     }
 
-    getLaserOrigin() {
+    getLaserMount() {
       const laser = this.modules.find((module) => module.type === "laser");
-      if (!laser) return this.localToWorld(MODULE_SIZE, 0);
+      if (!laser) return { origin: this.localToWorld(MODULE_SIZE, 0), angle: this.angle };
       const center = this.localToWorld(laser.gx * MODULE_SIZE, laser.gy * MODULE_SIZE);
+      const angle = this.angle + (Number(laser.rotation) || 0) * (Math.PI / 2);
+      const muzzleOffset = MODULE_SIZE * 0.48;
       return {
-        x: center.x + Math.cos(this.angle) * 20,
-        y: center.y + Math.sin(this.angle) * 20,
+        origin: {
+          x: center.x + Math.cos(angle) * muzzleOffset,
+          y: center.y + Math.sin(angle) * muzzleOffset,
+        },
+        angle,
       };
     }
 

@@ -36,15 +36,6 @@
       return delta;
     },
 
-    pointSegmentDistance(point, start, end) {
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const lengthSquared = dx * dx + dy * dy;
-      if (lengthSquared === 0) return Utils.distance(point, start);
-      const t = Utils.clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
-      return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
-    },
-
     worldToScreen(point, camera, width, height) {
       return { x: point.x - camera.x + width / 2, y: point.y - camera.y + height / 2 };
     },
