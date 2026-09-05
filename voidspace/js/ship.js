@@ -6,6 +6,32 @@
   const { MODULES, MODULE_SIZE, calculateStats, isAdjacentToShip, isConnected } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
 
+  function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
+    if (!image) return;
+    const crop = definition?.spriteCrop;
+    if (!crop) {
+      Utils.drawImage(ctx, image, x, y, MODULE_SIZE, MODULE_SIZE, rotation, alpha);
+      return;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.drawImage(
+      image,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      -MODULE_SIZE / 2,
+      -MODULE_SIZE / 2,
+      MODULE_SIZE,
+      MODULE_SIZE,
+    );
+    ctx.restore();
+  }
+
   class Ship {
     constructor(save = {}) {
       this.x = Number(save.x) || -175;
@@ -160,7 +186,7 @@
         const image = images[`module_${module.type}`];
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
-        Utils.drawImage(ctx, image, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_SIZE, MODULE_SIZE, spriteRotation * (Math.PI / 2));
+        drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
           ctx.strokeRect(module.gx * MODULE_SIZE - 17, module.gy * MODULE_SIZE - 17, 34, 34);
@@ -173,7 +199,7 @@
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        Utils.drawImage(ctx, image, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_SIZE, MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
+        drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;
         ctx.strokeRect(buildHover.gx * MODULE_SIZE - MODULE_SIZE / 2, buildHover.gy * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);

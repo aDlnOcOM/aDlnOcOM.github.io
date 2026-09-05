@@ -15,6 +15,7 @@
       energy: 6,
       cargo: 8,
       sprite: "assets/modules/core.png",
+      spriteCrop: { x: 21, y: 24, width: 41, height: 37 },
       spriteRotation: 1,
       unlock: 0,
     },

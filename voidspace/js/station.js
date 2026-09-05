@@ -56,14 +56,23 @@
     }
 
     drawStructures(ctx, origin, images) {
-      const horizontal = [
-        [-89, 0], [-60, 0], [62, 0], [92, 0], [110, 0],
+      const connectors = [
+        { x: -99, y: 0, length: 110, rotation: 0 },
+        { x: 75, y: 0, length: 72, rotation: 0 },
+        { x: 0, y: -99, length: 130, rotation: Math.PI / 2 },
+        { x: 0, y: 99, length: 130, rotation: Math.PI / 2 },
       ];
-      const vertical = [
-        [0, -137], [0, -108], [0, -78], [0, 78], [0, 108], [0, 137],
-      ];
-      for (const [x, y] of horizontal) Utils.drawImage(ctx, images.station_beam, origin.x + x, origin.y + y, 34, 28);
-      for (const [x, y] of vertical) Utils.drawImage(ctx, images.station_beam, origin.x + x, origin.y + y, 34, 28, Math.PI / 2);
+      for (const connector of connectors) {
+        Utils.drawImage(
+          ctx,
+          images.station_beam,
+          origin.x + connector.x,
+          origin.y + connector.y,
+          connector.length,
+          28,
+          connector.rotation,
+        );
+      }
     }
 
     drawLabel(ctx, x, y, title, subtitle) {
