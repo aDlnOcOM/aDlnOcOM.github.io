@@ -402,8 +402,8 @@
         const config = EXHAUST_TEXTURES[module.type];
         const enginePower = Utils.clamp(MODULES[module.type].thrust / MODULES.booster.thrust, 0, 1);
         const burn = 1 - Math.exp(-this.engineBurnTime * 1.35);
-        const minimumLength = MODULE_SIZE * (0.75 + enginePower * 0.45);
-        const maximumLength = MODULE_SIZE * (3.5 + enginePower * 2.5);
+        const minimumLength = MODULE_SIZE * (0.55 + enginePower * 0.25);
+        const maximumLength = MODULE_SIZE * (1.55 + enginePower * 0.45);
         const exhaustLength = Utils.lerp(minimumLength, maximumLength, burn);
         const modulePhase = Math.abs(module.gx * 3 + module.gy * 5);
         const animationTick = Math.floor(time * EXHAUST_FPS) + modulePhase;

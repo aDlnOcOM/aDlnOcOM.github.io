@@ -43,7 +43,7 @@
       thrust: 1,
       sprite: "assets/modules/thruster.png",
       spriteRotation: 1,
-      reservedZone: { direction: "rear", length: 6, kind: "exhaust" },
+      reservedZone: { direction: "rear", length: 5, kind: "exhaust" },
       unlock: 0,
     },
     booster: {
@@ -56,7 +56,7 @@
       thrust: 2.25,
       sprite: "assets/modules/booster.png",
       spriteRotation: 1,
-      reservedZone: { direction: "rear", length: 6, kind: "exhaust" },
+      reservedZone: { direction: "rear", length: 5, kind: "exhaust" },
       unlock: 125,
     },
     hull: {
@@ -170,7 +170,7 @@
     if (conflict.kind === "exhaust") {
       return conflict.mode === "target"
         ? "Клетка занята выхлопом двигателя"
-        : "Позади двигателя нужны 6 свободных клеток для выхлопа";
+        : "Позади двигателя нужны 5 свободных клеток для выхлопа";
     }
     return conflict.mode === "target"
       ? "Клетка перед добывающим модулем должна оставаться свободной"
