@@ -449,7 +449,7 @@
         .map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
-            <img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)" />
+            <span class="module-sprite"><img src="assets/modules/frame.png" alt=""><img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)"></span>
             <span><b>${definition.name}</b><small>${definition.energyUse ? `−${definition.energyUse} энергии` : definition.energy ? `+${definition.energy} энергии` : definition.description}</small></span>
             <strong>${definition.cost} ¤</strong>
           </button>`;
@@ -493,7 +493,7 @@
       container.innerHTML = `<div class="terminal-summary"><p>Покупка чертежа открывает модуль навсегда.<br>Установка выполняется в режиме строительства.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
         <div class="shop-grid">${Object.entries(MODULES).filter(([type]) => !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
-          return `<div class="shop-card"><img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)"><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
+          return `<div class="shop-card"><span class="module-sprite"><img src="assets/modules/frame.png" alt=""><img src="${definition.sprite}" alt="" style="transform: rotate(${(definition.spriteRotation || 0) * 90}deg)"></span><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
         }).join("")}</div>`;
       container.querySelectorAll("[data-unlock]").forEach((button) => {
         button.addEventListener("click", () => this.unlockModule(button.dataset.unlock));

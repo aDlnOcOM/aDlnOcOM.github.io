@@ -4,6 +4,7 @@
   const VS = (window.Voidspace = window.Voidspace || {});
   const { Utils, ModuleSystem, Inventory } = VS;
   const { MODULES, MODULE_SIZE, calculateStats, isAdjacentToShip, isConnected } = ModuleSystem;
+  const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
 
   class Ship {
     constructor(save = {}) {
@@ -158,6 +159,7 @@
         const definition = MODULES[module.type];
         const image = images[`module_${module.type}`];
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
+        Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
         Utils.drawImage(ctx, image, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_SIZE, MODULE_SIZE, spriteRotation * (Math.PI / 2));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
@@ -170,6 +172,7 @@
         const definition = MODULES[buildHover.type];
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
+        Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
         Utils.drawImage(ctx, image, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_SIZE, MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;

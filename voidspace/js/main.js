@@ -4,6 +4,7 @@
   const VS = (window.Voidspace = window.Voidspace || {});
 
   const manifest = {
+    module_frame: "assets/modules/frame.png",
     module_core: "assets/modules/core.png",
     module_laser: "assets/modules/laser.png",
     module_thruster: "assets/modules/thruster.png",
