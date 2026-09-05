@@ -13,21 +13,23 @@
     isConnected,
   } = ModuleSystem;
   const MODULE_FRAME_SIZE = MODULE_SIZE + 1;
-  const EXHAUST_LENGTH = MODULE_SIZE * 6;
+  const EXHAUST_FPS = 16;
+  const EXHAUST_FRAME_COUNT = 16;
+  const EXHAUST_FRAME_WIDTH = 768;
+  const EXHAUST_FRAME_HEIGHT = 64;
   const LASER_MUZZLE_OFFSET = 21;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
     thruster: {
-      streams: [
-        { crop: { x: 112, y: 392, width: 1320, height: 244 }, width: 512, height: 96, offset: 0, drawHeight: 18 },
-      ],
+      nozzleOffsets: [0],
+      attachmentX: -12.5,
+      drawHeight: 12,
     },
     booster: {
-      streams: [
-        { crop: { x: 16, y: 330, width: 1520, height: 170 }, width: 512, height: 96, offset: -7.6, drawHeight: 18 },
-        { crop: { x: 16, y: 458, width: 1520, height: 172 }, width: 512, height: 96, offset: 7.2, drawHeight: 18 },
-      ],
+      nozzleOffsets: [-8.2, 7.6],
+      attachmentX: -12.5,
+      drawHeight: 10.5,
     },
   };
 
@@ -83,35 +85,102 @@
     return layers;
   }
 
-  function createExhaustTexture(image, stream) {
-    const canvas = document.createElement("canvas");
-    canvas.width = stream.width;
-    canvas.height = stream.height;
-    const context = canvas.getContext("2d");
-    const crop = stream.crop;
-    context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, stream.width, stream.height);
+  function createExhaustFrames(image) {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    const source = document.createElement("canvas");
+    source.width = sourceWidth;
+    source.height = sourceHeight;
+    const sourceContext = source.getContext("2d");
+    sourceContext.drawImage(image, 0, 0);
 
-    const imageData = context.getImageData(0, 0, stream.width, stream.height);
+    const imageData = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight);
     const pixels = imageData.data;
+    let minX = sourceWidth;
+    let minY = sourceHeight;
+    let maxX = 0;
+    let maxY = 0;
     for (let index = 0; index < pixels.length; index += 4) {
       const red = pixels[index];
       const green = pixels[index + 1];
       const blue = pixels[index + 2];
-      const signal = Math.max(blue - red, green - red, 0);
-      pixels[index + 3] = signal <= 2 ? 0 : Math.min(255, Math.round((signal - 2) * 18 + 35));
+      const coolLead = Math.max(blue, green) - red;
+      const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+      const alpha = coolLead <= 3 || saturation <= 4 ? 0 : Math.min(255, Math.round((coolLead - 3) * 12 + saturation * 0.7));
+      pixels[index + 3] = alpha;
+      if (alpha <= 8) continue;
+      const pixelIndex = index / 4;
+      const x = pixelIndex % sourceWidth;
+      const y = Math.floor(pixelIndex / sourceWidth);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
     }
-    context.putImageData(imageData, 0, 0);
-    return canvas;
+    sourceContext.putImageData(imageData, 0, 0);
+
+    if (minX > maxX || minY > maxY) return [];
+    const padding = 4;
+    minX = Math.max(0, minX - padding);
+    minY = Math.max(0, minY - padding);
+    maxX = Math.min(sourceWidth - 1, maxX + padding);
+    maxY = Math.min(sourceHeight - 1, maxY + padding);
+
+    const base = document.createElement("canvas");
+    base.width = EXHAUST_FRAME_WIDTH;
+    base.height = EXHAUST_FRAME_HEIGHT;
+    const baseContext = base.getContext("2d");
+    baseContext.imageSmoothingEnabled = true;
+    baseContext.imageSmoothingQuality = "high";
+    baseContext.drawImage(
+      source,
+      minX,
+      minY,
+      maxX - minX + 1,
+      maxY - minY + 1,
+      0,
+      0,
+      EXHAUST_FRAME_WIDTH,
+      EXHAUST_FRAME_HEIGHT,
+    );
+
+    return Array.from({ length: EXHAUST_FRAME_COUNT }, (_, frameIndex) => {
+      const frame = document.createElement("canvas");
+      frame.width = EXHAUST_FRAME_WIDTH;
+      frame.height = EXHAUST_FRAME_HEIGHT;
+      const context = frame.getContext("2d");
+      const phase = (frameIndex / EXHAUST_FRAME_COUNT) * Math.PI * 2;
+      const sliceWidth = 6;
+
+      for (let x = 0; x < EXHAUST_FRAME_WIDTH; x += sliceWidth) {
+        const width = Math.min(sliceWidth, EXHAUST_FRAME_WIDTH - x);
+        const tailInfluence = 1 - x / EXHAUST_FRAME_WIDTH;
+        const yOffset =
+          (Math.sin(x * 0.052 + phase) * 1.6 + Math.sin(x * 0.117 - phase * 1.7) * 0.65) * tailInfluence;
+        const xOffset = Math.sin(x * 0.031 - phase) * 1.2 * tailInfluence;
+        context.drawImage(base, x, 0, width, EXHAUST_FRAME_HEIGHT, x + xOffset, yOffset, width + 0.5, EXHAUST_FRAME_HEIGHT);
+      }
+
+      const pulseX = EXHAUST_FRAME_WIDTH - ((frameIndex + 1) / EXHAUST_FRAME_COUNT) * EXHAUST_FRAME_WIDTH;
+      context.save();
+      context.beginPath();
+      context.rect(pulseX - 64, 0, 128, EXHAUST_FRAME_HEIGHT);
+      context.clip();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.2;
+      context.drawImage(base, 0, 0);
+      context.restore();
+      return frame;
+    });
   }
 
-  function getExhaustTextures(type, image) {
-    if (!image || !EXHAUST_TEXTURES[type]) return null;
+  function getExhaustFrames(image) {
+    if (!image) return null;
     const cached = EXHAUST_TEXTURE_CACHE.get(image);
     if (cached) return cached;
-    const config = EXHAUST_TEXTURES[type];
-    const textures = config.streams.map((stream) => createExhaustTexture(image, stream));
-    EXHAUST_TEXTURE_CACHE.set(image, textures);
-    return textures;
+    const frames = createExhaustFrames(image);
+    EXHAUST_TEXTURE_CACHE.set(image, frames);
+    return frames;
   }
 
   function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
@@ -225,7 +294,7 @@
       this.hp = Math.min(this.hp, this.stats.maxHp);
     }
 
-    update(dt, input, mouseWorld, game) {
+    update(dt, input, mouseWorld) {
       this.aimWorld = { x: mouseWorld.x, y: mouseWorld.y };
       const targetAngle = Math.atan2(mouseWorld.y - this.y, mouseWorld.x - this.x);
       this.angle += Utils.angleDelta(this.angle, targetAngle) * Math.min(1, dt * 12);
@@ -255,11 +324,6 @@
       this.vy *= Math.pow(0.38, dt);
       this.x += this.vx * dt;
       this.y += this.vy * dt;
-
-      if (this.thrusting && Math.random() < dt * 24) {
-        const rear = this.localToWorld(-46, 0);
-        game.particles.push(new VS.Entities.Particle(rear.x, rear.y, -this.vx * 0.18 + Utils.randomRange(-15, 15), -this.vy * 0.18 + Utils.randomRange(-15, 15), 0.45, "exhaust", 10));
-      }
     }
 
     localToWorld(localX, localY) {
@@ -329,45 +393,46 @@
       this.collisionCooldown = 0.45;
     }
 
-    drawEngineExhaust(ctx, images, time, buildMode) {
+    drawEngineExhaust(ctx, images, time) {
+      if (!this.thrusting) return;
       for (const module of this.modules) {
         if (module.type !== "thruster" && module.type !== "booster") continue;
-        const textures = getExhaustTextures(module.type, images[`exhaust_${module.type}`]);
-        if (!textures) continue;
+        const frames = getExhaustFrames(images[`exhaust_${module.type}`]);
+        if (!frames?.length) continue;
         const config = EXHAUST_TEXTURES[module.type];
         const enginePower = Utils.clamp(MODULES[module.type].thrust / MODULES.booster.thrust, 0, 1);
         const burn = 1 - Math.exp(-this.engineBurnTime * 1.35);
         const minimumLength = MODULE_SIZE * (0.75 + enginePower * 0.45);
         const maximumLength = MODULE_SIZE * (3.5 + enginePower * 2.5);
-        const exhaustLength = buildMode ? EXHAUST_LENGTH : Utils.lerp(minimumLength, maximumLength, burn);
-        const flicker = 0.88 + Math.sin(time * 15 + module.gx * 1.7 + module.gy * 2.3) * 0.12;
-        const alpha = buildMode ? 0.34 : this.thrusting ? 0.42 + burn * 0.42 : 0.08 + burn * 0.18;
+        const exhaustLength = Utils.lerp(minimumLength, maximumLength, burn);
+        const modulePhase = Math.abs(module.gx * 3 + module.gy * 5);
+        const animationTick = Math.floor(time * EXHAUST_FPS) + modulePhase;
+        const alpha = 0.58 + burn * 0.38;
         ctx.save();
-        ctx.globalAlpha = alpha * flicker;
+        ctx.globalAlpha = alpha;
         ctx.globalCompositeOperation = "lighter";
         ctx.translate(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
         ctx.rotate((Number(module.rotation) || 0) * (Math.PI / 2));
-        for (let index = 0; index < config.streams.length; index += 1) {
-          const stream = config.streams[index];
-          const drawHeight = stream.drawHeight * (0.94 + flicker * 0.06);
+        for (let index = 0; index < config.nozzleOffsets.length; index += 1) {
+          const frame = frames[(animationTick + index * 4) % frames.length];
           ctx.drawImage(
-            textures[index],
-            -MODULE_SIZE / 2 - exhaustLength,
-            stream.offset - drawHeight / 2,
+            frame,
+            config.attachmentX - exhaustLength,
+            config.nozzleOffsets[index] - config.drawHeight / 2,
             exhaustLength,
-            drawHeight,
+            config.drawHeight,
           );
         }
         ctx.restore();
       }
     }
 
-    drawExhaust(ctx, camera, viewport, images, time = 0, buildMode = false) {
+    drawExhaust(ctx, camera, viewport, images, time = 0) {
       const center = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       ctx.save();
       ctx.translate(center.x, center.y);
       ctx.rotate(this.angle);
-      this.drawEngineExhaust(ctx, images, time, buildMode);
+      this.drawEngineExhaust(ctx, images, time);
       ctx.restore();
     }
 

@@ -180,7 +180,7 @@
     update(dt) {
       this.time += dt;
       const mouseWorld = Utils.screenToWorld(this.mouse, this.camera, this.viewport.width, this.viewport.height);
-      this.ship.update(dt, this.input, mouseWorld, this);
+      this.ship.update(dt, this.input, mouseWorld);
       this.stationSafety(dt);
 
       this.target = null;
@@ -301,7 +301,7 @@
       ctx.clearRect(0, 0, this.viewport.width, this.viewport.height);
       this.drawBackground(time);
       this.station.draw(ctx, this.camera, this.viewport, this.images, time);
-      this.ship.drawExhaust(ctx, this.camera, this.viewport, this.images, this.time, this.buildMode);
+      this.ship.drawExhaust(ctx, this.camera, this.viewport, this.images, this.time);
       for (const pickup of this.pickups) pickup.draw(ctx, this.camera, this.viewport, this.images);
       for (const asteroid of this.asteroids) asteroid.draw(ctx, this.camera, this.viewport, this.images);
       this.drawLaser(time);
