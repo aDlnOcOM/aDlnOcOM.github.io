@@ -27,6 +27,7 @@
   const LINEAR_VELOCITY_RETENTION = 0.985;
   const ANGULAR_VELOCITY_RETENTION_IDLE = 0.58;
   const ANGULAR_VELOCITY_RETENTION_ACTIVE = 0.82;
+  const MODULE_COLLISION_HALF = MODULE_SIZE / 2;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
@@ -504,6 +505,90 @@
       const cosine = Math.cos(-this.angle);
       const sine = Math.sin(-this.angle);
       return { x: dx * cosine - dy * sine, y: dx * sine + dy * cosine };
+    }
+
+    getNearestCargoIntake(worldX, worldY) {
+      const cargoModules = this.modules.filter((module) => module.type === "cargo");
+      const intakeModules = cargoModules.length > 0
+        ? cargoModules
+        : this.modules.filter((module) => module.type === "core");
+      let nearest = null;
+
+      for (const module of intakeModules) {
+        const point = this.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
+        const distance = Math.hypot(worldX - point.x, worldY - point.y);
+        if (nearest && nearest.distance <= distance) continue;
+        const radiusX = point.x - this.x;
+        const radiusY = point.y - this.y;
+        nearest = {
+          x: point.x,
+          y: point.y,
+          vx: this.vx - this.angularVelocity * radiusY,
+          vy: this.vy + this.angularVelocity * radiusX,
+          distance,
+        };
+      }
+      return nearest;
+    }
+
+    getCircleCollision(worldX, worldY, radius) {
+      const local = this.worldToLocal(worldX, worldY);
+      const radiusSquared = radius * radius;
+      let deepest = null;
+
+      for (const module of this.modules) {
+        const centerX = module.gx * MODULE_SIZE;
+        const centerY = module.gy * MODULE_SIZE;
+        const minX = centerX - MODULE_COLLISION_HALF;
+        const maxX = centerX + MODULE_COLLISION_HALF;
+        const minY = centerY - MODULE_COLLISION_HALF;
+        const maxY = centerY + MODULE_COLLISION_HALF;
+        const closestX = Utils.clamp(local.x, minX, maxX);
+        const closestY = Utils.clamp(local.y, minY, maxY);
+        const offsetX = local.x - closestX;
+        const offsetY = local.y - closestY;
+        const distanceSquared = offsetX * offsetX + offsetY * offsetY;
+        if (distanceSquared >= radiusSquared) continue;
+
+        let normalLocalX;
+        let normalLocalY;
+        let penetration;
+        let contactLocalX = closestX;
+        let contactLocalY = closestY;
+        if (distanceSquared > 0.0001) {
+          const distance = Math.sqrt(distanceSquared);
+          normalLocalX = -offsetX / distance;
+          normalLocalY = -offsetY / distance;
+          penetration = radius - distance;
+        } else {
+          const edges = [
+            { distance: local.x - minX, normalX: 1, normalY: 0, x: minX, y: local.y },
+            { distance: maxX - local.x, normalX: -1, normalY: 0, x: maxX, y: local.y },
+            { distance: local.y - minY, normalX: 0, normalY: 1, x: local.x, y: minY },
+            { distance: maxY - local.y, normalX: 0, normalY: -1, x: local.x, y: maxY },
+          ];
+          const nearestEdge = edges.reduce((nearest, edge) => edge.distance < nearest.distance ? edge : nearest);
+          normalLocalX = nearestEdge.normalX;
+          normalLocalY = nearestEdge.normalY;
+          penetration = radius + nearestEdge.distance;
+          contactLocalX = nearestEdge.x;
+          contactLocalY = nearestEdge.y;
+        }
+
+        if (deepest && deepest.penetration >= penetration) continue;
+        const cosine = Math.cos(this.angle);
+        const sine = Math.sin(this.angle);
+        const contact = this.localToWorld(contactLocalX, contactLocalY);
+        deepest = {
+          module,
+          normalX: normalLocalX * cosine - normalLocalY * sine,
+          normalY: normalLocalX * sine + normalLocalY * cosine,
+          penetration,
+          contactX: contact.x,
+          contactY: contact.y,
+        };
+      }
+      return deepest;
     }
 
     getLaserMount(target = this.aimWorld) {

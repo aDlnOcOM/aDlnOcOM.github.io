@@ -251,20 +251,30 @@
 
     checkShipCollision(asteroid) {
       if (this.station.isSafe(this.ship)) return;
-      const distance = Utils.distance(asteroid, this.ship);
-      const contact = asteroid.radius + 20;
-      if (distance >= contact || distance === 0) return;
-      const nx = (this.ship.x - asteroid.x) / distance;
-      const ny = (this.ship.y - asteroid.y) / distance;
-      this.ship.x = asteroid.x + nx * contact;
-      this.ship.y = asteroid.y + ny * contact;
-      this.ship.vx += nx * 90;
-      this.ship.vy += ny * 90;
-      asteroid.vx -= nx * 12;
-      asteroid.vy -= ny * 12;
+      const collision = this.ship.getCircleCollision(asteroid.x, asteroid.y, asteroid.radius);
+      if (!collision) return;
+      this.ship.x += collision.normalX * collision.penetration;
+      this.ship.y += collision.normalY * collision.penetration;
+      const relativeNormalVelocity =
+        (this.ship.vx - asteroid.vx) * collision.normalX +
+        (this.ship.vy - asteroid.vy) * collision.normalY;
+      const impactSpeed = Math.max(0, -relativeNormalVelocity);
+      const shipImpulse = 58 + impactSpeed * 0.62;
+      this.ship.vx += collision.normalX * shipImpulse;
+      this.ship.vy += collision.normalY * shipImpulse;
+      asteroid.vx -= collision.normalX * (10 + impactSpeed * 0.08);
+      asteroid.vy -= collision.normalY * (10 + impactSpeed * 0.08);
       this.ship.takeDamage(8 + asteroid.size * 5);
       for (let index = 0; index < 5; index += 1) {
-        this.particles.push(new Entities.Particle(this.ship.x, this.ship.y, Utils.randomRange(-70, 70), Utils.randomRange(-70, 70), 0.4, "spark", 7));
+        this.particles.push(new Entities.Particle(
+          collision.contactX,
+          collision.contactY,
+          Utils.randomRange(-70, 70),
+          Utils.randomRange(-70, 70),
+          0.4,
+          "spark",
+          7,
+        ));
       }
     }
 

@@ -3,6 +3,8 @@
 
   const VS = (window.Voidspace = window.Voidspace || {});
   const { Utils } = VS;
+  const CARGO_PULL_RADIUS = 110;
+  const CARGO_COLLECTION_RADIUS = 18;
 
   const METEOR_TYPES = {
     iron: {
@@ -94,13 +96,19 @@
       this.vx *= Math.pow(0.28, dt);
       this.vy *= Math.pow(0.28, dt);
       this.rotation += dt * 1.8;
-      const distance = Utils.distance(this, ship);
-      if (distance < 95 && ship.inventory.used < ship.stats.cargo) {
-        const pull = (1 - distance / 95) * 680;
-        this.vx += ((ship.x - this.x) / Math.max(1, distance)) * pull * dt;
-        this.vy += ((ship.y - this.y) / Math.max(1, distance)) * pull * dt;
+      const intake = ship.getNearestCargoIntake(this.x, this.y);
+      if (!intake) return;
+      const distance = intake.distance;
+      if (distance < CARGO_PULL_RADIUS && ship.inventory.used < ship.stats.cargo) {
+        const proximity = 1 - distance / CARGO_PULL_RADIUS;
+        const pull = proximity * 720;
+        this.vx += ((intake.x - this.x) / Math.max(1, distance)) * pull * dt;
+        this.vy += ((intake.y - this.y) / Math.max(1, distance)) * pull * dt;
+        const velocityMatch = proximity * 2.4 * dt;
+        this.vx += (intake.vx - this.vx) * velocityMatch;
+        this.vy += (intake.vy - this.vy) * velocityMatch;
       }
-      if (distance < 25) {
+      if (distance < CARGO_COLLECTION_RADIUS) {
         const accepted = ship.inventory.add(this.ore, this.amount, ship.stats.cargo);
         if (accepted > 0) this.dead = true;
       }
