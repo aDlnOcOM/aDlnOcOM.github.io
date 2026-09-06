@@ -30,6 +30,8 @@
   const ANGULAR_VELOCITY_RETENTION_IDLE = 0.58;
   const ANGULAR_VELOCITY_RETENTION_ACTIVE = 0.82;
   const MODULE_COLLISION_HALF = MODULE_SIZE / 2;
+  const DRILL_TIP_OFFSET = MODULE_SIZE / 2 + 4;
+  const DRILL_CONTACT_RADIUS = 5;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
@@ -310,7 +312,7 @@
     ctx.restore();
   }
 
-  function drawAnimatedModule(ctx, image, module, definition, time, aimLocal = null, alpha = 1) {
+  function drawAnimatedModule(ctx, image, module, definition, time, aimLocal = null, alpha = 1, toolActive = true) {
     if (!image || !definition) return false;
     const layers = getAnimatedModuleLayers(module.type, image);
     if (!layers) return false;
@@ -331,6 +333,10 @@
     } else {
       ctx.rotate(baseRotation);
       ctx.drawImage(layers.tool, -5, -3, 10, 22);
+      if (!toolActive) {
+        ctx.restore();
+        return true;
+      }
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(-5, -3);
@@ -386,6 +392,7 @@
       this.thrusting = false;
       this.angularVelocity = 0;
       this.engineStates = new Map();
+      this.activeDrills = new Set();
       this.aimWorld = { x: this.x + MODULE_SIZE * 4, y: this.y };
     }
 
@@ -394,6 +401,10 @@
       this.stats = calculateStats(this.modules, this.upgradeLevel);
       if (this.stats.maxHp > previousMax) this.hp += this.stats.maxHp - previousMax;
       this.hp = Math.min(this.hp, this.stats.maxHp);
+    }
+
+    getMaxSpeed() {
+      return 145 + this.stats.thrust * 28;
     }
 
     update(dt, input, mouseWorld) {
@@ -479,7 +490,7 @@
       this.vy += (worldForceY / massProperties.mass) * dt;
       this.angularVelocity += (localTorque / massProperties.inertia) * TORQUE_RESPONSE * dt;
 
-      const maxSpeed = 145 + this.stats.thrust * 28;
+      const maxSpeed = this.getMaxSpeed();
       const speed = Math.hypot(this.vx, this.vy);
       if (speed > maxSpeed) {
         this.vx = (this.vx / speed) * maxSpeed;
@@ -538,10 +549,47 @@
       return nearest;
     }
 
+    getDrillTips() {
+      const cosine = Math.cos(this.angle);
+      const sine = Math.sin(this.angle);
+      return this.modules
+        .filter((module) => module.type === "drill")
+        .map((module) => {
+          const [localDirectionX, localDirectionY] = moduleDirection(module);
+          const directionX = localDirectionX * cosine - localDirectionY * sine;
+          const directionY = localDirectionX * sine + localDirectionY * cosine;
+          const center = this.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
+          return {
+            key: engineKey(module),
+            module,
+            x: center.x + directionX * DRILL_TIP_OFFSET,
+            y: center.y + directionY * DRILL_TIP_OFFSET,
+            directionX,
+            directionY,
+            radius: DRILL_CONTACT_RADIUS,
+          };
+        });
+    }
+
     getCircleCollision(worldX, worldY, radius) {
       const local = this.worldToLocal(worldX, worldY);
       const radiusSquared = radius * radius;
       let deepest = null;
+      const cosine = Math.cos(this.angle);
+      const sine = Math.sin(this.angle);
+      const considerCollision = (module, normalLocalX, normalLocalY, penetration, contactLocalX, contactLocalY, kind) => {
+        if (deepest && deepest.penetration >= penetration) return;
+        const contact = this.localToWorld(contactLocalX, contactLocalY);
+        deepest = {
+          module,
+          kind,
+          normalX: normalLocalX * cosine - normalLocalY * sine,
+          normalY: normalLocalX * sine + normalLocalY * cosine,
+          penetration,
+          contactX: contact.x,
+          contactY: contact.y,
+        };
+      };
 
       for (const module of this.modules) {
         const centerX = module.gx * MODULE_SIZE;
@@ -555,61 +603,77 @@
         const offsetX = local.x - closestX;
         const offsetY = local.y - closestY;
         const distanceSquared = offsetX * offsetX + offsetY * offsetY;
-        if (distanceSquared >= radiusSquared) continue;
-
-        let normalLocalX;
-        let normalLocalY;
-        let penetration;
-        let contactLocalX = closestX;
-        let contactLocalY = closestY;
-        if (distanceSquared > 0.0001) {
-          const distance = Math.sqrt(distanceSquared);
-          normalLocalX = -offsetX / distance;
-          normalLocalY = -offsetY / distance;
-          penetration = radius - distance;
-        } else {
-          const edges = [
-            { distance: local.x - minX, normalX: 1, normalY: 0, x: minX, y: local.y },
-            { distance: maxX - local.x, normalX: -1, normalY: 0, x: maxX, y: local.y },
-            { distance: local.y - minY, normalX: 0, normalY: 1, x: local.x, y: minY },
-            { distance: maxY - local.y, normalX: 0, normalY: -1, x: local.x, y: maxY },
-          ];
-          const nearestEdge = edges.reduce((nearest, edge) => edge.distance < nearest.distance ? edge : nearest);
-          normalLocalX = nearestEdge.normalX;
-          normalLocalY = nearestEdge.normalY;
-          penetration = radius + nearestEdge.distance;
-          contactLocalX = nearestEdge.x;
-          contactLocalY = nearestEdge.y;
+        if (distanceSquared < radiusSquared) {
+          if (distanceSquared > 0.0001) {
+            const distance = Math.sqrt(distanceSquared);
+            considerCollision(
+              module,
+              -offsetX / distance,
+              -offsetY / distance,
+              radius - distance,
+              closestX,
+              closestY,
+              "module",
+            );
+          } else {
+            const edges = [
+              { distance: local.x - minX, normalX: 1, normalY: 0, x: minX, y: local.y },
+              { distance: maxX - local.x, normalX: -1, normalY: 0, x: maxX, y: local.y },
+              { distance: local.y - minY, normalX: 0, normalY: 1, x: local.x, y: minY },
+              { distance: maxY - local.y, normalX: 0, normalY: -1, x: local.x, y: maxY },
+            ];
+            const nearestEdge = edges.reduce((nearest, edge) => edge.distance < nearest.distance ? edge : nearest);
+            considerCollision(
+              module,
+              nearestEdge.normalX,
+              nearestEdge.normalY,
+              radius + nearestEdge.distance,
+              nearestEdge.x,
+              nearestEdge.y,
+              "module",
+            );
+          }
         }
 
-        if (deepest && deepest.penetration >= penetration) continue;
-        const cosine = Math.cos(this.angle);
-        const sine = Math.sin(this.angle);
-        const contact = this.localToWorld(contactLocalX, contactLocalY);
-        deepest = {
+        if (module.type !== "drill") continue;
+        const [directionX, directionY] = moduleDirection(module);
+        const tipX = centerX + directionX * DRILL_TIP_OFFSET;
+        const tipY = centerY + directionY * DRILL_TIP_OFFSET;
+        const tipOffsetX = tipX - local.x;
+        const tipOffsetY = tipY - local.y;
+        const tipDistance = Math.hypot(tipOffsetX, tipOffsetY);
+        const drillContactDistance = radius + DRILL_CONTACT_RADIUS;
+        if (tipDistance >= drillContactDistance) continue;
+        const normalLocalX = tipDistance > 0.0001 ? tipOffsetX / tipDistance : -directionX;
+        const normalLocalY = tipDistance > 0.0001 ? tipOffsetY / tipDistance : -directionY;
+        considerCollision(
           module,
-          normalX: normalLocalX * cosine - normalLocalY * sine,
-          normalY: normalLocalX * sine + normalLocalY * cosine,
-          penetration,
-          contactX: contact.x,
-          contactY: contact.y,
-        };
+          normalLocalX,
+          normalLocalY,
+          drillContactDistance - tipDistance,
+          tipX,
+          tipY,
+          "drillTip",
+        );
       }
       return deepest;
     }
 
-    getLaserMount(target = this.aimWorld) {
-      const laser = this.modules.find((module) => module.type === "laser");
-      if (!laser) return { origin: this.localToWorld(MODULE_SIZE, 0), angle: this.angle };
-      const center = this.localToWorld(laser.gx * MODULE_SIZE, laser.gy * MODULE_SIZE);
-      const angle = Math.atan2(target.y - center.y, target.x - center.x);
-      return {
-        origin: {
-          x: center.x + Math.cos(angle) * LASER_MUZZLE_OFFSET,
-          y: center.y + Math.sin(angle) * LASER_MUZZLE_OFFSET,
-        },
-        angle,
-      };
+    getLaserMounts(target = this.aimWorld) {
+      return this.modules
+        .filter((module) => module.type === "laser")
+        .map((module) => {
+          const center = this.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
+          const angle = Math.atan2(target.y - center.y, target.x - center.x);
+          return {
+            module,
+            origin: {
+              x: center.x + Math.cos(angle) * LASER_MUZZLE_OFFSET,
+              y: center.y + Math.sin(angle) * LASER_MUZZLE_OFFSET,
+            },
+            angle,
+          };
+        });
     }
 
     addModule(type, gx, gy, rotation) {
@@ -736,7 +800,8 @@
         const image = images[`module_${module.type}`];
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
-        const animated = drawAnimatedModule(ctx, image, module, definition, time, aimLocal);
+        const toolActive = module.type !== "drill" || this.activeDrills.has(engineKey(module));
+        const animated = drawAnimatedModule(ctx, image, module, definition, time, aimLocal, 1, toolActive);
         if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
@@ -750,7 +815,7 @@
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52);
+        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52, false);
         if (!animated) drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;

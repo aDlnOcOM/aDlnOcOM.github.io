@@ -24,11 +24,10 @@
     laser: {
       name: "Шахтёрский лазер",
       short: "LASER",
-      description: "Режущий луч дальностью 290 м",
+      description: "Самостоятельный режущий луч дальностью 290 м",
       cost: 70,
       hp: 42,
       energyUse: 3,
-      mining: 1,
       range: 290,
       sprite: "assets/modules/laser.png",
       spriteRotation: 1,
@@ -97,11 +96,10 @@
     drill: {
       name: "Буровой модуль",
       short: "DRILL",
-      description: "+60% мощности добычи",
+      description: "Контактная добыча: 1,6× мощности лазера; усиленный таран",
       cost: 105,
       hp: 55,
       energyUse: 3,
-      mining: 0.6,
       sprite: "assets/modules/drill.png",
       spriteRotation: 3,
       reservedZone: { direction: "front", length: 1, kind: "tool" },
@@ -204,7 +202,6 @@
       energy: 0,
       energyUse: 0,
       thrust: 0,
-      mining: 0,
       shield: 0,
     };
     for (const module of modules) {
@@ -215,7 +212,6 @@
       stats.energy += definition.energy || 0;
       stats.energyUse += definition.energyUse || 0;
       stats.thrust += definition.thrust || 0;
-      stats.mining += definition.mining || 0;
       stats.shield += definition.shield || 0;
     }
     stats.maxHp = Math.round(stats.maxHp * (1 + upgradeLevel * 0.08));

@@ -137,6 +137,7 @@
       this.hp = this.maxHp;
       this.dead = false;
       this.hitFlash = 0;
+      this.ramCooldown = 0;
     }
 
     update(dt, station) {
@@ -144,6 +145,7 @@
       this.y += this.vy * dt;
       this.rotation += this.spin * dt;
       this.hitFlash = Math.max(0, this.hitFlash - dt * 6);
+      this.ramCooldown = Math.max(0, this.ramCooldown - dt);
       const distanceFromStation = Math.hypot(this.x, this.y);
       if (distanceFromStation < station.safeRadius + this.radius) {
         const angle = Math.atan2(this.y, this.x);
@@ -153,6 +155,7 @@
     }
 
     damage(amount, hitX, hitY, game) {
+      if (this.dead || amount <= 0) return;
       this.hp -= amount;
       this.hitFlash = 1;
       for (let index = 0; index < 2; index += 1) {
@@ -162,6 +165,7 @@
     }
 
     breakApart(game) {
+      if (this.dead) return;
       this.dead = true;
       const definition = METEOR_TYPES[this.type];
       const count = Math.round(2 + this.size * 4);

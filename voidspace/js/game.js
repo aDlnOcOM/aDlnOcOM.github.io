@@ -5,6 +5,10 @@
   const { Utils, ModuleSystem, Entities, ORES } = VS;
   const { MODULES, MODULE_SIZE, getPlacementConflict, isAdjacentToShip } = ModuleSystem;
   const { METEOR_TYPES, Asteroid } = Entities;
+  const LASER_MINING_POWER = 33;
+  const DRILL_MINING_POWER = LASER_MINING_POWER * 1.6;
+  const DRILL_RAM_MULTIPLIER = 4;
+  const RAM_COOLDOWN = 0.3;
 
   function moduleArtMarkup(definition) {
     const rotation = (definition.spriteRotation || 0) * 90;
@@ -47,7 +51,7 @@
       this.buildRotation = 0;
       this.deleteMode = false;
       this.buildHover = null;
-      this.laserBeam = null;
+      this.laserBeams = [];
       this.target = null;
       this.time = Number(save.time) || 0;
       this.asteroidsMined = Number(save.asteroidsMined) || 0;
@@ -184,13 +188,12 @@
       this.stationSafety(dt);
 
       this.target = null;
-      this.laserBeam = null;
+      this.laserBeams = [];
       if (this.mouse.down || this.input.has("Space")) this.fireMiningLaser(dt, mouseWorld);
 
-      for (const asteroid of this.asteroids) {
-        asteroid.update(dt, this.station);
-        this.checkShipCollision(asteroid);
-      }
+      for (const asteroid of this.asteroids) asteroid.update(dt, this.station);
+      this.mineWithDrills(dt);
+      for (const asteroid of this.asteroids) if (!asteroid.dead) this.checkShipCollision(asteroid);
       for (const pickup of this.pickups) pickup.update(dt, this.ship);
       for (const particle of this.particles) particle.update(dt);
       this.asteroids = this.asteroids.filter((asteroid) => !asteroid.dead && Utils.distance(asteroid, this.ship) < 1900);
@@ -218,35 +221,60 @@
     }
 
     fireMiningLaser(dt, mouseWorld) {
-      if (!this.ship.modules.some((module) => module.type === "laser") || this.ship.stats.energyUse > this.ship.stats.energy) return;
-      const mount = this.ship.getLaserMount(mouseWorld);
-      const { origin, angle: aimAngle } = mount;
-      const maxDistance = MODULES.laser.range;
-      const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
-      const direction = { x: Math.cos(aimAngle), y: Math.sin(aimAngle) };
-      const endpoint = {
-        x: origin.x + direction.x * requestedDistance,
-        y: origin.y + direction.y * requestedDistance,
-      };
-      let target = null;
-      let nearest = requestedDistance;
-      for (const asteroid of this.asteroids) {
-        const offsetX = asteroid.x - origin.x;
-        const offsetY = asteroid.y - origin.y;
-        const projection = offsetX * direction.x + offsetY * direction.y;
-        if (projection < 0 || projection - asteroid.radius > nearest) continue;
-        const perpendicularSquared = offsetX * offsetX + offsetY * offsetY - projection * projection;
-        const radiusSquared = asteroid.radius * asteroid.radius;
-        if (perpendicularSquared > radiusSquared) continue;
-        const hitDistance = Math.max(0, projection - Math.sqrt(Math.max(0, radiusSquared - perpendicularSquared)));
-        if (hitDistance > nearest) continue;
-        target = asteroid;
-        nearest = hitDistance;
+      if (this.ship.stats.energyUse > this.ship.stats.energy) return;
+      for (const mount of this.ship.getLaserMounts(mouseWorld)) {
+        const { origin, angle: aimAngle } = mount;
+        const maxDistance = MODULES.laser.range;
+        const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
+        const direction = { x: Math.cos(aimAngle), y: Math.sin(aimAngle) };
+        const endpoint = {
+          x: origin.x + direction.x * requestedDistance,
+          y: origin.y + direction.y * requestedDistance,
+        };
+        let target = null;
+        let nearest = requestedDistance;
+        for (const asteroid of this.asteroids) {
+          if (asteroid.dead) continue;
+          const offsetX = asteroid.x - origin.x;
+          const offsetY = asteroid.y - origin.y;
+          const projection = offsetX * direction.x + offsetY * direction.y;
+          if (projection < 0 || projection - asteroid.radius > nearest) continue;
+          const perpendicularSquared = offsetX * offsetX + offsetY * offsetY - projection * projection;
+          const radiusSquared = asteroid.radius * asteroid.radius;
+          if (perpendicularSquared > radiusSquared) continue;
+          const hitDistance = Math.max(0, projection - Math.sqrt(Math.max(0, radiusSquared - perpendicularSquared)));
+          if (hitDistance > nearest) continue;
+          target = asteroid;
+          nearest = hitDistance;
+        }
+        const beamEnd = target
+          ? { x: origin.x + direction.x * nearest, y: origin.y + direction.y * nearest }
+          : endpoint;
+        this.laserBeams.push({ origin, end: beamEnd });
+        if (!target) continue;
+        target.damage(LASER_MINING_POWER * dt, beamEnd.x, beamEnd.y, this);
+        if (!target.dead && !this.target) this.target = target;
       }
-      const beamEnd = target ? { x: origin.x + direction.x * nearest, y: origin.y + direction.y * nearest } : endpoint;
-      this.laserBeam = { origin, end: beamEnd };
-      this.target = target;
-      if (target) target.damage(33 * Math.max(1, this.ship.stats.mining) * dt, beamEnd.x, beamEnd.y, this);
+    }
+
+    mineWithDrills(dt) {
+      this.ship.activeDrills.clear();
+      if (this.ship.stats.energyUse > this.ship.stats.energy) return;
+      for (const drill of this.ship.getDrillTips()) {
+        let target = null;
+        let nearestDistance = Infinity;
+        for (const asteroid of this.asteroids) {
+          if (asteroid.dead) continue;
+          const distance = Math.hypot(asteroid.x - drill.x, asteroid.y - drill.y);
+          if (distance > asteroid.radius + drill.radius || distance >= nearestDistance) continue;
+          target = asteroid;
+          nearestDistance = distance;
+        }
+        if (!target) continue;
+        this.ship.activeDrills.add(drill.key);
+        target.damage(DRILL_MINING_POWER * dt, drill.x, drill.y, this);
+        if (!target.dead && !this.target) this.target = target;
+      }
     }
 
     checkShipCollision(asteroid) {
@@ -259,6 +287,14 @@
         (this.ship.vx - asteroid.vx) * collision.normalX +
         (this.ship.vy - asteroid.vy) * collision.normalY;
       const impactSpeed = Math.max(0, -relativeNormalVelocity);
+      const impactRatio = Utils.clamp(impactSpeed / this.ship.getMaxSpeed(), 0, 1);
+      if (impactRatio > 0 && asteroid.ramCooldown <= 0) {
+        const maximumRamDamage = collision.kind === "drillTip"
+          ? DRILL_MINING_POWER * DRILL_RAM_MULTIPLIER
+          : LASER_MINING_POWER;
+        asteroid.damage(maximumRamDamage * impactRatio, collision.contactX, collision.contactY, this);
+        asteroid.ramCooldown = RAM_COOLDOWN;
+      }
       const shipImpulse = 58 + impactSpeed * 0.62;
       this.ship.vx += collision.normalX * shipImpulse;
       this.ship.vy += collision.normalY * shipImpulse;
@@ -356,39 +392,41 @@
     }
 
     drawLaser(time) {
-      if (!this.laserBeam) return;
-      const start = Utils.worldToScreen(this.laserBeam.origin, this.camera, this.viewport.width, this.viewport.height);
-      const end = Utils.worldToScreen(this.laserBeam.end, this.camera, this.viewport.width, this.viewport.height);
-      const length = Math.hypot(end.x - start.x, end.y - start.y);
-      if (length < 1) return;
+      for (let index = 0; index < this.laserBeams.length; index += 1) {
+        const beam = this.laserBeams[index];
+        const start = Utils.worldToScreen(beam.origin, this.camera, this.viewport.width, this.viewport.height);
+        const end = Utils.worldToScreen(beam.end, this.camera, this.viewport.width, this.viewport.height);
+        const length = Math.hypot(end.x - start.x, end.y - start.y);
+        if (length < 1) continue;
 
-      const shimmer = 0.5 + Math.sin(time * 11) * 0.5;
-      const gradient = this.ctx.createLinearGradient(start.x, start.y, end.x, end.y);
-      gradient.addColorStop(0, "#6ef4ff");
-      gradient.addColorStop(0.24 + shimmer * 0.42, "#35bfff");
-      gradient.addColorStop(1, "#285cff");
+        const shimmer = 0.5 + Math.sin(time * 11 + index * 1.7) * 0.5;
+        const gradient = this.ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+        gradient.addColorStop(0, "#6ef4ff");
+        gradient.addColorStop(0.24 + shimmer * 0.42, "#35bfff");
+        gradient.addColorStop(1, "#285cff");
 
-      this.ctx.save();
-      this.ctx.globalCompositeOperation = "lighter";
-      this.ctx.lineCap = "round";
-      this.ctx.beginPath();
-      this.ctx.moveTo(start.x, start.y);
-      this.ctx.lineTo(end.x, end.y);
-      this.ctx.strokeStyle = gradient;
-      this.ctx.globalAlpha = 0.22 + shimmer * 0.08;
-      this.ctx.lineWidth = 7;
-      this.ctx.shadowColor = "#35cfff";
-      this.ctx.shadowBlur = 12;
-      this.ctx.stroke();
+        this.ctx.save();
+        this.ctx.globalCompositeOperation = "lighter";
+        this.ctx.lineCap = "round";
+        this.ctx.beginPath();
+        this.ctx.moveTo(start.x, start.y);
+        this.ctx.lineTo(end.x, end.y);
+        this.ctx.strokeStyle = gradient;
+        this.ctx.globalAlpha = 0.22 + shimmer * 0.08;
+        this.ctx.lineWidth = 7;
+        this.ctx.shadowColor = "#35cfff";
+        this.ctx.shadowBlur = 12;
+        this.ctx.stroke();
 
-      this.ctx.beginPath();
-      this.ctx.moveTo(start.x, start.y);
-      this.ctx.lineTo(end.x, end.y);
-      this.ctx.globalAlpha = 0.9;
-      this.ctx.lineWidth = 2.4;
-      this.ctx.shadowBlur = 5;
-      this.ctx.stroke();
-      this.ctx.restore();
+        this.ctx.beginPath();
+        this.ctx.moveTo(start.x, start.y);
+        this.ctx.lineTo(end.x, end.y);
+        this.ctx.globalAlpha = 0.9;
+        this.ctx.lineWidth = 2.4;
+        this.ctx.shadowBlur = 5;
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
     }
 
     drawStationIndicator() {
