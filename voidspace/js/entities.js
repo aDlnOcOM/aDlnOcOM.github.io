@@ -5,6 +5,7 @@
   const { Utils } = VS;
   const CARGO_PULL_RADIUS = 110;
   const CARGO_COLLECTION_RADIUS = 18;
+  const ASTEROID_SPRITE_SCALE = 0.9;
 
   const METEOR_TYPES = {
     iron: {
@@ -69,7 +70,7 @@
     draw(ctx, camera, viewport, images) {
       const screen = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       const alpha = Utils.clamp(this.life / this.maxLife, 0, 1);
-      const image = images[this.kind === "exhaust" ? "particle_exhaust" : this.kind === "debris" ? "particle_debris" : "particle_spark"];
+      const image = images[this.kind === "debris" ? "particle_debris" : "particle_spark"];
       Utils.drawImage(ctx, image, screen.x, screen.y, this.size, this.size, this.rotation, alpha);
     }
   }
@@ -181,12 +182,15 @@
     draw(ctx, camera, viewport, images) {
       const screen = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       const image = images[METEOR_TYPES[this.type].sprite];
-      Utils.drawImage(ctx, image, screen.x, screen.y, this.radius * 2, this.radius * 2, this.rotation);
+      const spriteDiameter = this.radius * 2 * ASTEROID_SPRITE_SCALE;
+      Utils.drawImage(ctx, image, screen.x, screen.y, spriteDiameter, spriteDiameter, this.rotation);
       if (this.hitFlash > 0) {
         ctx.save();
         ctx.globalAlpha = this.hitFlash * 0.35;
         ctx.strokeStyle = "#ffffff";
-        ctx.strokeRect(Math.round(screen.x - this.radius), Math.round(screen.y - this.radius), this.radius * 2, this.radius * 2);
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, this.radius * ASTEROID_SPRITE_SCALE, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
       }
     }

@@ -40,6 +40,9 @@
   const MODULE_COLLISION_HALF = MODULE_SIZE / 2;
   const DRILL_TIP_OFFSET = MODULE_SIZE / 2 + 4;
   const DRILL_CONTACT_RADIUS = 5;
+  const DRILL_HEAD_WIDTH = 15;
+  const DRILL_HEAD_HEIGHT = 10;
+  const DRILL_HEAD_TOP = 9;
   const MODULE_LAYER_CACHE = new WeakMap();
   const EXHAUST_TEXTURE_CACHE = new WeakMap();
   const EXHAUST_TEXTURES = {
@@ -340,31 +343,41 @@
       ctx.drawImage(layers.tool, -4, -21, 8, 24);
     } else {
       ctx.rotate(baseRotation);
-      ctx.drawImage(layers.tool, -5, -3, 10, 22);
+      ctx.drawImage(
+        layers.tool,
+        -DRILL_HEAD_WIDTH / 2,
+        DRILL_HEAD_TOP,
+        DRILL_HEAD_WIDTH,
+        DRILL_HEAD_HEIGHT,
+      );
       if (!toolActive) {
         ctx.restore();
         return true;
       }
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(-5, -3);
-      ctx.lineTo(5, -3);
-      ctx.lineTo(1.2, 19);
-      ctx.lineTo(-1.2, 19);
+      ctx.moveTo(-DRILL_HEAD_WIDTH / 2, DRILL_HEAD_TOP);
+      ctx.lineTo(DRILL_HEAD_WIDTH / 2, DRILL_HEAD_TOP);
+      ctx.lineTo(1.2, DRILL_HEAD_TOP + DRILL_HEAD_HEIGHT);
+      ctx.lineTo(-1.2, DRILL_HEAD_TOP + DRILL_HEAD_HEIGHT);
       ctx.closePath();
       ctx.clip();
       ctx.globalCompositeOperation = "lighter";
-      const grooveOffset = (time * 18) % 6;
-      for (let grooveY = -9 + grooveOffset; grooveY < 24; grooveY += 6) {
+      const grooveOffset = (time * 18) % 4;
+      for (
+        let grooveY = DRILL_HEAD_TOP - 4 + grooveOffset;
+        grooveY < DRILL_HEAD_TOP + DRILL_HEAD_HEIGHT;
+        grooveY += 4
+      ) {
         ctx.beginPath();
-        ctx.moveTo(-6, grooveY - 2);
-        ctx.lineTo(6, grooveY + 2);
+        ctx.moveTo(-DRILL_HEAD_WIDTH / 2, grooveY - 2);
+        ctx.lineTo(DRILL_HEAD_WIDTH / 2, grooveY + 2);
         ctx.strokeStyle = "rgba(98, 226, 255, 0.72)";
         ctx.lineWidth = 1.2;
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(-6, grooveY + 0.4);
-        ctx.lineTo(6, grooveY + 4.4);
+        ctx.moveTo(-DRILL_HEAD_WIDTH / 2, grooveY + 0.4);
+        ctx.lineTo(DRILL_HEAD_WIDTH / 2, grooveY + 4.4);
         ctx.strokeStyle = "rgba(18, 67, 116, 0.58)";
         ctx.lineWidth = 1;
         ctx.stroke();
