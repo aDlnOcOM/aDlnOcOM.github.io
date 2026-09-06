@@ -9,6 +9,7 @@
   const DRILL_MINING_POWER = LASER_MINING_POWER * 1.6;
   const DRILL_RAM_MULTIPLIER = 4;
   const RAM_COOLDOWN = 0.3;
+  const COLLISION_KNOCKBACK_DIVISOR = 3;
 
   function moduleArtMarkup(definition) {
     const rotation = (definition.spriteRotation || 0) * 90;
@@ -295,11 +296,12 @@
         asteroid.damage(maximumRamDamage * impactRatio, collision.contactX, collision.contactY, this);
         asteroid.ramCooldown = RAM_COOLDOWN;
       }
-      const shipImpulse = 58 + impactSpeed * 0.62;
+      const shipImpulse = (58 + impactSpeed * 0.62) / COLLISION_KNOCKBACK_DIVISOR;
       this.ship.vx += collision.normalX * shipImpulse;
       this.ship.vy += collision.normalY * shipImpulse;
-      asteroid.vx -= collision.normalX * (10 + impactSpeed * 0.08);
-      asteroid.vy -= collision.normalY * (10 + impactSpeed * 0.08);
+      const asteroidImpulse = (10 + impactSpeed * 0.08) / COLLISION_KNOCKBACK_DIVISOR;
+      asteroid.vx -= collision.normalX * asteroidImpulse;
+      asteroid.vy -= collision.normalY * asteroidImpulse;
       this.ship.takeDamage(8 + asteroid.size * 5);
       for (let index = 0; index < 5; index += 1) {
         this.particles.push(new Entities.Particle(
@@ -700,7 +702,7 @@
         this.dom["mission-copy"].textContent = "Нажмите B и установите грузовой отсек, двигатель или структурный модуль.";
       } else if (this.ship.inventory.used > 0) {
         this.dom["mission-title"].textContent = "ВЕРНИТЕСЬ В ДОК";
-        this.dom["mission-copy"].textContent = "Следуйте за указателем станции. В зоне дока нажмите E и продайте руду.";
+        this.dom["mission-copy"].textContent = "Следуйте за указателем станции. В зоне дока нажмите F и продайте руду.";
       } else {
         this.dom["mission-title"].textContent = "ДОБУДЬТЕ РУДУ";
         this.dom["mission-copy"].textContent = "Покиньте безопасную зону, наведите лазер и удерживайте ЛКМ или Space.";
