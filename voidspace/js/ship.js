@@ -417,6 +417,9 @@
       const longitudinalInput =
         (input.has("KeyW") || input.has("ArrowUp") ? 1 : 0) -
         (input.has("KeyS") || input.has("ArrowDown") ? 1 : 0);
+      const lateralInput =
+        (input.has("KeyE") ? 1 : 0) -
+        (input.has("KeyQ") ? 1 : 0);
       const massProperties = calculateMassProperties(this.modules);
       const engines = this.modules.filter(isEngine);
       const activeEngineKeys = new Set(engines.map(engineKey));
@@ -431,8 +434,9 @@
         const baseAngle = Math.atan2(baseDirectionY, baseDirectionX);
         const radiusX = engine.gx * MODULE_SIZE - massProperties.centerX;
         const radiusY = engine.gy * MODULE_SIZE - massProperties.centerY;
-        const longitudinalAlignment = baseDirectionX * longitudinalInput;
-        let throttle = longitudinalAlignment > 0.5 ? longitudinalAlignment : 0;
+        const translationAlignment =
+          baseDirectionX * longitudinalInput + baseDirectionY * lateralInput;
+        let throttle = translationAlignment > 0.5 ? Math.min(1, translationAlignment) : 0;
         let gimbal = 0;
 
         if (turnInput !== 0) {
@@ -474,6 +478,7 @@
 
       if (this.modules.some((module) => module.type === "core")) {
         localForceX += longitudinalInput * CORE_RCS_FORCE;
+        localForceY += lateralInput * CORE_RCS_FORCE;
         localTorque += turnInput * CORE_GYRO_TORQUE;
       }
 

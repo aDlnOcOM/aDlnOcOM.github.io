@@ -156,7 +156,7 @@
 
     onKeyDown(event) {
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
-      if (event.repeat && ["KeyB", "KeyI", "KeyE", "KeyF", "Escape", "KeyR", "KeyX"].includes(event.code)) return;
+      if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX"].includes(event.code)) return;
       this.input.add(event.code);
 
       if (!this.started || event.code === "Space") return;
@@ -168,7 +168,7 @@
       }
       if (event.code === "KeyB" && !this.paused) this.toggleBuild(!this.buildMode);
       if (event.code === "KeyI" && !this.buildMode) this.toggleInventory();
-      if ((event.code === "KeyE" || event.code === "KeyF") && this.station.isDocked(this.ship) && !this.buildMode) this.openDock();
+      if (event.code === "KeyF" && this.station.isDocked(this.ship) && !this.buildMode) this.openDock();
       if (event.code === "KeyR" && this.buildMode) this.rotateBuildModule();
       if (event.code === "KeyX" && this.buildMode) this.toggleDeleteMode();
     }
