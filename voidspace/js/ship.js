@@ -19,13 +19,21 @@
   const EXHAUST_FRAME_WIDTH = 768;
   const EXHAUST_FRAME_HEIGHT = 64;
   const LASER_MUZZLE_OFFSET = 21;
+  const BASE_MAX_SPEED = 145;
   const ENGINE_FORCE = 260;
-  const CORE_RCS_FORCE = ENGINE_FORCE * MODULES.thruster.thrust * MODULES.core.rcsPower;
-  const CORE_GYRO_TORQUE = ENGINE_FORCE * MODULE_SIZE * MODULES.thruster.thrust * MODULES.core.gyroPower;
+  const CORE_MANEUVER_POWER_DIVISOR = 3;
+  const CORE_RCS_FORCE =
+    (ENGINE_FORCE * MODULES.thruster.thrust * MODULES.core.rcsPower) /
+    CORE_MANEUVER_POWER_DIVISOR;
+  const CORE_GYRO_TORQUE =
+    (ENGINE_FORCE * MODULE_SIZE * MODULES.thruster.thrust * MODULES.core.gyroPower) /
+    CORE_MANEUVER_POWER_DIVISOR;
   const ENGINE_GIMBAL = Math.PI / 10;
   const TURNING_THROTTLE = 0.72;
   const TORQUE_RESPONSE = 4;
   const MAX_ANGULAR_SPEED = 2.4;
+  const CORE_RCS_MAX_SPEED = BASE_MAX_SPEED * MODULES.core.rcsPower;
+  const CORE_GYRO_MAX_ANGULAR_SPEED = MAX_ANGULAR_SPEED * MODULES.core.gyroPower;
   const LINEAR_VELOCITY_RETENTION = 0.985;
   const ANGULAR_VELOCITY_RETENTION_IDLE = 0.58;
   const ANGULAR_VELOCITY_RETENTION_ACTIVE = 0.82;
@@ -404,7 +412,7 @@
     }
 
     getMaxSpeed() {
-      return 145 + this.stats.thrust * 28;
+      return BASE_MAX_SPEED + this.stats.thrust * 28;
     }
 
     update(dt, input, mouseWorld) {
@@ -477,9 +485,28 @@
       }
 
       if (this.modules.some((module) => module.type === "core")) {
-        localForceX += longitudinalInput * CORE_RCS_FORCE;
-        localForceY += lateralInput * CORE_RCS_FORCE;
-        localTorque += turnInput * CORE_GYRO_TORQUE;
+        const cosine = Math.cos(this.angle);
+        const sine = Math.sin(this.angle);
+        const localVelocityX = this.vx * cosine + this.vy * sine;
+        const localVelocityY = -this.vx * sine + this.vy * cosine;
+        const longitudinalHeadroom = Utils.clamp(
+          1 - (localVelocityX * longitudinalInput) / CORE_RCS_MAX_SPEED,
+          0,
+          1,
+        );
+        const lateralHeadroom = Utils.clamp(
+          1 - (localVelocityY * lateralInput) / CORE_RCS_MAX_SPEED,
+          0,
+          1,
+        );
+        const gyroHeadroom = Utils.clamp(
+          1 - (this.angularVelocity * turnInput) / CORE_GYRO_MAX_ANGULAR_SPEED,
+          0,
+          1,
+        );
+        localForceX += longitudinalInput * CORE_RCS_FORCE * longitudinalHeadroom;
+        localForceY += lateralInput * CORE_RCS_FORCE * lateralHeadroom;
+        localTorque += turnInput * CORE_GYRO_TORQUE * gyroHeadroom;
       }
 
       for (const key of this.engineStates.keys()) {
