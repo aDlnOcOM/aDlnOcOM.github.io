@@ -20,6 +20,8 @@
   const EXHAUST_FRAME_HEIGHT = 64;
   const LASER_MUZZLE_OFFSET = 21;
   const ENGINE_FORCE = 260;
+  const CORE_RCS_FORCE = ENGINE_FORCE * MODULES.thruster.thrust * MODULES.core.rcsPower;
+  const CORE_GYRO_TORQUE = ENGINE_FORCE * MODULE_SIZE * MODULES.thruster.thrust * MODULES.core.gyroPower;
   const ENGINE_GIMBAL = Math.PI / 10;
   const TURNING_THROTTLE = 0.72;
   const TORQUE_RESPONSE = 4;
@@ -457,6 +459,11 @@
         localForceX += forceX;
         localForceY += forceY;
         localTorque += radiusX * forceY - radiusY * forceX;
+      }
+
+      if (this.modules.some((module) => module.type === "core")) {
+        localForceX += longitudinalInput * CORE_RCS_FORCE;
+        localTorque += turnInput * CORE_GYRO_TORQUE;
       }
 
       for (const key of this.engineStates.keys()) {
