@@ -5,7 +5,109 @@
   const { Utils } = VS;
   const CARGO_PULL_RADIUS = 110;
   const CARGO_COLLECTION_RADIUS = 18;
-  const ASTEROID_SPRITE_SCALE = 0.9;
+  const ASTEROID_TEXTURE_SIZE = 256;
+  const ASTEROID_CONTENT_SCALE = 0.84;
+  const ASTEROID_TEXTURE_CACHE = new WeakMap();
+
+  function isBackdropPixel(pixels, offset) {
+    if (pixels[offset + 3] <= 8) return true;
+    const red = pixels[offset];
+    const green = pixels[offset + 1];
+    const blue = pixels[offset + 2];
+    return Math.min(red, green, blue) >= 205 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 24;
+  }
+
+  function prepareAsteroidTexture(image) {
+    if (!image) return null;
+    const cached = ASTEROID_TEXTURE_CACHE.get(image);
+    if (cached) return cached;
+
+    const source = document.createElement("canvas");
+    source.width = ASTEROID_TEXTURE_SIZE;
+    source.height = ASTEROID_TEXTURE_SIZE;
+    const sourceContext = source.getContext("2d");
+    sourceContext.imageSmoothingEnabled = true;
+    sourceContext.imageSmoothingQuality = "high";
+    sourceContext.drawImage(image, 0, 0, ASTEROID_TEXTURE_SIZE, ASTEROID_TEXTURE_SIZE);
+    const imageData = sourceContext.getImageData(0, 0, ASTEROID_TEXTURE_SIZE, ASTEROID_TEXTURE_SIZE);
+    const pixels = imageData.data;
+    const visited = new Uint8Array(ASTEROID_TEXTURE_SIZE * ASTEROID_TEXTURE_SIZE);
+    const queue = new Int32Array(visited.length);
+    let queueStart = 0;
+    let queueEnd = 0;
+
+    const enqueueBackdrop = (x, y) => {
+      const index = y * ASTEROID_TEXTURE_SIZE + x;
+      if (visited[index] || !isBackdropPixel(pixels, index * 4)) return;
+      visited[index] = 1;
+      queue[queueEnd] = index;
+      queueEnd += 1;
+    };
+
+    for (let position = 0; position < ASTEROID_TEXTURE_SIZE; position += 1) {
+      enqueueBackdrop(position, 0);
+      enqueueBackdrop(position, ASTEROID_TEXTURE_SIZE - 1);
+      enqueueBackdrop(0, position);
+      enqueueBackdrop(ASTEROID_TEXTURE_SIZE - 1, position);
+    }
+
+    while (queueStart < queueEnd) {
+      const index = queue[queueStart];
+      queueStart += 1;
+      pixels[index * 4 + 3] = 0;
+      const x = index % ASTEROID_TEXTURE_SIZE;
+      const y = Math.floor(index / ASTEROID_TEXTURE_SIZE);
+      if (x > 0) enqueueBackdrop(x - 1, y);
+      if (x < ASTEROID_TEXTURE_SIZE - 1) enqueueBackdrop(x + 1, y);
+      if (y > 0) enqueueBackdrop(x, y - 1);
+      if (y < ASTEROID_TEXTURE_SIZE - 1) enqueueBackdrop(x, y + 1);
+    }
+    sourceContext.putImageData(imageData, 0, 0);
+
+    let minX = ASTEROID_TEXTURE_SIZE;
+    let minY = ASTEROID_TEXTURE_SIZE;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < ASTEROID_TEXTURE_SIZE; y += 1) {
+      for (let x = 0; x < ASTEROID_TEXTURE_SIZE; x += 1) {
+        if (pixels[(y * ASTEROID_TEXTURE_SIZE + x) * 4 + 3] <= 8) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (maxX < minX || maxY < minY) {
+      ASTEROID_TEXTURE_CACHE.set(image, source);
+      return source;
+    }
+
+    const output = document.createElement("canvas");
+    output.width = ASTEROID_TEXTURE_SIZE;
+    output.height = ASTEROID_TEXTURE_SIZE;
+    const outputContext = output.getContext("2d");
+    outputContext.imageSmoothingEnabled = true;
+    outputContext.imageSmoothingQuality = "high";
+    const cropWidth = maxX - minX + 1;
+    const cropHeight = maxY - minY + 1;
+    const targetSize = ASTEROID_TEXTURE_SIZE * ASTEROID_CONTENT_SCALE;
+    const scale = Math.min(targetSize / cropWidth, targetSize / cropHeight);
+    const drawWidth = cropWidth * scale;
+    const drawHeight = cropHeight * scale;
+    outputContext.drawImage(
+      source,
+      minX,
+      minY,
+      cropWidth,
+      cropHeight,
+      (ASTEROID_TEXTURE_SIZE - drawWidth) / 2,
+      (ASTEROID_TEXTURE_SIZE - drawHeight) / 2,
+      drawWidth,
+      drawHeight,
+    );
+    ASTEROID_TEXTURE_CACHE.set(image, output);
+    return output;
+  }
 
   const METEOR_TYPES = {
     iron: {
@@ -181,15 +283,14 @@
 
     draw(ctx, camera, viewport, images) {
       const screen = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
-      const image = images[METEOR_TYPES[this.type].sprite];
-      const spriteDiameter = this.radius * 2 * ASTEROID_SPRITE_SCALE;
-      Utils.drawImage(ctx, image, screen.x, screen.y, spriteDiameter, spriteDiameter, this.rotation);
+      const image = prepareAsteroidTexture(images[METEOR_TYPES[this.type].sprite]);
+      Utils.drawImage(ctx, image, screen.x, screen.y, this.radius * 2, this.radius * 2, this.rotation);
       if (this.hitFlash > 0) {
         ctx.save();
         ctx.globalAlpha = this.hitFlash * 0.35;
         ctx.strokeStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(screen.x, screen.y, this.radius * ASTEROID_SPRITE_SCALE, 0, Math.PI * 2);
+        ctx.arc(screen.x, screen.y, this.radius * ASTEROID_CONTENT_SCALE, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
