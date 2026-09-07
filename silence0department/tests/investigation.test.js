@@ -1,30 +1,23 @@
-"use strict";
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
-const path = require("node:path");
-const engine = require("../detective-engine.js");
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createApplication } from '../src/app.js';
+import { generateCase } from '../src/domain/generator.js';
+import engine from '../src/domain/engine.js';
 
+// Изолированное хранилище и минимальная оболочка: тестируем реальные модули без браузера.
 function loadGame() {
   const nodes = new Map();
   const storage = new Map();
-  const context = { DetectiveEngine: engine, Date, Set, Map, Math, JSON, String, Number, TextEncoder, TextDecoder,
-    window: { addEventListener() {}, setTimeout() {}, clearInterval() {} },
-    document: { querySelector(selector) {
-      if (!nodes.has(selector)) nodes.set(selector, { innerHTML: "", textContent: "", classList: { toggle() {}, add() {}, remove() {} } });
-      return nodes.get(selector);
-    }, querySelectorAll() { return []; } },
-    localStorage: { getItem(key) { return storage.get(key) || null; }, setItem(key, value) { storage.set(key, value); } },
-  };
-  vm.createContext(context);
-  const source = fs.readFileSync(path.join(__dirname, "../script.js"), "utf8").replace(/  init\(\);\s*\}\)\(\);\s*$/, `
-    globalThis.testAPI = { generateCase, createInitialState, isEvidenceUnlocked, availableEvidence, interviewQuestions, evaluateReport, saveCase, loadCase, renderCaseVerdict,
-      use(data, saved) { caseData = data; state = saved || createInitialState(data); return state; },
-      current() { return { caseData, state }; } };
-  })();`);
-  vm.runInContext(source, context);
-  return { ...context.testAPI, nodes, storage };
+  globalThis.document = { querySelector(selector) {
+    if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', classList: { toggle() {}, add() {}, remove() {} } });
+    return nodes.get(selector);
+  }, querySelectorAll() { return []; } };
+  globalThis.window = { addEventListener() {}, setTimeout() {}, clearInterval() {} };
+  globalThis.localStorage = { getItem(key) { return storage.get(key) || null; }, setItem(key,value) { storage.set(key,value); } };
+  const app = createApplication();
+  return { ...app, app, generateCase, nodes, storage,
+    use(data,saved) { app.caseData=data; app.state=saved || app.createInitialState(data); return app.state; },
+    current() { return { caseData:app.caseData, state:app.state }; } };
 }
 
 function collectField(data, state, now = Date.now()) {
@@ -55,6 +48,17 @@ test("2000 generated cases: determinism, coherent references, reachable field so
     assert.ok(data.methodOptions.includes(data.method));
     assert.equal(new Set(data.evidence.map((item) => item.id)).size, data.evidence.length);
     assert.equal(new Set(data.suspects.map((item) => item.name)).size, data.suspects.length);
+    const cast = [data.victim, data.commissioner, ...data.suspects, ...data.supportStaff];
+    assert.equal(new Set(cast.map((item) => item.name)).size, cast.length);
+    for (const edge of data.relationships) {
+      assert.equal(new Set(edge.people).size, 2);
+      for (const personId of edge.people) {
+        const person = data.suspects.find((item) => item.id === personId);
+        const otherId = edge.people.find((id) => id !== personId);
+        assert.ok(game.interviewQuestions(person).find((item) => item.id === `contact-${otherId}`).answer.includes(edge.reason));
+        assert.ok(data.evidence.find((item) => item.id === `world-${personId}-links`).content.includes(edge.reason));
+      }
+    }
     for (const id of data.strongEvidenceIds) assert.ok(data.evidence.some((item) => item.id === id));
     assert.equal(game.isEvidenceUnlocked(data.evidence.find((item) => item.id === "field-identity")), false);
     for (const person of data.suspects) for (const question of game.interviewQuestions(person)) {
@@ -63,7 +67,7 @@ test("2000 generated cases: determinism, coherent references, reachable field so
     }
     collectField(data, state);
     for (const id of data.fieldStrongIds) assert.ok(game.availableEvidence().some((item) => item.id === id));
-    assert.equal(game.evaluateReport(reportForm(data, data.fieldStrongIds)).proven, true);
+    assert.equal(game.evaluateReport(reportForm(data, [...data.fieldStrongIds, ...data.requiredEvidenceIds])).proven, true);
     assert.equal(state.outcome, null);
     assert.doesNotMatch(JSON.stringify(data), /undefined|\[object Object\]|NaN/);
   }
@@ -75,7 +79,7 @@ test("wrong and fabricated evidence cannot close a case; no answer leaks from a 
   const game = loadGame();
   const data = game.generateCase("FALSE-END", "detective", "mercenary");
   const state = game.use(data);
-  assert.equal(game.evaluateReport(reportForm(data, data.fieldStrongIds)).proven, false, "locked evidence must not count");
+  assert.equal(game.evaluateReport(reportForm(data, [...data.fieldStrongIds, ...data.requiredEvidenceIds])).proven, false, "locked evidence must not count");
   collectField(data, state);
   assert.equal(game.evaluateReport(reportForm(data, ["field-trace", "field-identity", "field-decoy"])).proven, false);
   assert.equal(game.evaluateReport(reportForm(data, data.fieldStrongIds, { suspect: data.story.decoyId })).proven, false);
@@ -160,4 +164,43 @@ test("assistant uses discovered evidence, not the hidden answer; drafts persist"
   assert.equal(game.loadCase(), true);
   assert.equal(game.current().state.chatDraft, "Проверь эту версию");
   assert.equal(game.current().state.reportDraft.reasoning, "Черновик");
+});
+
+// Регрессия: стартовый обработчик не должен читать старую ссылку на дело после loadCase().
+test("application startup restores the current case before displaying its number", () => {
+  const game = loadGame();
+  const data = game.generateCase("BOOT", "detective", "theft");
+  game.use(data);
+  game.saveCase();
+  game.app.caseData = null;
+  game.app.state = null;
+  document.addEventListener = () => {};
+  const originalQuery = document.querySelector;
+  document.querySelector = (selector) => {
+    const node = originalQuery(selector);
+    node.addEventListener = () => {};
+    return node;
+  };
+  for (const node of game.nodes.values()) node.addEventListener = () => {};
+  window.setInterval = () => 123;
+  game.app.applySettings = () => {};
+  game.app.initNotebook = () => {};
+  game.app.renderCurrentView = () => {};
+  game.app.tick = () => {};
+  game.app.init();
+  assert.equal(game.nodes.get("#status-message").textContent, `Восстановлено дело ${data.number}`);
+  assert.equal(game.app.ticker, 123);
+});
+
+test("copycat category generates both a connected series and an imitation", () => {
+  const game = loadGame();
+  const outcomes = new Set();
+  for (let index = 0; index < 30; index++) {
+    const data = game.generateCase(`SERIES-${index}`, "detective", "copycat");
+    outcomes.add(data.story.seriesLinked);
+    assert.equal(new Set(data.story.episodes.map((item) => item.name)).size, 3);
+    assert.ok(data.story.episodes[0].daysBefore > data.story.episodes[1].daysBefore);
+    assert.ok(data.requiredEvidenceIds.includes("field-series"));
+  }
+  assert.equal(outcomes.size, 2);
 });
