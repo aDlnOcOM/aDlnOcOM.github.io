@@ -24,11 +24,12 @@
     laser: {
       name: "Шахтёрский лазер",
       short: "LASER",
-      description: "Самостоятельный режущий луч дальностью 290 м",
+      description: "Режущий луч: дальность 290 м, сектор 90° вперёд",
       cost: 70,
       hp: 42,
       energyUse: 3,
       range: 290,
+      attackArc: Math.PI / 2,
       sprite: "assets/modules/laser.png",
       spriteRotation: 1,
       reservedZone: { direction: "front", length: 1, kind: "tool" },

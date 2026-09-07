@@ -18,7 +18,9 @@
   const EXHAUST_FRAME_COUNT = 16;
   const EXHAUST_FRAME_WIDTH = 768;
   const EXHAUST_FRAME_HEIGHT = 64;
-  const LASER_MUZZLE_OFFSET = 21;
+  const LASER_MUZZLE_OFFSET = 23;
+  const LASER_MUZZLE_WIDTH = 10;
+  const LASER_MUZZLE_LENGTH = 6;
   const BASE_MAX_SPEED = 145;
   const ENGINE_FORCE = 260;
   const CORE_MANEUVER_POWER_DIVISOR = 3;
@@ -70,6 +72,43 @@
 
   function engineKey(module) {
     return `${module.gx},${module.gy}`;
+  }
+
+  function laserAimAngle(module, aimLocal) {
+    const [forwardX, forwardY] = moduleDirection(module);
+    const forwardAngle = Math.atan2(forwardY, forwardX);
+    const targetX = aimLocal?.x - module.gx * MODULE_SIZE;
+    const targetY = aimLocal?.y - module.gy * MODULE_SIZE;
+    if (!(Math.hypot(targetX, targetY) > 1)) return forwardAngle;
+    const aimDelta = Utils.angleDelta(forwardAngle, Math.atan2(targetY, targetX));
+    const halfArc = MODULES.laser.attackArc / 2;
+    return forwardAngle + Utils.clamp(aimDelta, -halfArc, halfArc);
+  }
+
+  function drawLaserMuzzle(ctx) {
+    const halfWidth = LASER_MUZZLE_WIDTH / 2;
+    const front = -LASER_MUZZLE_OFFSET;
+    const rear = front + LASER_MUZZLE_LENGTH;
+    ctx.fillStyle = "#0b1420";
+    ctx.beginPath();
+    ctx.moveTo(-halfWidth + 1, front);
+    ctx.lineTo(halfWidth - 1, front);
+    ctx.lineTo(halfWidth, front + 1);
+    ctx.lineTo(halfWidth, rear - 1);
+    ctx.lineTo(halfWidth - 1, rear);
+    ctx.lineTo(-halfWidth + 1, rear);
+    ctx.lineTo(-halfWidth, rear - 1);
+    ctx.lineTo(-halfWidth, front + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#788897";
+    ctx.fillRect(-halfWidth + 1, front + 1, LASER_MUZZLE_WIDTH - 2, LASER_MUZZLE_LENGTH - 2);
+    ctx.fillStyle = "#c0c9ce";
+    ctx.fillRect(-halfWidth + 1, front + 1, 2, LASER_MUZZLE_LENGTH - 2);
+    ctx.fillStyle = "#354553";
+    ctx.fillRect(halfWidth - 3, front + 1, 2, LASER_MUZZLE_LENGTH - 2);
+    ctx.fillStyle = "#050b11";
+    ctx.fillRect(-2, front, 4, 2);
   }
 
   function moduleMass(module) {
@@ -140,7 +179,7 @@
     if (type === "laser") {
       layers = {
         body: createSpriteLayer(image, { x: 7, y: 18, width: 49, height: 44 }, "muted"),
-        tool: createSpriteLayer(image, { x: 24, y: 2, width: 16, height: 29 }, "bright"),
+        tool: createSpriteLayer(image, { x: 24, y: 2, width: 16, height: 29 }, "muted"),
       };
     }
     if (type === "drill") {
@@ -336,11 +375,10 @@
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     if (module.type === "laser") {
-      const targetX = aimLocal?.x - x;
-      const targetY = aimLocal?.y - y;
-      const turretRotation = Math.hypot(targetX, targetY) > 1 ? Math.atan2(targetY, targetX) + Math.PI / 2 : baseRotation;
+      const turretRotation = laserAimAngle(module, aimLocal) + Math.PI / 2;
       ctx.rotate(turretRotation);
       ctx.drawImage(layers.tool, -4, -21, 8, 24);
+      drawLaserMuzzle(ctx);
     } else {
       ctx.rotate(baseRotation);
       ctx.drawImage(
@@ -705,11 +743,12 @@
     }
 
     getLaserMounts(target = this.aimWorld) {
+      const aimLocal = this.worldToLocal(target.x, target.y);
       return this.modules
         .filter((module) => module.type === "laser")
         .map((module) => {
           const center = this.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
-          const angle = Math.atan2(target.y - center.y, target.x - center.x);
+          const angle = this.angle + laserAimAngle(module, aimLocal);
           return {
             module,
             origin: {
