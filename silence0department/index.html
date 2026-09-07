@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="«Тихий отдел» — процедурная детективная игра о криптографии, форензике, допросах и скрытых связях."
+      content="«Тихий отдел» — частное детективное бюро. Генеративные дела, обследование мест, живые беседы, ложные версии и встречная охота."
     />
     <meta name="theme-color" content="#171512" />
     <title>Тихий отдел — процедурный детектив</title>
@@ -20,13 +20,13 @@
           <span class="brand-mark" aria-hidden="true">ТО</span>
           <span>
             <strong>Тихий отдел</strong>
-            <small>Бюро особых расследований</small>
+            <small>Частное детективное бюро</small>
           </span>
         </div>
 
         <div class="case-heading" id="case-heading">
           <span class="eyebrow">Дело не открыто</span>
-          <h1>Ожидается назначение</h1>
+          <h1>Ожидается клиент</h1>
         </div>
 
         <div class="top-actions">
@@ -57,20 +57,25 @@
               <span class="nav-dot" id="computer-indicator" hidden></span>
             </button>
             <button class="nav-item" type="button" data-view="interviews">
-              <span class="nav-glyph" aria-hidden="true">05</span><span>Допросы</span>
+              <span class="nav-glyph" aria-hidden="true">05</span><span>Беседы</span>
             </button>
             <button class="nav-item" type="button" data-view="lab">
               <span class="nav-glyph" aria-hidden="true">06</span><span>Лаборатория</span>
               <span class="nav-count" id="puzzle-count">0</span>
             </button>
             <button class="nav-item" type="button" data-view="analysis">
-              <span class="nav-glyph" aria-hidden="true">07</span><span>Напарник</span>
+              <span class="nav-glyph" aria-hidden="true">07</span><span>Кира · чат</span>
               <span class="nav-dot" id="task-indicator" hidden></span>
             </button>
             <button class="nav-item" type="button" data-view="report">
               <span class="nav-glyph" aria-hidden="true">08</span><span>Версия</span>
             </button>
+            <button class="nav-item" type="button" data-view="field">
+              <span class="nav-glyph" aria-hidden="true">09</span><span>В поле</span>
+            </button>
           </nav>
+
+          <div id="threat-status" class="threat-status" hidden aria-label="Угроза детективу"></div>
 
           <div class="sidebar-brief" id="sidebar-brief">
             <span class="eyebrow">Статус</span>
@@ -127,15 +132,31 @@
 
       <footer class="statusbar">
         <span id="status-message">Система готова</span>
-        <span><kbd>1–8</kbd> разделы · <kbd>N</kbd> блокнот · <kbd>?</kbd> помощь</span>
+        <span><kbd>1–9</kbd> разделы · <kbd>N</kbd> блокнот · <kbd>?</kbd> помощь</span>
       </footer>
     </div>
 
     <dialog class="modal case-modal" id="new-case-dialog">
       <form method="dialog" class="modal-card" id="new-case-form">
-        <div class="modal-kicker">Распределение дел</div>
+        <div class="modal-kicker">Приёмная частного бюро</div>
         <h2>Новое расследование</h2>
-        <p>Каждый код создаёт одно и то же дело. Оставьте поле пустым для случайной генерации.</p>
+        <p>Код, категория и сложность воспроизводят одно дело: людей, связи, места и скрытую правду. Оставьте код пустым для новой истории.</p>
+
+        <label class="field-label" for="case-kind">Какое дело принять</label>
+        <select id="case-kind" name="caseKind">
+          <option value="auto">Неожиданный клиент · любая категория</option>
+          <option value="death">Сомнительная смерть</option>
+          <option value="disappearance">Пропавшие люди</option>
+          <option value="theft">Хищение и подмена</option>
+          <option value="sabotage">Корпоративный саботаж</option>
+          <option value="blackmail">Шантаж и двойная игра</option>
+          <option value="stalker">Одержимый преследователь</option>
+          <option value="serial">Серийный убийца</option>
+          <option value="copycat">Маньяк или подражатель</option>
+          <option value="contract">Заказное убийство</option>
+          <option value="mercenary">Профессиональный наёмник · на время</option>
+        </select>
+        <p class="case-mode-note" id="case-mode-note">В случайной категории может выпасть наёмник: 30–50 минут реального времени, включая закрытую страницу. Некоторые действия сокращают запас. Для спокойного расследования выберите другую категорию. В туториале всегда обычное дело без таймера.</p>
 
         <label class="field-label" for="case-seed">Код дела</label>
         <div class="seed-field">
@@ -177,13 +198,17 @@
     <dialog class="modal" id="help-dialog">
       <article class="modal-card help-card">
         <button class="modal-close" type="button" data-action="close-help" aria-label="Закрыть">×</button>
-        <div class="modal-kicker">Памятка следователя</div>
+        <div class="modal-kicker">Памятка частного детектива</div>
         <h2>Думайте связями, не галочками</h2>
         <div class="help-grid">
           <section><b>01</b><h3>Читайте выборочно</h3><p>Архив содержит шум. Ищите имена, время, алиби и повторяющиеся детали.</p></section>
           <section><b>02</b><h3>Решайте руками</h3><p>Лаборатория даёт инструменты, но выводы и ответы остаются за вами.</p></section>
           <section><b>03</b><h3>Давите фактами</h3><p>Новые вопросы на допросах открываются после найденных противоречий.</p></section>
           <section><b>04</b><h3>Делегируйте рутину</h3><p>Напарник обрабатывает массивы в реальном времени, пока вы работаете дальше.</p></section>
+          <section><b>05</b><h3>Выезжайте в поле</h3><p>Выберите точку на плане и инструмент: осмотр, снимок, образец или сопоставление. След открывает следующий адрес. Кажущиеся улики тоже проверяются.</p></section>
+          <section><b>06</b><h3>Берегите источники</h3><p>Тон беседы влияет на доверие. Предъявляйте реальные материалы. Кира обсуждает найденные факты и помогает проверить версии.</p></section>
+          <section><b>07</b><h3>Не закройте дело слишком рано</h3><p>Ошибочная версия не раскрывает ответ. Полная цепь связывает след, получателя и независимую запись; мотив подтверждается отдельно. Текст объяснения сохраняется как ваша заметка.</p></section>
+          <section><b>08</b><h3>Встречная охота</h3><p>Наёмник ищет вас. Истечение срока или заметность 100 означают гибель. Таймер идёт и вне игры; две смены маршрута дают отсрочку. В обычных делах отсчёта нет.</p></section>
         </div>
         <p class="fine-print">Сигналы поведения не являются доказательством сами по себе. Финальная версия должна опираться на совокупность фактов.</p>
         <div class="modal-actions"><button class="button button-primary" type="button" data-action="close-help">Понятно</button></div>
@@ -234,6 +259,7 @@
 
     <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>
 
+    <script src="detective-engine.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

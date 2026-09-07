@@ -1,8 +1,10 @@
 (() => {
   "use strict";
 
+  const detective = globalThis.DetectiveEngine;
+
   const STORAGE = {
-    activeCase: "quiet-department.case.v3",
+    activeCase: "quiet-department.case.v4",
     notes: "quiet-department.notes.v1",
     quotes: "quiet-department.quotes.v1",
     checklist: "quiet-department.checklist.v1",
@@ -18,6 +20,7 @@
     "lab",
     "analysis",
     "report",
+    "field",
   ];
 
   const BOARD_LINK_TYPES = [
@@ -1007,11 +1010,13 @@
     };
   }
 
-  function generateCase(seed, difficultyKey) {
+  function generateCase(seed, difficultyKey, caseKind = "auto") {
     const rng = randomGenerator(`${seed}:${difficultyKey}`);
+    const storyRng = randomGenerator(`${seed}:${difficultyKey}:${caseKind}:field-v1`);
+    const profile = detective.selectProfile(storyRng, caseKind, difficultyKey);
     const difficulty = DIFFICULTIES[difficultyKey];
     const scenario = choose(rng, SCENARIOS);
-    const archetype = choose(rng, CASE_ARCHETYPES);
+    const archetype = CASE_ARCHETYPES.find((item) => item.id === profile.base);
     const discoveryRoute = choose(rng, DISCOVERY_ROUTES);
     const people = uniquePeople(rng, difficulty.suspects + 4);
     const victimPerson = people.shift();
@@ -1021,8 +1026,8 @@
     const roles = shuffled(rng, scenario.roles).slice(0, difficulty.suspects);
     const culpritIndex = Math.floor(rng() * difficulty.suspects);
     const incidentMinute = 21 * 60 + 35 + Math.floor(rng() * 105);
-    const motive = choose(rng, MOTIVES);
-    const crimePattern = choose(rng, archetype.patterns);
+    const motive = choose(rng, profile.motives || MOTIVES.filter((item) => !["отсутствие рационального мотива", "паническая реакция без первоначального намерения убить"].includes(item)));
+    const crimePattern = choose(rng, profile.timed || profile.id === "contract" || profile.id === "serial" ? archetype.patterns.filter((item) => !item.method.includes("незапланированной")) : archetype.patterns);
     const method = crimePattern.method;
     const apparentMotive = choose(rng, MOTIVES.filter((item) => item !== motive));
     const cacheWord = choose(rng, scenario.cacheWords);
@@ -1070,9 +1075,10 @@
       specialty: ["микроследы и контрольные образцы", "метаданные и локальные журналы", "маркировка, пломбы и версии документов"][index],
     }));
 
+    const personalities = shuffled(rng, PERSONALITIES);
     const suspects = people.map((identity, index) => {
       const isCulprit = index === culpritIndex;
-      const personality = PERSONALITIES[index % PERSONALITIES.length];
+      const personality = personalities[index % personalities.length];
       const claimedLocation = choose(rng, safeLocations);
       const arrivalDelta = -18 - Math.floor(rng() * 38);
       const alibi = isCulprit
@@ -1523,7 +1529,7 @@
     const scenarioPuzzles = (scenario.labPuzzleIds || []).map((id) => puzzlePool.find((puzzle) => puzzle.id === id)).filter(Boolean);
     const supplementary = shuffled(rng, puzzlePool.filter((puzzle) => !routePuzzles.includes(puzzle) && !scenarioPuzzles.includes(puzzle)));
     const uniquePuzzles = (items, limit) => [...new Map(items.filter(Boolean).map((puzzle) => [puzzle.id, puzzle])).values()].slice(0, limit);
-    let selectedPuzzles = uniquePuzzles([...scenarioPuzzles, ...routePuzzles, ...supplementary], 3);
+    let selectedPuzzles = uniquePuzzles([...routePuzzles, ...scenarioPuzzles, ...supplementary], 3);
     if (difficultyKey === "tutorial") {
       const timelinePuzzle = puzzlePool.find((puzzle) => puzzle.kind === "timeline");
       const digitalPuzzle = puzzlePool.find((puzzle) => puzzle.kind === "digital");
@@ -1945,8 +1951,9 @@
       ],
     };
 
-    return {
+    return detective.enrich({
       seed,
+      requestedKind: caseKind,
       difficultyKey,
       difficulty,
       scenario,
@@ -1985,7 +1992,7 @@
       computer,
       motiveOptions: shuffled(rng, MOTIVES),
       methodOptions: shuffled(rng, [method, ...shuffled(rng, [...new Set(CASE_ARCHETYPES.flatMap((item) => item.patterns.map((pattern) => pattern.method)))].filter((item) => item !== method)).slice(0, 7)]),
-    };
+    }, profile, storyRng);
   }
 
   function createInitialState(data) {
@@ -1999,6 +2006,7 @@
     });
     const timelinePuzzle = data.puzzles.find((puzzle) => puzzle.kind === "timeline");
     return {
+      ...detective.initialState(data),
       view: "overview",
       startedAt: Date.now(),
       solvedPuzzles: [],
@@ -2039,6 +2047,7 @@
 
   function isEvidenceUnlocked(item) {
     if (!item.lockedBy) return true;
+    if (item.lockedBy.startsWith("field-")) return state.field.found.includes(item.lockedBy);
     if (item.lockedBy.startsWith("task-")) return state.tasks[item.lockedBy]?.status === "done";
     if (item.lockedBy.startsWith("computer-")) return state.computer.finds.includes(item.lockedBy);
     return state.solvedPuzzles.includes(item.lockedBy);
@@ -2053,7 +2062,7 @@
     state.lastSavedAt = Date.now();
     localStorage.setItem(
       STORAGE.activeCase,
-      JSON.stringify({ seed: caseData.seed, difficultyKey: caseData.difficultyKey, state }),
+      JSON.stringify({ seed: caseData.seed, difficultyKey: caseData.difficultyKey, caseKind: caseData.requestedKind, state }),
     );
   }
 
@@ -2061,11 +2070,13 @@
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE.activeCase));
       if (!saved?.seed || !DIFFICULTIES[saved.difficultyKey] || !saved.state) return false;
-      caseData = generateCase(saved.seed, saved.difficultyKey);
+      caseData = generateCase(saved.seed, saved.difficultyKey, saved.caseKind || "auto");
       state = { ...createInitialState(caseData), ...saved.state };
       state.computer = { ...createInitialState(caseData).computer, ...(saved.state.computer || {}) };
       state.boardLinks = (state.boardLinks || []).map(boardLink).filter((link) => link.from && link.to);
       state.boardNotes ||= [];
+      if (!VIEW_ORDER.includes(state.view)) state.view = "overview";
+      detective.checkThreat(caseData, state);
       if (saved.difficultyKey === "tutorial") state.tutorial ||= { step: 0, hidden: false, completed: false };
       updateCompletedTasks(false);
       return true;
@@ -2094,6 +2105,186 @@
     if (dialog.open) dialog.close();
   }
 
+  const FIELD_TOOLS = { inspect: "Осмотреть", photo: "Сфотографировать", sample: "Взять образец", compare: "Сопоставить" };
+
+  function updateThreatChrome() {
+    const element = document.querySelector("#threat-status");
+    if (!element || !caseData) return;
+    const info = detective.threat(caseData, state);
+    element.hidden = !info.active;
+    if (!info.active) return;
+    element.classList.toggle("is-critical", info.exposure >= 70 || info.remaining < 300000);
+    const label = state.outcome ? (state.outcome.kind === "solved" ? "Охота остановлена" : "Связь потеряна") : "Встречная охота";
+    element.innerHTML = `<span class="eyebrow">${label}</span><strong>${state.outcome ? "Дело окончено" : formatDuration(info.remaining)}</strong><span>Заметность ${info.exposure}/100</span><meter min="0" max="100" value="${info.exposure}" aria-label="Заметность"></meter><small>Срок и заметность — два отдельных риска.</small>`;
+  }
+
+  function renderField() {
+    const scene = caseData.scenes.find((item) => item.id === state.field.sceneId) || caseData.scenes[0];
+    const spot = scene.spots.find((item) => item.id === state.field.spotId);
+    const checked = spot && state.field.checked.includes(`${scene.id}:${spot.id}`);
+    const closed = Boolean(state.outcome);
+    const total = caseData.scenes.reduce((count, item) => count + item.spots.length, 0);
+    const leadStatus = state.decisions.leads.anonymous;
+    dom.workspace.innerHTML = `<div class="view field-view">
+      <header class="view-header"><div><span class="eyebrow">Частное расследование · выезд ${String(caseData.scenes.indexOf(scene) + 1).padStart(2, "0")}</span><h2>В поле</h2><p>Не всё, что выглядит уликой, ею окажется. Изучите точку и выберите способ проверки.</p></div><span class="tag">${state.field.checked.length}/${total} точек обследовано</span></header>
+      <div class="field-locations" aria-label="Места для обследования">${caseData.scenes.map((item, index) => {
+        const locked = item.requires && !state.field.found.includes(item.requires);
+        return `<button class="field-location ${scene.id === item.id ? "is-active" : ""}" data-scene-id="${item.id}" ${locked ? "disabled" : ""} aria-pressed="${scene.id === item.id}"><span>0${index + 1} ${locked ? "· нужен адрес" : ""}</span><b>${escapeHtml(item.name)}</b><small>${locked ? "Откроется по находке предыдущего выезда" : escapeHtml(item.subtitle)}</small></button>`;
+      }).join("")}</div>
+      <div class="field-layout"><section class="field-scene"><div class="scene-caption"><span class="eyebrow">${escapeHtml(scene.name)}</span><p>${escapeHtml(scene.atmosphere)}</p></div>
+        <div class="scene-map" aria-label="План обследования">${scene.spots.map((item, index) => `<button class="scene-spot ${state.field.checked.includes(`${scene.id}:${item.id}`) ? "is-checked" : ""} ${spot?.id === item.id ? "is-active" : ""}" data-spot-id="${item.id}" aria-pressed="${spot?.id === item.id}"><i>${state.field.checked.includes(`${scene.id}:${item.id}`) ? "✓" : `0${index + 1}`}</i><span>${escapeHtml(item.label)}</span><small>${state.field.checked.includes(`${scene.id}:${item.id}`) ? "обследовано" : "изучить точку"}</small></button>`).join("")}<div class="map-door" aria-hidden="true">ВХОД ↑</div></div>
+        <p class="fine-print">Доступ к месту согласован с владельцем. Находки сохраняются в архиве. ${caseData.profile.timed ? "Смена места: 40 с; проверка: 15 с; образец: 25 с и +1 заметность." : "Здесь нет ограничения по времени — можно спокойно исследовать каждую точку."}</p>
+      </section><aside class="panel field-inspector"><span class="eyebrow">Полевой набор</span><h3>${spot ? escapeHtml(spot.label) : "С чего начнём?"}</h3><p>${spot ? escapeHtml(spot.description) : "Выберите отмеченную точку на плане. Описание подскажет, какой инструмент даст проверяемый результат."}</p>
+        <div class="field-tools" role="group" aria-label="Инструмент">${Object.entries(FIELD_TOOLS).map(([key, label]) => `<button class="button button-ghost ${state.field.tool === key ? "is-active" : ""}" data-field-tool="${key}" aria-pressed="${state.field.tool === key}">${label}</button>`).join("")}</div>
+        <button class="button button-primary" data-action="field-examine" ${!spot || checked || closed ? "disabled" : ""}>${checked ? "Точка обследована" : "Применить инструмент"}</button>
+        <p class="field-feedback" role="status">${escapeHtml(state.lastFieldMessage)}</p>
+        ${checked && spot?.evidenceId ? `<button class="button button-ghost" data-evidence-id="${spot.evidenceId}">Открыть материал</button>` : ""}
+      </aside></div>
+      <section class="panel field-decisions"><span class="eyebrow">Решения бюро</span><h3>Кому доверить следующий шаг</h3><div class="decision-grid">
+        <div><b>Заказчик просит имена</b><p>${state.decisions.client ? (state.decisions.client === "withheld" ? "Передан только статус. Источники защищены от огласки." : "Промежуточная версия ушла заказчику. Он настаивает на закрытии.") : "Передать промежуточную версию или ограничиться статусом? Решение останется в деле."}</p>${!state.decisions.client ? `<button class="button button-ghost" data-decision="withhold" ${closed ? "disabled" : ""}>Сообщить только статус</button><button class="button button-ghost" data-decision="disclose" ${closed ? "disabled" : ""}>Передать имена${caseData.profile.timed ? " · 30 с / +14 риск" : ""}</button>` : ""}</div>
+        ${caseData.story.secondary ? `<div><b>Источник под угрозой</b><p>${state.decisions.witness ? "Кира подтвердила: свидетель в безопасности." : "Предупреждение через доверенного человека сохранит контакт для дальнейшей проверки."}</p><button class="button button-ghost" data-decision="protect" ${state.decisions.witness || closed ? "disabled" : ""}>Защитить свидетеля${caseData.profile.timed ? " · 45 с" : ""}</button></div>` : ""}
+        ${caseData.profile.timed ? `<div><b>Смена маршрута</b><p>+2 минуты, −18 заметности. Осталось ${Math.max(0, 2 - state.pressure.breaks)} из 2. Срок продолжает идти вне игры.</p><button class="button button-ghost" data-decision="cover" ${state.pressure.breaks >= 2 || closed ? "disabled" : ""}>Согласовать безопасную встречу</button></div>` : ""}
+      </div></section>
+      ${state.field.found.includes("field-decoy") ? `<section class="panel lead-panel"><span class="eyebrow">Рабочая линия · анонимный пакет</span><h3>${escapeHtml(getSuspect(caseData.story.decoyId).name)}</h3><p>${leadStatus === "excluded" ? "Линия проверена и исключена независимым источником." : leadStatus === "pursued" ? "Вы поставили эту версию в приоритет. Доступ к остальным направлениям сохранён; теперь проверьте её контрольной ведомостью." : "Реальная подпись и настоящий конфликт. Но относятся ли они к этому событию?"}</p><div class="view-actions"><button class="button button-ghost" data-action="pursue-lead" ${leadStatus || closed ? "disabled" : ""}>Проверить обвинение${caseData.profile.timed ? " · 60 с" : ""}</button><button class="button button-ghost" data-action="exclude-lead" ${!state.field.found.includes("field-exclusion") || leadStatus === "excluded" || closed ? "disabled" : ""}>Исключить по контрольной записи</button></div></section>` : ""}
+      <section class="panel"><span class="eyebrow">Журнал выездов</span><div class="field-log">${state.field.log.length ? [...state.field.log].reverse().map((line) => `<p><b>${escapeHtml(caseData.scenes.find((item) => item.id === line.sceneId)?.name || "Бюро")}</b> ${escapeHtml(line.text)}</p>`).join("") : "Первый выезд ещё не оформлен."}</div></section>
+    </div>`;
+  }
+
+  function renderAssistantChat() {
+    return `<section class="assistant-chat" aria-label="Чат с Кирой"><div class="chat-heading"><i class="chat-presence"></i><b>Кира Руднева</b><span>внутренняя линия бюро</span></div><div class="chat-messages" id="chat-messages" role="log" aria-live="polite">${state.chat.map((message) => `<article class="chat-bubble ${message.role === "user" ? "is-user" : ""}"><b>${message.role === "user" ? "Вы" : "Кира"}</b><p>${escapeHtml(message.text)}</p><time>${new Date(message.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</time></article>`).join("")}</div><div class="chat-prompts">${["Что проверить дальше?", "Проверим ложную версию", "Где искать мотив?", "Мне нужна поддержка"].map((prompt) => `<button class="button button-ghost button-small" data-chat-prompt="${escapeHtml(prompt)}" ${state.outcome ? "disabled" : ""}>${prompt}</button>`).join("")}</div><form id="assistant-form" class="chat-compose"><label class="sr-only" for="assistant-message">Сообщение Кире</label><input id="assistant-message" name="message" maxlength="700" autocomplete="off" placeholder="Имя, улика или вопрос по делу…" value="${escapeHtml(state.chatDraft)}" required ${state.outcome ? "disabled" : ""}><button class="button button-primary" type="submit" ${state.outcome ? "disabled" : ""}>Отправить</button></form><p class="fine-print">Кира работает с материалами этого дела: называет источники и предлагает проверки. История переписки сохраняется.</p></section>`;
+  }
+
+  function sendAssistantMessage(text) {
+    text = text.trim().slice(0, 700);
+    if (!text || state.outcome || detective.checkThreat(caseData, state)) { renderCurrentView(); return; }
+    state.chat.push({ role: "user", text, at: Date.now() });
+    const reply = detective.assistantReply(caseData, state, text, availableEvidence());
+    state.chat.push({ role: "assistant", text: reply, at: Date.now() });
+    state.chatDraft = "";
+    saveCase();
+    renderAnalysis();
+    const log = document.querySelector("#chat-messages");
+    if (log) log.scrollTop = log.scrollHeight;
+    document.querySelector("#assistant-message")?.focus();
+  }
+
+  function livingQuestions(person) {
+    const contact = getSuspect(person.contactId);
+    const trust = state.rapport[person.id] || 0;
+    const found = state.field.found;
+    return [
+      { id: "personal", question: "Перед тем как продолжим: что вас сейчас тревожит?", answer: `${person.life.need} ${person.life.boundary}` },
+      { id: "memory", question: "Какой обычный момент с этим человеком вы вспоминаете?", locked: trust < 1, answer: person.life.memory },
+      { id: "contact", question: `В списке контактов есть ${contact.name}. Что вас связывает?`, answer: `У нас ${person.contactReason}. Это не тайна, но я не хочу, чтобы обычный контакт превратили в обвинение. Уточните у второй стороны.` },
+      { id: "private", question: "Можно говорить без клиента. Что осталось за пределами первого ответа?", locked: trust < 2, answer: person.isCulprit ? "Я не всё рассказал о личном интересе. В приложении к договору он сформулирован точнее. Но наличие интереса ещё не делает вашу версию доказанной." : `Я ${person.privateStake}. Мне стыдно за это, и я не хочу потерять всё из-за чужого прочтения. Проверьте время отдельно от моего конфликта.` },
+      { id: "field-account", question: "У нас есть оригинал выдачи. Объясните путь предмета.", locked: !found.includes("field-identity"), answer: person.isCulprit ? `Да, упаковку ${caseData.story.token} я получал${person.gender === "female" ? "а" : ""}. Но после выдачи она лежала в общей зоне. Вы видели запись того, что происходило потом?` : `В книге выдачи у этой позиции другой получатель. Я не могу подтвердить, что он делал с предметом после этого. Нужен непрерывный источник.` },
+      { id: "independent", question: "Сопоставим ваш рассказ с записью соседнего помещения.", locked: !found.includes("field-corroboration") || !(state.askedQuestions[person.id] || []).includes("where"), answer: person.isCulprit ? "Я говорил о телефоне, а вы спрашивали обо мне. Это было намеренно. Присутствие на записи отрицать не стану. Причину и сам механизм всё равно придётся доказать отдельно." : "Сверьте запись целиком, включая начало и конец. Если мой первый ответ неточен, сохраните обе версии: я не хочу, чтобы старые слова исчезли из протокола." },
+    ];
+  }
+
+  function renderConversationControls(person) {
+    const trust = state.rapport[person.id] || 0;
+    return `<div class="conversation-controls"><span>Контакт: <b>${trust >= 2 ? "готов говорить о личном" : trust < 0 ? "защищается" : "осторожный"}</b></span><div class="view-actions" role="group" aria-label="Тон беседы">${[["calm", "Спокойно"], ["precise", "По существу"], ["pressure", "Настойчиво"]].map(([key, label]) => `<button class="button button-ghost button-small ${state.approach === key ? "is-active" : ""}" data-approach="${key}" aria-pressed="${state.approach === key}">${label}</button>`).join("")}</div><small>Спокойный тон открывает личные темы. Давление снижает доверие${caseData.profile.timed ? " и увеличивает заметность на 3" : ""}.</small><form id="present-evidence-form" class="present-evidence"><label for="present-evidence">Предъявить материал</label><select id="present-evidence" name="evidence" required><option value="">Выберите найденный источник…</option>${availableEvidence().map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("")}</select><button type="submit" class="button button-ghost button-small" ${state.outcome ? "disabled" : ""}>Обсудить</button></form></div>`;
+  }
+
+  function presentEvidence(id) {
+    if (state.outcome || detective.checkThreat(caseData, state)) { renderCurrentView(); return; }
+    const item = getEvidence(id);
+    const person = getSuspect(state.activeSuspect);
+    if (!item || !isEvidenceUnlocked(item) || !person) return;
+    state.presented[person.id] ||= [];
+    if (state.presented[person.id].includes(id)) { toast("Ответ по этому материалу уже записан."); return; }
+    state.presented[person.id].push(id);
+    let answer = `Я вижу документ «${item.title}». ${item.content.includes(person.name) ? "Моё имя здесь есть. Это не означает, что верна любая трактовка документа." : "Здесь нет прямой привязки ко мне. Что именно вы хотите проверить?"}`;
+    if (id === "field-exclusion" && person.id === caseData.story.decoyId) answer = "Вот именно. Я скрывал личный конфликт, но в тот час был на другом объекте. Сохраните оригинал, пожалуйста: одной моей просьбе вы бы не поверили.";
+    if (id === "field-identity" && person.isCulprit) answer = `Получение ${caseData.story.token} подтверждаю. Но между выдачей и событием есть время. Докажите, кто держал упаковку тогда.`;
+    if (id === "field-corroboration" && person.isCulprit) answer = "Это я на записи. Мой первый рассказ был неполным. Я не хочу объяснять остальное без представителя, но оригинал вы уже получили.";
+    if (id === "field-motive" && person.isCulprit) answer = "Переписка подлинная. Да, такой интерес у меня был. Я надеялся, что вы не получите вторую копию.";
+    state.transcripts[person.id] ||= [];
+    state.transcripts[person.id].push({ speaker: "Детектив", text: `Предъявлен материал: ${item.code} · ${item.title}. Что вы можете объяснить?` }, { speaker: person.name, text: answer });
+    detective.spend(caseData, state, 10);
+    saveCase();
+    renderCurrentView();
+  }
+
+  function renderOutcome() {
+    dom.workspace.innerHTML = `<div class="view"><article class="result-card fatal-result"><span class="eyebrow">Встречная охота · завершено</span><div class="outcome-mark" aria-hidden="true">×</div><h2>${escapeHtml(state.outcome.title)}</h2><p>${escapeHtml(state.outcome.text)}</p><p>Собрано полевых материалов: ${state.field.found.length}. Переписка и записи сохранены. Чтобы попытаться снова, примите новое дело с тем же кодом, категорией и сложностью.</p><button class="button button-primary" data-action="open-new-case">Вернуться в приёмную</button></article></div>`;
+  }
+
+  function renderCaseVerdict() {
+    if (state.outcome?.kind === "dead") { renderOutcome(); return; }
+    const result = state.report;
+    if (!result) { renderReport(); return; }
+    const solved = result.proven;
+    const excluded = state.decisions.leads.anonymous === "excluded";
+    const protectedWitness = state.decisions.witness === "protected";
+    const title = solved ? "Дело доказано" : result.suspect === caseData.story.decoyId ? "Удобная версия не выдержала проверки" : "В доказательствах остался разрыв";
+    const text = solved ? "Независимые источники связывают человека, механизм и время. Материалы переданы для официального производства." : "Проверка вернула материалы в бюро. Самоуверенная версия могла закрепить чужое обвинение. Доступные источники позволяют продолжить расследование; правильный ответ остаётся закрыт.";
+    dom.workspace.innerHTML = `<div class="view"><header class="view-header"><div><span class="eyebrow">Исход частного расследования</span><h2>${escapeHtml(caseData.title)}</h2></div></header><article class="result-card"><span class="eyebrow">${solved ? "Причинная цепь подтверждена" : "Промежуточный исход"}</span><h3>${title}</h3><p>${text}</p>
+      ${solved ? `<div class="ending-grid"><div><b>${excluded ? "Ложное обвинение снято" : "Ложная линия осталась открытой"}</b><p>${excluded ? "Вы проверили алиби человека из анонимного пакета и не дали старому проступку стать новым обвинением." : "Основной эпизод доказан, но человек из анонимного пакета ещё ждёт отдельного опровержения."}</p></div><div><b>${caseData.story.secondary ? protectedWitness ? "Источник в безопасности" : "Контакт со свидетелем потерян" : "Поручение исполнено"}</b><p>${caseData.story.secondary ? protectedWitness ? "Предупреждение через Киру позволило сохранить человека и его дальнейшие показания." : "Вы доказали эпизод, но не организовали защиту. Свидетель перестал отвечать; его дальнейшая судьба неизвестна." : "Заказчик получил проверяемый отчёт и границы установленных фактов."}</p></div><div><b>${state.decisions.client === "disclosed" ? "Цена откровенности" : "Границы бюро сохранены"}</b><p>${state.decisions.client === "disclosed" ? "Клиент успел узнать имена источников до завершения проверки. Кира фиксирует это как риск для продолжения дела." : "Личные данные источников не попали к заинтересованной стороне до завершения работы."}</p></div></div><div class="document-sheet"><b>Фактическая реконструкция</b>\n\nИсполнитель: ${escapeHtml(getSuspect(caseData.culpritId).name)}.\nМотив: ${escapeHtml(caseData.motive)}.\nМеханизм: ${escapeHtml(caseData.method)}.\nМаскировка: ${escapeHtml(caseData.staging)}.\nСлучайное обстоятельство: ${escapeHtml(caseData.incidental)}.\n\n${escapeHtml(caseData.story.turn)}\n\n${escapeHtml(caseData.routeReconstruction)}</div>` : `<div class="document-sheet">Что проверить дальше:\n• Совпадение личного интереса с мотивом в первоисточнике.\n• Связь контрольного образца, оригинала выдачи и независимой записи.\n• Не заменяет ли анонимный пакет контроль времени.\n\n${caseData.profile.timed ? "Повторная проверка стоила 2 минуты и 6 пунктов заметности. Охота продолжается." : "Ошибку можно исправить. Вернитесь к источникам и уточните цепочку."}</div>`}
+      <p class="fine-print">Проверяются выбранные факты и независимая цепь. Свободный текст сохранён как ваше объяснение; его смысл автоматически не оценивается.</p>
+      <div class="view-actions">${!solved ? `<button class="button button-ghost" data-action="reopen-case">Продолжить расследование</button>` : ""}<button class="button button-primary" data-action="open-new-case">Новое дело</button></div></article></div>`;
+  }
+
+  function saveInvestigationDraft(event) {
+    if (!state) return;
+    if (event.target.id === "assistant-message") state.chatDraft = event.target.value;
+    else if (event.target.closest("#report-form")) {
+      const form = new FormData(document.querySelector("#report-form"));
+      state.reportDraft = { suspect: form.get("suspect"), motive: form.get("motive"), method: form.get("method"), reasoning: form.get("reasoning"), evidence: form.getAll("evidence") };
+    } else return;
+    saveCase();
+  }
+
+  function restoreReportDraft() {
+    if (!state.reportDraft) return;
+    const form = document.querySelector("#report-form");
+    if (!form) return;
+    for (const key of ["suspect", "motive", "method", "reasoning"]) form.elements[key].value = state.reportDraft[key] || "";
+    form.querySelectorAll('[name="evidence"]').forEach((input) => { input.checked = state.reportDraft.evidence.includes(input.value); });
+  }
+
+  function handleDetectiveClick(target) {
+    if (!state || !caseData) return false;
+    if (target.dataset.action === "open-new-case" || target.dataset.action?.startsWith("close-")) return false;
+    if (detective.checkThreat(caseData, state)) { saveCase(); renderCurrentView(); return true; }
+    if (state.outcome?.kind === "dead" && (target.closest("#workspace") || target.dataset.view)) { renderOutcome(); return true; }
+    if (target.dataset.chatPrompt) { sendAssistantMessage(target.dataset.chatPrompt); return true; }
+    if (target.dataset.approach) { state.approach = target.dataset.approach; saveCase(); renderInterviews(); return true; }
+    if (target.dataset.sceneId) {
+      const scene = caseData.scenes.find((item) => item.id === target.dataset.sceneId);
+      if (!scene || (scene.requires && !state.field.found.includes(scene.requires))) return true;
+      if (state.field.sceneId !== scene.id && !state.outcome) detective.spend(caseData, state, 40, 2);
+      state.field.sceneId = scene.id;
+      state.field.spotId = null;
+      state.lastFieldMessage = "Выберите точку для обследования.";
+    } else if (target.dataset.spotId) {
+      state.field.spotId = target.dataset.spotId;
+      state.lastFieldMessage = "Прочитайте описание и выберите подходящий инструмент.";
+    } else if (target.dataset.fieldTool) state.field.tool = target.dataset.fieldTool;
+    else if (target.dataset.action === "field-examine") {
+      const result = detective.examine(caseData, state, state.field.sceneId, state.field.spotId, state.field.tool);
+      state.lastFieldMessage = result.message;
+      if (result.evidenceId) state.chat.push({ role: "assistant", text: `Приняла материал «${getEvidence(result.evidenceId).title}». ${result.message}`, at: Date.now() });
+    } else if (target.dataset.decision) {
+      const message = detective.decide(caseData, state, target.dataset.decision);
+      state.chat.push({ role: "assistant", text: message, at: Date.now() });
+      toast(message);
+    } else if (target.dataset.action === "pursue-lead") {
+      if (state.outcome || state.decisions.leads.anonymous || !state.field.found.includes("field-decoy")) return true;
+      state.decisions.leads.anonymous = "pursued";
+      detective.spend(caseData, state, 60, 2);
+      state.lastFieldMessage = "Проверка показала, что конфликт реален. Связь с событием всё ещё требует контроля времени.";
+    } else if (target.dataset.action === "exclude-lead") {
+      if (state.outcome || !state.field.found.includes("field-exclusion")) return true;
+      state.decisions.leads.anonymous = "excluded";
+      state.lastFieldMessage = "Анонимное обвинение опровергнуто независимым источником.";
+    } else return false;
+    saveCase();
+    renderCurrentView();
+    return true;
+  }
+
   function updateChrome() {
     if (!caseData || !state) return;
     const solved = state.solvedPuzzles.length;
@@ -2117,6 +2308,7 @@
     dom.puzzleCount.textContent = `${solved}/${caseData.puzzles.length}`;
     dom.taskIndicator.hidden = !activeTask;
     dom.computerIndicator.hidden = !unreadComputer;
+    updateThreatChrome();
     document.querySelectorAll(".nav-item").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === state.view);
     });
@@ -2133,9 +2325,11 @@
       lab: renderLab,
       analysis: renderAnalysis,
       report: renderReport,
+      field: renderField,
     };
     updateChrome();
-    renderers[state.view]?.();
+    if (state.outcome?.kind === "dead") renderOutcome();
+    else renderers[state.view]?.();
     saveCase();
     renderTutorialUi();
   }
@@ -2266,6 +2460,7 @@
           </div>
         </header>
 
+        <section class="field-entry"><div><span class="eyebrow">Следующий шаг · частное расследование</span><h3>Выйдите из-за стола</h3><p>${state.field.found.length ? `Полевых материалов: ${state.field.found.length}. Продолжайте проверку источников.` : "На месте остались детали, которых нет в первичном протоколе."}</p></div><button class="button button-primary" data-view="field">Выехать на место</button></section>
         <div class="case-lead">
           <article class="briefing-card">
             <span class="briefing-number">${escapeHtml(caseData.archetype.label)} / ${escapeHtml(caseData.number)}</span>
@@ -2869,7 +3064,7 @@
       },
       {
         id: "relation",
-        question: `Каким был ваш последний разговор с пропавшим — ${caseData.victim.name}?`,
+        question: `Расскажите о последнем разговоре. Имя собеседника: ${caseData.victim.name}.`,
         answer: styleReply(person, "relation", relationFact),
         observation: interviewObservation(person, "relation"),
       },
@@ -2892,6 +3087,7 @@
         answer: styleReply(person, "pressure", timelineFact),
         observation: interviewObservation(person, "timeline"),
       },
+      ...livingQuestions(person),
     ];
   }
 
@@ -2912,7 +3108,8 @@
             </button>`).join("")}
           </div>
           <section class="interview-room">
-            <div class="interview-subject"><i class="person-avatar">${initials(active.name)}</i><div><h3>${escapeHtml(active.name)}</h3><p>${escapeHtml(active.role)} · ${escapeHtml(active.employer)}</p></div></div>
+            <div class="interview-subject"><i class="person-avatar">${initials(active.name)}</i><div><h3>${escapeHtml(active.name)}</h3><p>${escapeHtml(active.role)} · ${escapeHtml(active.employer)}</p><small>${escapeHtml(active.life.need)}</small></div></div>
+            ${renderConversationControls(active)}
             <div class="transcript" id="transcript">
               ${transcript.length ? transcript.map((line) => `<div class="dialogue-line${line.speaker === "Детектив" ? " is-detective" : ""}${line.kind === "observation" ? " is-observation" : ""}"><b>${escapeHtml(line.speaker)}</b><p>${line.kind === "observation" ? `<em>${escapeHtml(line.text)}</em>` : escapeHtml(line.text)}</p></div>`).join("") : `<div class="dialogue-line"><b>${escapeHtml(active.name)}</b><p>${escapeHtml(active.opening)}</p></div>`}
             </div>
@@ -3019,7 +3216,8 @@
     const doneCount = caseData.tasks.filter((task) => taskStatus(task).status === "done").length;
     dom.workspace.innerHTML = `
       <div class="view">
-        <header class="view-header"><div><span class="eyebrow">Делегирование</span><h2>Напарник</h2><p>Передавайте массивы, где человеческий просмотр не добавляет смысла. Один поток обработки за раз.</p></div></header>
+        <header class="view-header"><div><span class="eyebrow">На связи с бюро</span><h2>Кира · ваш ассистент</h2><p>Обсуждайте людей, улики и следующие шаги. Кира отвечает по доступным материалам дела.</p></div></header>
+        ${renderAssistantChat()}
         <section class="panel partner-intro"><div class="partner-avatar">КР</div><div><span class="micro-label">Кира Руднева · аналитик</span><h3>«Рутину беру на себя. Вы ищите, где цифры не сходятся с человеком».</h3><p>Обработка идёт по реальному времени и сохраняется, даже если закрыть страницу. Пока задача выполняется, остальные разделы полностью доступны.</p></div></section>
         <div class="task-list">
           ${caseData.tasks.map((task, index) => {
@@ -3055,11 +3253,12 @@
   }
 
   function renderReport() {
+    if (state.outcome?.kind === "dead") { renderOutcome(); return; }
     if (state.report) {
       renderReportResult();
       return;
     }
-    const relevantEvidence = availableEvidence().filter((item) => item.relevant || state.importantIds.includes(item.id));
+    const relevantEvidence = availableEvidence();
     const readiness = readinessScore();
     const asked = Object.values(state.askedQuestions).flat().length;
     dom.workspace.innerHTML = `
@@ -3087,19 +3286,23 @@
         </div>
       </div>
     `;
+    restoreReportDraft();
   }
 
   function evaluateReport(formData) {
     const suspect = formData.get("suspect");
     const motive = formData.get("motive");
     const method = formData.get("method");
-    const evidenceIds = formData.getAll("evidence");
+    const evidenceIds = [...new Set(formData.getAll("evidence"))].filter((id) => availableEvidence().some((item) => item.id === id));
     const reasoning = String(formData.get("reasoning") || "");
     const correctSuspect = suspect === caseData.culpritId;
     const correctMotive = motive === caseData.motive;
     const correctMethod = method === caseData.method;
     const strongIds = new Set(caseData.strongEvidenceIds);
     const strongEvidence = evidenceIds.filter((id) => strongIds.has(id)).length;
+    const completeFieldChain = caseData.fieldStrongIds.every((id) => evidenceIds.includes(id));
+    const completeArchiveChain = caseData.strongEvidenceIds.filter((id) => !caseData.fieldStrongIds.includes(id)).every((id) => evidenceIds.includes(id));
+    const proven = correctSuspect && correctMotive && correctMethod && (completeFieldChain || completeArchiveChain) && evidenceIds.length >= 3 && evidenceIds.length <= 5;
     const falseEvidence = evidenceIds.filter((id) => getEvidence(id)?.relevant === false).length;
     const chainBase = Math.max(0, Math.min(18, strongEvidence * 6) - Math.max(0, evidenceIds.length - 5) * 2);
     const falseEvidencePenalty = Math.min(chainBase, falseEvidence * 5);
@@ -3116,35 +3319,11 @@
       + reasoningScore
       - hintPenalty,
     ));
-    return { suspect, motive, method, evidenceIds, reasoning, correctSuspect, correctMotive, correctMethod, falseEvidence, falseEvidencePenalty, chainBase, chainScore, workScore, reasoningScore, hintPenalty, score };
+    return { suspect, motive, method, evidenceIds, reasoning, correctSuspect, correctMotive, correctMethod, falseEvidence, falseEvidencePenalty, chainBase, chainScore, workScore, reasoningScore, hintPenalty, score, proven };
   }
 
   function renderReportResult() {
-    const result = state.report;
-    const culprit = getSuspect(caseData.culpritId);
-    const verdict = result.score >= 80 ? "Версия выдерживает проверку" : result.score >= 58 ? "Версия требует уточнения" : "Цепочка не доказана";
-    const description = result.score >= 80
-      ? "Вы связали человека, время и цифровой след независимыми источниками. Материалы можно передавать дальше."
-      : "В версии остаются разрывы. Дело можно вернуть на стол, проверить алиби и заменить слабые материалы.";
-    dom.workspace.innerHTML = `
-      <div class="view">
-        <header class="view-header"><div><span class="eyebrow">Результат расследования</span><h2>${escapeHtml(caseData.title)}</h2></div></header>
-        <article class="result-card">
-          <span class="eyebrow">Оценка протокола</span><div class="result-score">${result.score}<small>/100</small></div><h3>${verdict}</h3><p>${description}</p>
-          <div class="result-breakdown">
-            <span>Ответственное лицо</span><strong>${result.correctSuspect ? "+37" : "+0"}</strong>
-            <span>Мотив</span><strong>${result.correctMotive ? "+14" : "+0"}</strong>
-            <span>${escapeHtml(caseData.archetype.mechanismLabel)}</span><strong>${result.correctMethod ? "+14" : "+0"}</strong>
-            <span>Основа доказательной цепочки</span><strong>+${result.chainBase ?? result.chainScore}</strong>
-            <span>Тупиковые материалы</span><strong>−${result.falseEvidencePenalty || 0}</strong>
-            <span>Аналитическая работа</span><strong>+${result.workScore + result.reasoningScore}</strong>
-            <span>Цена подсказок</span><strong>−${result.hintPenalty}</strong>
-          </div>
-          <div class="document-sheet"><b>Фактическая реконструкция</b>\n\nОтветственное лицо: ${escapeHtml(culprit.name)} (${escapeHtml(culprit.role)}).\nФактический мотив: ${escapeHtml(caseData.motive)}.\nМотив, созданный внешней картиной: ${escapeHtml(caseData.apparentMotive)}.\nРеальный механизм: ${escapeHtml(caseData.method)}.\nКажущаяся причина: ${escapeHtml(caseData.apparentMethod)}.\nИнсценировка: ${escapeHtml(caseData.staging)}.\nСлучайное условие: ${escapeHtml(caseData.incidental)}.\n\nКлючевой разрыв легенды: ${escapeHtml(caseData.routeReconstruction)} Социальные конфликты объясняют часть лжи, но не подменяют причинную цепь. Ни один поведенческий сигнал не использован как самостоятельное доказательство.</div>
-          <div class="view-actions"><button class="button button-ghost" type="button" data-action="reopen-case">Вернуть дело на стол</button><button class="button button-primary" type="button" data-action="open-new-case">Новое дело</button></div>
-        </article>
-      </div>
-    `;
+    renderCaseVerdict();
   }
 
   function openEvidence(id) {
@@ -3220,6 +3399,7 @@
   }
 
   function askQuestion(questionId) {
+    if (state.outcome || detective.checkThreat(caseData, state)) { renderCurrentView(); return; }
     const person = getSuspect(state.activeSuspect);
     if (!person) return;
     const question = interviewQuestions(person).find((item) => item.id === questionId);
@@ -3227,10 +3407,14 @@
     state.askedQuestions[person.id] ||= [];
     state.transcripts[person.id] ||= [];
     if (state.askedQuestions[person.id].includes(questionId)) return;
+    const approach = state.approach;
+    state.rapport[person.id] = Math.max(-3, Math.min(3, (state.rapport[person.id] || 0) + (approach === "calm" ? 1 : approach === "pressure" ? -1 : 0)));
+    detective.spend(caseData, state, approach === "pressure" ? 15 : 5, approach === "pressure" ? 3 : 0);
+    if (state.outcome) { renderCurrentView(); return; }
     state.askedQuestions[person.id].push(questionId);
     state.transcripts[person.id].push({ speaker: "Детектив", text: question.question });
     if (question.observation) state.transcripts[person.id].push({ speaker: "Наблюдение", text: `Вы замечаете, как ${question.observation}`, kind: "observation" });
-    state.transcripts[person.id].push({ speaker: person.name, text: question.answer });
+    state.transcripts[person.id].push({ speaker: person.name, text: `${approach === "pressure" ? `${person.life.boundary} ` : ""}${question.answer}` });
     saveCase();
     renderInterviews();
   }
@@ -3424,8 +3608,8 @@
     playInterfaceSound(kind);
   }
 
-  function startNewCase(seed, difficultyKey) {
-    caseData = generateCase(seed.toUpperCase(), difficultyKey);
+  function startNewCase(seed, difficultyKey, caseKind = "auto") {
+    caseData = generateCase(seed.toUpperCase(), difficultyKey, caseKind);
     state = createInitialState(caseData);
     archiveQuery = "";
     archiveFilter = "all";
@@ -3444,6 +3628,7 @@
   function handleClick(event) {
     const target = event.target.closest("button, [data-evidence-id]");
     if (!target) return;
+    if (handleDetectiveClick(target)) return;
 
     if (target.dataset.action === "tutorial-continue" || target.dataset.action === "tutorial-skip") {
       advanceTutorial();
@@ -3634,6 +3819,7 @@
       handleTutorialEvent("digital-decode");
     }
     if (target.dataset.action === "reopen-case") {
+      if (state.outcome) return;
       state.report = null;
       saveCase();
       renderReport();
@@ -3641,12 +3827,22 @@
   }
 
   function handleSubmit(event) {
+    if (event.target.id === "assistant-form") {
+      event.preventDefault();
+      sendAssistantMessage(String(new FormData(event.target).get("message") || ""));
+      return;
+    }
+    if (event.target.id === "present-evidence-form") {
+      event.preventDefault();
+      presentEvidence(String(new FormData(event.target).get("evidence") || ""));
+      return;
+    }
     if (event.target === dom.newCaseForm) {
       event.preventDefault();
       const formData = new FormData(dom.newCaseForm);
       const seed = String(formData.get("seed") || "").trim() || randomCaseCode();
       const difficultyKey = String(formData.get("difficulty") || "detective");
-      startNewCase(seed, difficultyKey);
+      startNewCase(seed, difficultyKey, String(formData.get("caseKind") || "auto"));
       return;
     }
 
@@ -3690,6 +3886,7 @@
 
     if (event.target.id === "report-form") {
       event.preventDefault();
+      if (state.outcome || detective.checkThreat(caseData, state)) { renderCurrentView(); return; }
       const formData = new FormData(event.target);
       const evidenceCount = formData.getAll("evidence").length;
       if (evidenceCount < 3 || evidenceCount > 5) {
@@ -3697,8 +3894,12 @@
         return;
       }
       state.report = evaluateReport(formData);
+      if (state.report.proven) state.outcome = { kind: "solved", at: Date.now() };
+      else detective.spend(caseData, state, 120, 6);
       saveCase();
-      renderReportResult();
+      if (state.outcome?.kind === "dead") renderOutcome();
+      else renderReportResult();
+      updateChrome();
       dom.workspace.scrollTop = 0;
       handleTutorialEvent("report-submit");
       return;
@@ -3708,7 +3909,7 @@
   function handleKeyboard(event) {
     const tag = event.target.tagName;
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable;
-    if (!typing && /^[1-8]$/.test(event.key) && caseData) {
+    if (!typing && /^[1-9]$/.test(event.key) && caseData && !document.querySelector("dialog[open]")) {
       navigate(VIEW_ORDER[Number(event.key) - 1]);
     }
     if (!typing && event.key.toLowerCase() === "n") {
@@ -3721,6 +3922,8 @@
 
   function tick() {
     if (!caseData || !state) return;
+    if (detective.checkThreat(caseData, state)) { saveCase(); closeDialog(dom.detailDialog); renderCurrentView(); }
+    updateThreatChrome();
     dom.timer.textContent = formatDuration(Date.now() - state.startedAt);
     const completed = updateCompletedTasks(true);
     const activeTask = Object.values(state.tasks).some((task) => task.status === "running");
@@ -3784,6 +3987,8 @@
     document.addEventListener("pointerdown", handleInterfaceSound, { passive: true });
     document.addEventListener("submit", handleSubmit);
     document.addEventListener("keydown", handleKeyboard);
+    document.addEventListener("input", saveInvestigationDraft);
+    document.addEventListener("change", saveInvestigationDraft);
     document.querySelector("#new-case-button").addEventListener("click", openNewCaseDialog);
     document.querySelector("#help-button").addEventListener("click", () => showDialog(dom.helpDialog));
     dom.settingsButton.addEventListener("click", () => showDialog(dom.settingsDialog));
