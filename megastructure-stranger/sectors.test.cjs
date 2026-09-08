@@ -39,6 +39,7 @@ test('200 layouts keep service corridors, entry vestibules and inter-sector link
   const { gen, ai } = load();
   for (let seed = 0; seed < 200; seed++) {
     const map = gen.generate(10, 960, 600, seed);
+    assert.equal(new Set(map.sectors.map(sector => sector.id)).size, 1, 'specialization must cover the entire floor');
     for (let i = 0; i < map.sectors.length; i++) {
       const sector = map.sectors[i];
       const local = map.walls.filter(wall => wall.sector === i);

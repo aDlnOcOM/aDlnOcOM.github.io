@@ -1,8 +1,9 @@
 # Procedural districts
 
-Independent weighted rolls: residential 28%, industrial 26%, slums 16%, market
+One weighted specialization roll per entire floor: residential 28%, industrial 26%, slums 16%, market
 9%, robotics 7%, elite 4%, medical 3%, hydroponics 3%, archive 2%, utilities 2%.
-These are long-run frequencies, not a quota guaranteed on each floor.
+These are frequencies across floors, not a quota within each floor. All sectors
+share the floor's specialization but retain varied local layouts.
 
 Districts use different palettes, floor grids, lighting, signage and furnishing:
 apartments, production equipment, improvised scrap structures, market stalls,

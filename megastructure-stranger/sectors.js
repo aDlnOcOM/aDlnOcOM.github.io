@@ -27,8 +27,9 @@
   }
   function generate(count, width, height, seed) {
     const random = seeded(seed), sectors = [], walls = [];
+    const type = pick(random);
     for (let index = 0; index < count; index++) {
-      const type = pick(random), x = index * width;
+      const x = index * width;
       const lane = height / 2 + (Math.floor(random() * 3) - 1) * 36;
       const sector = { ...type, x, width, lane, index, props: [], lights: [] };
       // The boundary vestibules connect differing corridor heights safely.

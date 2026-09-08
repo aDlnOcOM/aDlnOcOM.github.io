@@ -1180,6 +1180,15 @@
     if (amount < .18) return;
     context.save();
     context.globalAlpha = Math.min(1, (amount - .12) / .5);
+    if (!state.alarm && amount < .5) {
+      // Peripheral vision identifies a presence, not health or equipment details.
+      context.fillStyle = '#8c9b9d';
+      context.beginPath();
+      context.arc(entity.x - state.cameraX, entity.y, entity.radius || 7, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      return;
+    }
     drawEntity(entity);
     context.restore();
   }
@@ -1245,7 +1254,13 @@
     if (state.input.keys.has("KeyS") || state.input.keys.has("ArrowDown")) vertical += 1;
     if (horizontal || vertical) {
       const length = Math.hypot(horizontal, vertical);
+      const before = { x: player.x, y: player.y };
       moveCircle(player, horizontal / length * player.speed * delta, vertical / length * player.speed * delta);
+      player.stepDistance = (player.stepDistance || 0) + distance(before, player);
+      if (player.stepDistance >= 72) {
+        player.stepDistance %= 72;
+        emitNoise(player.x, player.y, 145, "шаги в коридоре");
+      }
     }
     player.invulnerability = Math.max(0, player.invulnerability - delta);
     player.fireCooldown = Math.max(0, player.fireCooldown - delta);
@@ -1264,8 +1279,10 @@
     const listeners = state.enemies.filter(enemy => !enemy.boss && enemy.health > 0
       && distance(enemy, point) <= radius * (window.SecurityAI.clear(point, enemy, getWorldColliders()) ? 1 : .35));
     if (!listeners.length) return;
-    if (confirmed) securityReport(listeners[0], point, reason);
-    else for (const listener of listeners) window.SecurityAI.report([listener], listener, point, state.elapsed, false);
+    const estimate = { x: Math.round(x / 64) * 64, y: Math.round(y / 64) * 64 };
+    const heardPoint = window.SecurityAI.clear(estimate, estimate, getWorldColliders(), 20) ? estimate : point;
+    if (confirmed) securityReport(listeners[0], heardPoint, reason);
+    else for (const listener of listeners) window.SecurityAI.report([listener], listener, heardPoint, state.elapsed, false);
   }
 
   function securityReport(source, point, reason) {
@@ -1308,6 +1325,7 @@
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
     player.reload = playerStats().reload;
+    emitNoise(player.x, player.y, 105, "звук перезарядки");
   }
 
   function knifeAttack() {

@@ -4,12 +4,12 @@
   const clamp = x => Math.max(0, Math.min(1, x));
   const smooth = x => { x = clamp(x); return x * x * (3 - 2 * x); };
   const angle = x => Math.atan2(Math.sin(x), Math.cos(x));
-  function strength(observer, target, range, fov, los) {
+  function strength(observer, target, range, fov, los, hardEdge = false) {
     const distance = Math.hypot(target.x - observer.x, target.y - observer.y);
     if (distance > range || !los(observer.x, observer.y, target.x, target.y)) return 0;
     const offset = Math.abs(angle(Math.atan2(target.y - observer.y, target.x - observer.x) - observer.angle));
     if (fov < Math.PI * 2 && offset >= fov / 2) return 0;
-    const angular = fov >= Math.PI * 2 ? 1 : smooth((fov / 2 - offset) / (fov * .12));
+    const angular = hardEdge || fov >= Math.PI * 2 ? 1 : smooth((fov / 2 - offset) / (fov * .12));
     const radial = Number.isFinite(range) ? smooth((range - distance) / (range * .3)) : 1;
     return angular * radial;
   }
@@ -36,12 +36,20 @@
   }
   function playerLayers(alarm, flashlight, stats) {
     const layers = [{ fov: Math.PI * 2, range: 22, opacity: .35 }];
-    layers.push({ fov: 68 * Math.PI / 180, range: alarm ? 78 : Infinity, opacity: alarm ? .42 : 1 });
-    if (flashlight) layers.push({ fov: Math.min(55, stats.flashlightAngle) * Math.PI / 180, range: stats.flashlightRange, opacity: 1 });
+    if (alarm) layers.push({ fov: 68 * Math.PI / 180, range: 78, opacity: .42 });
+    else {
+      layers.push({ fov: 220 * Math.PI / 180, range: Infinity, opacity: .32, hardEdge: true });
+      layers.push({ fov: 120 * Math.PI / 180, range: Infinity, opacity: 1, hardEdge: true });
+    }
+    if (flashlight) {
+      const beam = Math.min(55, stats.flashlightAngle);
+      layers.push({ fov: (beam + 25) * Math.PI / 180, range: stats.flashlightRange * .85, opacity: .3 });
+      layers.push({ fov: beam * Math.PI / 180, range: stats.flashlightRange, opacity: 1 });
+    }
     return layers;
   }
   function playerStrength(observer, point, layers, los) {
-    return clamp(layers.reduce((sum, layer) => sum + layer.opacity * strength(observer, point, layer.range, layer.fov, los), 0));
+    return clamp(layers.reduce((sum, layer) => sum + layer.opacity * strength(observer, point, layer.range, layer.fov, los, layer.hardEdge), 0));
   }
   function drawLayer(ctx, observer, layer, walls, cameraX, maxRange) {
     const range = Math.min(layer.range, maxRange), half = layer.fov / 2;
@@ -73,7 +81,7 @@
       const point = { x: ox + Math.cos(direction) * length, y: oy + Math.sin(direction) * length, offset };
       if (previous) {
         const middle = (previous.offset + offset) / 2;
-        ctx.globalAlpha = layer.opacity * (layer.fov >= Math.PI * 2 ? 1 : smooth((half - Math.abs(middle)) / (layer.fov * .12)));
+        ctx.globalAlpha = layer.opacity * (layer.hardEdge || layer.fov >= Math.PI * 2 ? 1 : smooth((half - Math.abs(middle)) / (layer.fov * .12)));
         ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(previous.x, previous.y); ctx.lineTo(point.x, point.y); ctx.closePath(); ctx.fill();
       }
       previous = point;

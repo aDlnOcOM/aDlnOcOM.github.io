@@ -17,9 +17,10 @@
       const ai = init(guard);
       // The alarm is floor-wide; only nearby units respond to this sector.
       if (guard !== source && (distance(guard, point) > 1100 || ai.mode === 'engage')) continue;
-      if (!confirmed && ai.target && ai.expires > now) continue;
+      if (!confirmed && ai.target && ai.targetKind !== 'sound' && ai.expires > now) continue;
       const changed = !ai.target || distance(ai.target, point) > 48;
       ai.target = { x: point.x, y: point.y };
+      ai.targetKind = confirmed ? 'contact' : 'sound';
       ai.expires = now + (confirmed ? 12 : 6);
       if (changed) { ai.path = []; ai.replanAt = 0; }
       if (ai.mode !== 'engage') ai.mode = 'investigate';
@@ -111,6 +112,7 @@
     if (sees && ai.exposure >= .4) {
       ai.mode = 'engage';
       ai.target = { x: env.player.x, y: env.player.y };
+      ai.targetKind = 'contact';
       ai.expires = env.now + 12;
       if (env.now >= ai.reportAt) {
         env.report(guard, ai.target, true);

@@ -4,9 +4,12 @@ Eyes, cameras and flashlight masks share angular falloff and solid ray geometry.
 No radius-based wall bypass. The near-body awareness ring is only 22 units wide
 and obeys walls; it is not long-range rear vision.
 
-Normal eyesight: 68 degrees, no gameplay distance cap. Darkness: the same forward
-cone, only 78 units at reduced intensity. The flashlight adds a separate 29-degree,
-336-unit beam before equipment upgrades. Both angular and range edges fade.
+Normal eyesight: 120 degrees of clear detail, plus 50 degrees on each side at
+reduced intensity (220 degrees total), with no gameplay distance cap. Peripheral
+bots are silhouettes without health or status readouts. Darkness retains a
+68-degree forward cone, only 78 units at reduced intensity. The flashlight adds
+a separate 29-degree, 336-unit beam before equipment upgrades, plus a dim spill
+extending 12.5 degrees beyond each beam edge at 85% range. Light edges fade.
 Unknown space is opaque; remembered geometry remains dim, never a live enemy map.
 The exploration grid now uses the same cell alignment as the memory renderer.
 

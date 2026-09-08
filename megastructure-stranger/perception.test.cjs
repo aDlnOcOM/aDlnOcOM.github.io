@@ -11,6 +11,24 @@ function load() {
 }
 const eye = { x: 0, y: 0, angle: 0 };
 const stats = { flashlightRange: 336, flashlightAngle: 29 };
+test('lit floor gives 120 degrees of detail and 50 degrees of silhouettes on each side', () => {
+  const { p } = load(), layers = p.playerLayers(false, false, stats);
+  const at = degrees => p.playerStrength(eye, { x: 200 * Math.cos(degrees * Math.PI / 180), y: 200 * Math.sin(degrees * Math.PI / 180) }, layers, () => true);
+  for (const side of [-1, 1]) {
+    assert.equal(at(59.9 * side), 1);
+    assert.equal(at(85 * side), .32);
+    assert.equal(at(109.9 * side), .32);
+    assert.equal(at(111 * side), 0);
+  }
+});
+test('flashlight adds 12.5 degrees of dim spill on each side of its beam', () => {
+  const { p } = load(), layers = p.playerLayers(true, true, stats);
+  const halo = layers.find(layer => Math.abs(layer.fov * 180 / Math.PI - 54) < .001);
+  assert.ok(halo);
+  const at = degrees => p.playerStrength(eye, { x: 150 * Math.cos(degrees * Math.PI / 180), y: 150 * Math.sin(degrees * Math.PI / 180) }, layers, () => true);
+  assert.ok(at(20) > .18 && at(20) < .5);
+  assert.equal(at(28), 0);
+});
 test('soft cone and range falloffs preserve a full-strength core and a blind rear', () => {
   const { p } = load();
   assert.equal(p.strength(eye, { x: 50, y: 0 }, 100, 1, () => true), 1);

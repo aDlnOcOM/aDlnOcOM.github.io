@@ -11,7 +11,7 @@ function load() {
   vm.createContext(context);
   for (const file of ['equipment.js', 'perception.js', 'security-ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
   let source = fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8');
-  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, updateSensors, emitNoise, triggerAlarm, createGuard }; })();');
+  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, updateSensors, updatePlayer, reloadSmg, emitNoise, triggerAlarm, createGuard }; })();');
   vm.runInContext(source, context);
   return { ai: context.window.SecurityAI, ...context.window.testing };
 }
@@ -120,4 +120,29 @@ test('noise respects listeners, wall attenuation and suspicion versus alarm', ()
   state.floorMap.walls = [{ x: 50, y: -50, width: 10, height: 100 }];
   emitNoise(0, 0, 200, 'shot', true); assert.equal(state.alarm, false);
   emitNoise(0, 0, 700, 'shot', true); assert.equal(state.alarm, true);
+});
+
+test('actual movement and reload sounds cause investigation, never remote omniscience', () => {
+  const { state, updatePlayer, reloadSmg } = load(); prepare(state);
+  state.active = true;
+  Object.assign(state.player, { x: 0, y: 0, radius: 12, speed: 100, weapon: 'knife', reload: 0 });
+  state.input.keys.add('KeyD');
+  updatePlayer(.8);
+  assert.equal(state.enemies[0].ai.mode, 'investigate');
+  assert.equal(state.enemies[0].ai.target.x, 64);
+  assert.equal(state.alarm, false);
+  state.enemies = [guard(100)];
+  Object.assign(state.player, { weapon: 'smg', ammo: 1, magazine: 32 });
+  reloadSmg();
+  assert.equal(state.enemies[0].ai.mode, 'investigate');
+});
+
+test('fresh sounds redirect sound searches without overriding confirmed visual contacts', () => {
+  const { ai } = load(), g = guard();
+  ai.report([g], g, { x: 100, y: 0 }, 1, false);
+  ai.report([g], g, { x: 200, y: 0 }, 2, false);
+  assert.equal(g.ai.target.x, 200);
+  ai.report([g], g, { x: 300, y: 0 }, 3, true);
+  ai.report([g], g, { x: 400, y: 0 }, 4, false);
+  assert.equal(g.ai.target.x, 300);
 });

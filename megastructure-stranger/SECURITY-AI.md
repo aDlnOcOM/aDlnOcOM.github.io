@@ -18,6 +18,11 @@
 - Turrets rotate and reacquire visually, but never walk. The boss retains its
   arena-wide observation and radial attack; aimed attacks require line of sight.
 - Gunshot hearing radius is 700, reduced to 75% / 55% by suppressor upgrades.
+  Actual player movement emits footsteps every 72 units with hearing radius 145;
+  starting a reload emits a radius-105 sound. These noises cause investigation,
+  not an immediate floor alarm. Heard positions are quantized to a free 64-unit
+  grid location where possible. New sounds redirect sound investigations but do
+  not replace a fresh confirmed sighting.
   Obstructed sound travels 35% as far. Only living bots hear sounds; cameras are
   visual observers. Melee sound causes investigation; a received gunshot or a
   unit damage report causes alarm. A damaged unit reports its own location,
