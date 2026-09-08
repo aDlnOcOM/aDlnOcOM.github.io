@@ -995,6 +995,8 @@
     state.particles = [];
     state.alarm = false;
     state.alarmReason = "";
+    state.lastContact = null;
+    state.lastReportUi = 0;
     state.flashlight = false;
     state.visionTimer = 0;
     resetPlayer();
@@ -1264,11 +1266,23 @@
     if (player.weapon === "smg" && state.input.mouseDown && player.fireCooldown <= 0) fireSmg();
   }
 
-  function emitNoise(x, y, radius, reason) {
-    if (state.alarm) return;
-    const listeners = state.enemies.concat(state.sensors);
-    const heard = listeners.some(listener => Math.hypot(listener.x - x, listener.y - y) <= radius && hasLineOfSight(x, y, listener.x, listener.y, 8));
-    if (heard) triggerAlarm(reason);
+  function emitNoise(x, y, radius, reason, confirmed = false) {
+    const point = { x, y };
+    const listeners = state.enemies.filter(enemy => !enemy.boss && enemy.health > 0
+      && distance(enemy, point) <= radius * (window.SecurityAI.clear(point, enemy, getWorldColliders()) ? 1 : .35));
+    if (!listeners.length) return;
+    if (confirmed) securityReport(listeners[0], point, reason);
+    else for (const listener of listeners) window.SecurityAI.report([listener], listener, point, state.elapsed, false);
+  }
+
+  function securityReport(source, point, reason) {
+    triggerAlarm(reason);
+    window.SecurityAI.report(state.enemies, source, point, state.elapsed, true);
+    state.lastContact = { x: point.x, y: point.y, time: state.elapsed };
+    if (!state.lastReportUi || state.elapsed - state.lastReportUi > 2) {
+      element("signal-text").textContent = "ОХРАННАЯ СЕТЬ: " + reason + ". Патрули проверяют последний контакт.";
+      state.lastReportUi = state.elapsed;
+    }
   }
 
   function triggerAlarm(reason) {
@@ -1276,7 +1290,7 @@
     state.alarm = true;
     state.flashlight = false;
     state.alarmReason = reason;
-    element("signal-text").textContent = "ТРЕВОГА: " + reason + ". Аварийное освещение включено; фонарь ограничивает обзор.";
+    element("signal-text").textContent = "ТРЕВОГА: " + reason + ". Аварийное освещение включено; F — фонарь.";
     createParticles(state.player.x, state.player.y, "#ff6d68", 18, 66);
   }
 
@@ -1293,7 +1307,9 @@
     player.ammo -= 1;
     player.fireCooldown = .105;
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
-    triggerAlarm("акустические датчики зарегистрировали выстрел");
+    const suppressed = hasUpgrade("smg", "muzzle", "suppressor");
+    const noiseScale = suppressed ? (hasTier("smg", "muzzle", "suppressor") ? .55 : .75) : 1;
+    emitNoise(player.x, player.y, 700 * noiseScale, "патруль услышал выстрел", true);
   }
 
   function reloadSmg() {
@@ -1312,7 +1328,7 @@
     state.enemies.forEach(enemy => {
       const enemyAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
       const difference = normalizedAngle(enemyAngle - angle);
-      if (distance(player, enemy) < 83 && Math.abs(difference) < .92) {
+      if (distance(player, enemy) < 83 && Math.abs(difference) < .92 && window.SecurityAI.clear(player, enemy, getWorldColliders())) {
         damageEnemy(enemy, playerStats().knifeDamage);
         hit = true;
       }
@@ -1321,17 +1337,15 @@
   }
 
   function updateSensors(delta) {
-    const player = state.player;
     for (const sensor of state.sensors) {
-      sensor.angle = state.alarm
-        ? sensor.homeAngle + Math.sin(state.elapsed * 2.3 + sensor.phase) * 1.12
-        : sensor.homeAngle;
-      const difference = Math.abs(normalizedAngle(Math.atan2(player.y - sensor.y, player.x - sensor.x) - sensor.angle));
-      const seen = Math.hypot(player.x - sensor.x, player.y - sensor.y) <= sensor.range
-        && difference <= sensor.fov / 2
-        && hasLineOfSight(sensor.x, sensor.y, player.x, player.y, player.radius);
-      sensor.exposure = seen ? sensor.exposure + delta : Math.max(0, sensor.exposure - delta * 1.8);
-      if (!state.alarm && sensor.exposure > .42) triggerAlarm("камера захватила тепловой контур");
+      sensor.angle = sensor.homeAngle + Math.sin(state.elapsed * (state.alarm ? 1.3 : .45) + sensor.phase) * (state.alarm ? 1.12 : .35);
+      sensor.seesPlayer = window.SecurityAI.visible(sensor, state.player, sensor.range, sensor.fov,
+        (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, getWorldColliders()));
+      sensor.exposure = Math.max(0, Math.min(.5, sensor.exposure + (sensor.seesPlayer ? delta : -delta * 1.5)));
+      if (sensor.seesPlayer && sensor.exposure >= .5 && state.elapsed >= (sensor.reportAt || 0)) {
+        securityReport(sensor, state.player, "камера передала координаты нарушителя");
+        sensor.reportAt = state.elapsed + .8;
+      }
     }
   }
 
@@ -1346,53 +1360,35 @@
 
   function updateBoss(enemy, delta) {
     const player = state.player;
-    const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-    enemy.angle = targetAngle;
+    const seesPlayer = window.SecurityAI.visible(enemy, player, 900, Math.PI * 2,
+      (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, getWorldColliders()));
+    const targetAngle = seesPlayer ? Math.atan2(player.y - enemy.y, player.x - enemy.x) : enemy.angle;
+    if (seesPlayer) enemy.angle = targetAngle;
     const playerDistance = distance(player, enemy);
-    if (playerDistance > 265) moveCircle(enemy, Math.cos(targetAngle) * enemy.speed * delta, Math.sin(targetAngle) * enemy.speed * delta);
+    if (seesPlayer && playerDistance > 265) moveCircle(enemy, Math.cos(targetAngle) * enemy.speed * delta, Math.sin(targetAngle) * enemy.speed * delta);
     enemy.fireTimer -= delta;
     if (enemy.fireTimer > 0) return;
     for (let index = 0; index < 12; index += 1) {
       createEnemyBullet(enemy, state.elapsed * .9 + index * Math.PI * 2 / 12, enemy.bulletSpeed * .78, enemy.damage * .7, "#f4ef86");
     }
-    [-.18, 0, .18].forEach(offset => createEnemyBullet(enemy, targetAngle + offset, enemy.bulletSpeed, enemy.damage, "#ff8078"));
+    if (seesPlayer) [-.18, 0, .18].forEach(offset => createEnemyBullet(enemy, targetAngle + offset, enemy.bulletSpeed, enemy.damage, "#ff8078"));
     enemy.fireTimer = Math.max(.46, .72 - state.floor * .025);
   }
 
   function updateEnemies(delta) {
-    const player = state.player;
+    const walls = getWorldColliders();
+    const env = {
+      player: state.player, now: state.elapsed, alarm: state.alarm, walls,
+      los: (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, walls),
+      move: moveCircle, fire: fireEnemy,
+      report: (enemy, point) => securityReport(enemy, point, "патруль подтвердил визуальный контакт")
+    };
     for (const enemy of state.enemies) {
       enemy.hitFlash = Math.max(0, enemy.hitFlash - delta);
-      if (enemy.boss) {
-        updateBoss(enemy, delta);
-        continue;
-      }
-      if (!state.alarm) {
-        if (enemy.type !== "turret") patrolGuard(enemy, delta, false);
-        const seesPlayer = hasLineOfSight(enemy.x, enemy.y, player.x, player.y, player.radius)
-          && distance(enemy, player) <= (enemy.type === "turret" ? 340 : 300)
-          && Math.abs(normalizedAngle(Math.atan2(player.y - enemy.y, player.x - enemy.x) - enemy.angle)) <= (enemy.type === "turret" ? .42 : .54);
-        enemy.sighting = seesPlayer ? enemy.sighting + delta : Math.max(0, enemy.sighting - delta * 2);
-        if (enemy.sighting > .38) triggerAlarm(enemy.type === "turret" ? "турель зафиксировала движение" : "патруль заметил нарушителя");
-        continue;
-      }
-
-      if (enemy.type === "turret") {
-        enemy.angle = enemy.homeAngle + Math.sin(state.elapsed * 2.4 + enemy.phase) * 1.28;
-      } else {
-        patrolGuard(enemy, delta, true);
-        const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-        enemy.angle += normalizedAngle(targetAngle - enemy.angle) * Math.min(1, delta * 5);
-      }
-
-      enemy.fireTimer -= delta;
-      const angleToPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-      const inArc = Math.abs(normalizedAngle(angleToPlayer - enemy.angle)) <= (enemy.type === "turret" ? .62 : .8);
-      if (enemy.fireTimer <= 0 && distance(enemy, player) < (enemy.type === "turret" ? 520 : 430) && inArc && hasLineOfSight(enemy.x, enemy.y, player.x, player.y, player.radius)) {
-        fireEnemy(enemy, Math.cos(angleToPlayer), Math.sin(angleToPlayer));
-        enemy.fireTimer = enemy.fireRate;
-      }
-      if (distance(enemy, player) < enemy.radius + player.radius + 5) damagePlayer(enemy.damage * .48);
+      if (enemy.health <= 0) continue;
+      if (enemy.boss) { updateBoss(enemy, delta); continue; }
+      window.SecurityAI.tick(enemy, delta, env);
+      if (distance(enemy, state.player) < enemy.radius + state.player.radius + 5) damagePlayer(enemy.damage * .48);
     }
   }
 
@@ -1438,6 +1434,7 @@
     enemy.health -= amount;
     enemy.hitFlash = .12;
     createParticles(enemy.x, enemy.y, enemy.color, 4, 48);
+    if (!enemy.boss) securityReport(enemy, enemy, "сигнал повреждения охранного узла");
     if (enemy.health > 0) return;
     state.enemies = state.enemies.filter(candidate => candidate !== enemy);
     state.runSalvage += Math.ceil(enemy.reward * playerStats().salvageMultiplier);
@@ -1449,7 +1446,6 @@
       element("signal-text").textContent = "Смотритель отключён. Правый шлюз разблокирован: войди в лифт.";
       return;
     }
-    if (!state.alarm) triggerAlarm("охранный контур потерял связь с патрулём");
   }
 
   function damagePlayer(amount) {
@@ -1591,8 +1587,22 @@
     context.rotate(sensor.angle);
     context.fillStyle = "#b9d0df";
     context.fillRect(-7, -7, 14, 14);
-    context.fillStyle = state.alarm ? "#ff6d68" : "#63e4dd";
+    context.fillStyle = sensor.exposure >= .5 ? "#ff6d68" : sensor.exposure > 0 ? "#ffbd63" : "#63e4dd";
     context.fillRect(3, -2, 11, 4);
+    context.restore();
+    if (sensor.exposure > 0) drawDetection(screenX, sensor.y - 18, sensor.exposure / .5, sensor.exposure >= .5 ? "!" : "?");
+  }
+
+  function drawDetection(x, y, progress, label) {
+    context.save();
+    context.shadowBlur = 0;
+    context.fillStyle = "#11191e";
+    context.fillRect(x - 13, y, 26, 3);
+    context.fillStyle = progress >= 1 ? "#ff6d68" : "#ffbd63";
+    context.fillRect(x - 13, y, 26 * Math.max(0, Math.min(1, progress)), 3);
+    context.font = "bold 12px Consolas, monospace";
+    context.textAlign = "center";
+    context.fillText(label, x, y - 4);
     context.restore();
   }
 
@@ -1628,6 +1638,10 @@
     }
     context.restore();
     context.shadowBlur = 0;
+    if (enemy.ai && enemy.ai.mode !== "patrol" && enemy.ai.mode !== "return") {
+      drawDetection(screenX, enemy.y - enemy.radius - 26, enemy.ai.exposure / .4,
+        enemy.ai.mode === "engage" ? "!" : enemy.ai.mode === "suspicious" ? "?" : "…");
+    }
     const healthRatio = enemy.health / enemy.maxHealth;
     context.fillStyle = "rgba(0, 0, 0, .52)";
     context.fillRect(screenX - enemy.radius, enemy.y - enemy.radius - 12, enemy.radius * 2, 4);
