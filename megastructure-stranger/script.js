@@ -100,7 +100,11 @@
     watcher: { name: "Наблюдатель", color: "#ff7d75", radius: 14, hp: 38, speed: 72, fire: 1.2, bulletSpeed: 205, damage: 7, reward: 6 },
     drone: { name: "Сборщик", color: "#feab68", radius: 12, hp: 26, speed: 115, fire: 0.78, bulletSpeed: 248, damage: 5, reward: 5 },
     turret: { name: "Стационар", color: "#d870e7", radius: 16, hp: 58, speed: 0, fire: 1.65, bulletSpeed: 188, damage: 8, reward: 8 },
-    warden: { name: "Смотритель этажа", color: "#e8ed83", radius: 37, hp: 980, speed: 48, fire: 0.68, bulletSpeed: 230, damage: 9, reward: 70 }
+    enforcer: { name: "Штурмовик спецохраны", color: "#ef9264", radius: 15, hp: 62, speed: 128, fire: 1.15, bulletSpeed: 0, damage: 13, reward: 10 },
+    marksman: { name: "Стрелок спецохраны", color: "#83a9eb", radius: 14, hp: 44, speed: 70, fire: 2.1, bulletSpeed: 350, damage: 12, reward: 11 },
+    burstTurret: { name: "Отсекатель", color: "#d6a466", radius: 18, hp: 72, speed: 0, fire: 1.8, bulletSpeed: 265, damage: 6, reward: 12 },
+    warden: { name: "Смотритель этажа", color: "#e8ed83", radius: 37, hp: 980, speed: 48, fire: 0.68, bulletSpeed: 230, damage: 9, reward: 70 },
+    breaker: { name: "Таран шлюза", color: "#f38c66", radius: 34, hp: 1100, speed: 76, fire: 2.5, bulletSpeed: 0, damage: 24, reward: 85 }
   };
 
   const element = id => document.getElementById(id);
@@ -949,14 +953,14 @@
       const patrolStart = start + 140;
       const patrolEnd = start + sectorWidth - 130;
       const firstX = start + sectorWidth * (sector.index === 0 ? .6 : .32);
-      guards.push(createGuard("watcher", firstX, sector.lane - 22, patrolStart, patrolEnd, 0));
+      guards.push(createGuard(sector.index % 3 === 1 ? "enforcer" : "watcher", firstX, sector.lane - 22, patrolStart, patrolEnd, 0));
       if (sector.security > 0) {
-        guards.push(createGuard(sector.id === "robotics" ? "drone" : "watcher",
+        guards.push(createGuard(sector.index % 3 === 2 ? "marksman" : sector.id === "robotics" ? "drone" : "watcher",
           start + sectorWidth * .74, sector.lane + 22, patrolStart, patrolEnd, Math.PI));
       }
       if (sector.security >= 2) {
         const turretX = start + sectorWidth * .82;
-        guards.push(createGuard("turret", turretX, sector.lane - 44, turretX, turretX, Math.PI / 2));
+        guards.push(createGuard(sector.index % 2 ? "burstTurret" : "turret", turretX, sector.lane - 44, turretX, turretX, Math.PI / 2));
       }
       if (sector.security >= 3) {
         guards.push(createGuard("drone", start + sectorWidth * .5, sector.lane + 24, patrolStart, patrolEnd, 0));
@@ -1390,6 +1394,11 @@
 
   function updateBoss(enemy, delta) {
     const player = state.player;
+    if (enemy.type === "breaker") {
+      window.EnemySpecialists.breaker(enemy, delta, player,
+        () => hasLineOfSight(enemy.x, enemy.y, player.x, player.y), moveCircle, damagePlayer);
+      return;
+    }
     const seesPlayer = window.SecurityAI.visible(enemy, player, 900, Math.PI * 2,
       hasLineOfSight);
     const targetAngle = seesPlayer ? Math.atan2(player.y - enemy.y, player.x - enemy.x) : enemy.angle;
@@ -1418,12 +1427,25 @@
       if (enemy.health <= 0) continue;
       if (enemy.boss) { updateBoss(enemy, delta); continue; }
       window.SecurityAI.tick(enemy, delta, env);
-      if (distance(enemy, state.player) < enemy.radius + state.player.radius + 5) damagePlayer(enemy.damage * .48);
+      if (enemy.type === "burstTurret") window.EnemySpecialists.burst(enemy, delta,
+        () => window.SecurityAI.visible(enemy, state.player, 440, 1.05, env.los),
+        () => createEnemyBullet(enemy, Math.atan2(state.player.y - enemy.y, state.player.x - enemy.x), enemy.bulletSpeed, enemy.damage, enemy.color));
+      if (enemy.type !== "enforcer" && distance(enemy, state.player) < enemy.radius + state.player.radius + 5) damagePlayer(enemy.damage * .48);
     }
   }
 
   function fireEnemy(enemy, unitX, unitY) {
     const baseAngle = Math.atan2(unitY, unitX);
+    if (enemy.type === "enforcer") {
+      if (distance(enemy, state.player) <= enemy.radius + state.player.radius + 10 && hasLineOfSight(enemy.x, enemy.y, state.player.x, state.player.y)) damagePlayer(enemy.damage);
+      enemy.meleeFlash = .18;
+      return;
+    }
+    if (enemy.type === "burstTurret") {
+      createEnemyBullet(enemy, baseAngle, enemy.bulletSpeed, enemy.damage, enemy.color);
+      enemy.burstLeft = randomInteger(2, 3); enemy.burstDelay = .14;
+      return;
+    }
     if (enemy.type === "turret") {
       [-.17, 0, .17].forEach(offset => createEnemyBullet(enemy, baseAngle + offset, enemy.bulletSpeed, enemy.damage, "#d981ec"));
       return;
@@ -1499,10 +1521,11 @@
     map.bossStarted = true;
     state.player.x = map.entryGate.x + 84;
     state.player.y = HEIGHT / 2;
-    const template = ENEMY_TYPES.warden;
+    const bossType = state.floor % 2 === 0 ? "breaker" : "warden";
+    const template = ENEMY_TYPES[bossType];
     const multiplier = 1 + (state.floor - 1) * .22;
     const boss = {
-      type: "warden",
+      type: bossType,
       x: map.entryGate.x + map.bossWidth * .52,
       y: HEIGHT / 2,
       radius: template.radius,
@@ -1519,8 +1542,8 @@
       hitFlash: 0
     };
     state.enemies.push(boss);
-    triggerAlarm("шлюз герметизирован. Смотритель активирован");
-    element("signal-text").textContent = "Шлюз заперт. Смотритель не даст пройти к лифту, пока не будет уничтожен.";
+    triggerAlarm("шлюз герметизирован. " + template.name + " активирован");
+    element("signal-text").textContent = "Шлюз заперт. " + template.name + ": уничтожьте охранный узел, чтобы открыть лифт.";
     renderRoute();
   }
 
@@ -1686,7 +1709,7 @@
     context.fillStyle = enemy.hitFlash ? "#ffffff" : enemy.color;
     context.shadowBlur = enemy.boss ? 20 : 8;
     context.shadowColor = enemy.color;
-    if (enemy.type === "turret") {
+    if (enemy.type === "turret" || enemy.type === "burstTurret") {
       context.fillRect(-enemy.radius, -enemy.radius, enemy.radius * 2, enemy.radius * 2);
       context.fillStyle = "#19232c";
       context.fillRect(0, -4, enemy.radius + 11, 8);
@@ -1696,6 +1719,24 @@
       context.fill();
       context.fillStyle = "#18232c";
       context.fillRect(0, -3, enemy.radius + 8, 6);
+    }
+    if (enemy.type === "burstTurret") {
+      context.fillStyle = enemy.color;
+      context.fillRect(5, -10, enemy.radius + 13, 5);
+      context.fillRect(5, 5, enemy.radius + 13, 5);
+    } else if (enemy.type === "marksman") {
+      context.fillStyle = "#b6cef0"; context.fillRect(4, -2, 30, 4);
+      context.strokeStyle = enemy.color; context.strokeRect(-19, -19, 38, 38);
+    } else if (enemy.type === "enforcer") {
+      context.fillStyle = "#ffbd94"; context.fillRect(2, -20, 19, 5); context.fillRect(2, 15, 19, 5);
+    } else if (enemy.type === "breaker") {
+      context.strokeStyle = enemy.attackPhase === "windup" ? "#fff0b0" : "#d8805b";
+      context.lineWidth = 4; context.strokeRect(-enemy.radius, -enemy.radius, enemy.radius * 2, enemy.radius * 2);
+      if (enemy.attackPhase === "windup") {
+        context.lineWidth = 2; context.setLineDash([10, 9]);
+        context.beginPath(); context.moveTo(enemy.radius, 0);
+        context.lineTo(raycastDistance(enemy.x, enemy.y, enemy.angle, 300), 0); context.stroke();
+      }
     }
     context.restore();
     context.shadowBlur = 0;

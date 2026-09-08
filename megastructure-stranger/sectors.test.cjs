@@ -88,6 +88,9 @@ test('integrated floors keep guards and cameras out of walls and preserve boss g
     assert.equal(map.bossWidth, 640);
     assert.ok(map.entryGate.x < map.exitGate.x);
     assert.equal(map.bossStarted, false);
+    assert.ok(map.guards.some(guard => guard.type === 'enforcer'));
+    if (map.sectors[0].security > 0) assert.ok(map.guards.some(guard => guard.type === 'marksman'));
+    if (map.sectors[0].security >= 2) assert.ok(map.guards.some(guard => guard.type === 'burstTurret'));
     if (previous) assert.ok(Math.abs(map.bodyLength / previous - 1.2) < .0001);
     previous = map.bodyLength;
     for (const entity of [...map.guards, ...map.sensors]) {

@@ -101,8 +101,9 @@
   }
   function tick(guard, delta, env) {
     const ai = init(guard);
-    const turret = guard.type === 'turret';
-    const range = (turret ? 440 : 360) * (env.alarm && !env.flashlight && !turret ? .8 : 1);
+    const turret = guard.type === 'turret' || guard.type === 'burstTurret';
+    const melee = guard.type === 'enforcer';
+    const range = (turret ? 440 : guard.type === 'marksman' ? 500 : 360) * (env.alarm && !env.flashlight && !turret ? .8 : 1);
     const strength = window.Perception.strength(guard, env.player, range, turret ? 1.05 : 1.3, env.los);
     const sees = strength > .08;
     const acquisition = strength * (env.flashlight ? 1.65 : 1);
@@ -120,8 +121,10 @@
       }
       const heading = Math.atan2(ai.target.y - guard.y, ai.target.x - guard.x);
       turn(guard, heading, delta);
-      if (!turret && distance(guard, ai.target) > 235) travel(guard, ai.target, delta, env, 1.2);
-      if (guard.fireTimer <= 0 && Math.abs(angle(heading - guard.angle)) < .22) {
+      const reach = guard.radius + (env.player.radius || 13) + 10;
+      const preferred = melee ? reach - 3 : guard.type === 'marksman' ? 335 : 235;
+      if (!turret && distance(guard, ai.target) > preferred) travel(guard, ai.target, delta, env, 1.2);
+      if (guard.fireTimer <= 0 && (!melee || distance(guard, ai.target) <= reach) && Math.abs(angle(heading - guard.angle)) < .22) {
         env.fire(guard, Math.cos(heading), Math.sin(heading));
         guard.fireTimer = guard.fireRate;
       }
