@@ -443,6 +443,8 @@
       this.credits = Number.isFinite(save.credits) ? save.credits : 120;
       this.inventory = new Inventory(save.inventory || {});
       this.unlocked = new Set(Array.isArray(save.unlocked) ? save.unlocked : ["core", "laser", "thruster", "hull", "cargo"]);
+      this.unlocked.add("computer");
+      this.inertiaDampingEnabled = save.inertiaDampingEnabled !== false;
       this.upgradeLevel = Number(save.upgradeLevel) || 0;
       this.stats = calculateStats(this.modules, this.upgradeLevel);
       this.hp = Number.isFinite(save.hp) ? Math.min(save.hp, this.stats.maxHp) : this.stats.maxHp;
@@ -466,6 +468,63 @@
       return BASE_MAX_SPEED + this.stats.thrust * 28;
     }
 
+    canStabilize() {
+      return this.modules.some((module) => module.type === "computer") && this.stats.energyUse <= this.stats.energy;
+    }
+
+    stabilizationForces(massProperties, engines) {
+      const cosine = Math.cos(this.angle);
+      const sine = Math.sin(this.angle);
+      const target = [
+        -2 * (this.vx * cosine + this.vy * sine),
+        -2 * (-this.vx * sine + this.vy * cosine),
+        -3 * this.angularVelocity * MODULE_SIZE,
+      ];
+      const actuators = engines.map((engine) => {
+        const [dx, dy] = moduleDirection(engine);
+        const force = MODULES[engine.type].thrust * ENGINE_FORCE;
+        const torque = ((engine.gx * MODULE_SIZE - massProperties.centerX) * dy -
+          (engine.gy * MODULE_SIZE - massProperties.centerY) * dx) * force;
+        return { key: engineKey(engine), fx: dx * force, fy: dy * force, torque };
+      });
+      if (this.modules.some((module) => module.type === "core")) {
+        for (const sign of [-1, 1]) {
+          actuators.push({ fx: sign * CORE_RCS_FORCE, fy: 0, torque: 0 });
+          actuators.push({ fx: 0, fy: sign * CORE_RCS_FORCE, torque: 0 });
+          actuators.push({ fx: 0, fy: 0, torque: sign * CORE_GYRO_TORQUE });
+        }
+      }
+      // Bounded thrust allocation accounts for each engine's direction and lever arm.
+      // No velocity reset or artificial brake: only available actuators produce force.
+      for (const actuator of actuators) {
+        actuator.level = 0;
+        actuator.vector = [actuator.fx / massProperties.mass, actuator.fy / massProperties.mass,
+          actuator.torque / massProperties.inertia * TORQUE_RESPONSE * MODULE_SIZE];
+      }
+      const residual = [...target];
+      for (let iteration = 0; iteration < 24; iteration++) {
+        for (const actuator of actuators) {
+          const v = actuator.vector;
+          const norm = v.reduce((sum, value) => sum + value * value, 0);
+          if (norm === 0) continue;
+          const correction = v.reduce((sum, value, axis) => sum + value * residual[axis], 0) / norm;
+          const level = Utils.clamp(actuator.level + correction, 0, 1);
+          for (let axis = 0; axis < 3; axis++) residual[axis] -= v[axis] * (level - actuator.level);
+          actuator.level = level;
+        }
+      }
+      const result = { engines: new Map(), fx: 0, fy: 0, torque: 0 };
+      for (const actuator of actuators) {
+        if (actuator.key !== undefined) result.engines.set(actuator.key, actuator.level);
+        else {
+          result.fx += actuator.fx * actuator.level;
+          result.fy += actuator.fy * actuator.level;
+          result.torque += actuator.torque * actuator.level;
+        }
+      }
+      return result;
+    }
+
     update(dt, input, mouseWorld) {
       this.aimWorld = { x: mouseWorld.x, y: mouseWorld.y };
       this.collisionCooldown = Math.max(0, this.collisionCooldown - dt);
@@ -481,6 +540,10 @@
         (input.has("KeyQ") ? 1 : 0);
       const massProperties = calculateMassProperties(this.modules);
       const engines = this.modules.filter(isEngine);
+      const manualControl = ["KeyW", "KeyS", "KeyA", "KeyD", "KeyQ", "KeyE",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].some((key) => input.has(key));
+      const stabilization = this.inertiaDampingEnabled && this.canStabilize() && !manualControl
+        ? this.stabilizationForces(massProperties, engines) : null;
       const activeEngineKeys = new Set(engines.map(engineKey));
       let localForceX = 0;
       let localForceY = 0;
@@ -514,7 +577,11 @@
         }
 
         const exhaustConfig = EXHAUST_TEXTURES[engine.type];
-        if (throttle <= 0) {
+        if (stabilization) {
+          throttle = stabilization.engines.get(key) || 0;
+          gimbal = 0;
+          state.activation = throttle;
+        } else if (throttle <= 0) {
           state.activation = 0;
         } else {
           const rampTime = throttle > state.activation ? exhaustConfig.rampUp : exhaustConfig.rampDown;
@@ -558,6 +625,12 @@
         localForceX += longitudinalInput * CORE_RCS_FORCE * longitudinalHeadroom;
         localForceY += lateralInput * CORE_RCS_FORCE * lateralHeadroom;
         localTorque += turnInput * CORE_GYRO_TORQUE * gyroHeadroom;
+      }
+
+      if (stabilization) {
+        localForceX += stabilization.fx;
+        localForceY += stabilization.fy;
+        localTorque += stabilization.torque;
       }
 
       for (const key of this.engineStates.keys()) {
@@ -920,6 +993,7 @@
         unlocked: [...this.unlocked],
         upgradeLevel: this.upgradeLevel,
         hp: this.hp,
+        inertiaDampingEnabled: this.inertiaDampingEnabled,
       };
     }
   }

@@ -21,6 +21,16 @@
       spriteRotation: 1,
       unlock: 0,
     },
+    computer: {
+      name: "Модуль компьютерного вычисления",
+      short: "CPU",
+      description: "Автостабилизация после отпускания управления: двигатели, РСМ и гиродин",
+      cost: 80,
+      hp: 40,
+      energyUse: 1,
+      sprite: "assets/modules/shield.png",
+      unlock: 0,
+    },
     laser: {
       name: "Шахтёрский лазер",
       short: "LASER",

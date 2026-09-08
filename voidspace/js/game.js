@@ -75,7 +75,7 @@
         "hp-fill", "hp-value", "cargo-fill", "cargo-value", "credits", "distance", "target-card",
         "target-name", "target-fill", "target-yield", "dock-prompt", "toast", "mission", "mission-title",
         "mission-copy", "dock-panel", "dock-content", "inventory-panel", "inventory-content", "build-panel",
-        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen",
+        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle",
       ];
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
@@ -99,6 +99,12 @@
     }
 
     bindEvents() {
+      this.dom["inertia-toggle"].addEventListener("click", () => {
+        if (!this.ship.canStabilize()) return;
+        this.ship.inertiaDampingEnabled = !this.ship.inertiaDampingEnabled;
+        this.updateHud();
+        this.save();
+      });
       window.addEventListener("keydown", (event) => this.onKeyDown(event));
       window.addEventListener("keyup", (event) => this.input.delete(event.code));
       window.addEventListener("blur", () => {
@@ -676,6 +682,14 @@
     }
 
     updateHud() {
+      const stabilizationButton = this.dom["inertia-toggle"];
+      const available = this.ship.canStabilize();
+      const enabled = available && this.ship.inertiaDampingEnabled;
+      stabilizationButton.disabled = !available;
+      stabilizationButton.setAttribute("aria-pressed", String(enabled));
+      stabilizationButton.textContent = `Гашение инерции · ${available ? (enabled ? "ВКЛ" : "ВЫКЛ") :
+        this.ship.modules.some((module) => module.type === "computer") ? "нет энергии" : "нужен модуль"}`;
+      stabilizationButton.title = "После отпускания W/S, A/D и Q/E компьютер гасит движение доступными двигателями, РСМ и гиродином";
       const hpRatio = Utils.clamp(this.ship.hp / this.ship.stats.maxHp, 0, 1);
       const cargoRatio = Utils.clamp(this.ship.inventory.used / Math.max(1, this.ship.stats.cargo), 0, 1);
       this.dom["hp-fill"].style.width = `${hpRatio * 100}%`;

@@ -9,13 +9,14 @@
       content="VOIDSPACE — пиксельная космическая игра о добыче руды, модульном корабле и возвращении на станцию."
     />
     <title>VOIDSPACE // Mining Protocol</title>
-    <link rel="stylesheet" href="css/style.css?v=20260905-11" />
+    <link rel="stylesheet" href="css/style.css?v=20260908-04" />
   </head>
   <body>
     <main id="game-shell" aria-label="VOIDSPACE — браузерная игра">
       <canvas id="game" width="960" height="540" aria-label="Игровое поле"></canvas>
 
       <section id="hud" class="hud" aria-live="polite">
+        <button id="inertia-toggle" class="inertia-toggle" type="button" aria-pressed="false" disabled>Гашение инерции · нужен модуль</button>
         <div class="hud-card status-card">
           <div class="eyebrow">VOIDSPACE // MINER 01</div>
           <div class="bar-row">
@@ -143,12 +144,12 @@
     </main>
 
     <script src="js/utils.js?v=20260907-02" defer></script>
-    <script src="js/modules.js?v=20260908-01" defer></script>
+    <script src="js/modules.js?v=20260908-04" defer></script>
     <script src="js/inventory.js?v=20260907-02" defer></script>
     <script src="js/entities.js?v=20260907-02" defer></script>
     <script src="js/station.js?v=20260908-03" defer></script>
-    <script src="js/ship.js?v=20260908-01" defer></script>
-    <script src="js/game.js?v=20260907-02" defer></script>
-    <script src="js/main.js?v=20260907-02" defer></script>
+    <script src="js/ship.js?v=20260908-04" defer></script>
+    <script src="js/game.js?v=20260908-04" defer></script>
+    <script src="js/main.js?v=20260908-04" defer></script>
   </body>
 </html>

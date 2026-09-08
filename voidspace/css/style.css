@@ -72,6 +72,21 @@ h2,
 .warning { color: var(--red); }
 
 .hud { position: absolute; inset: 0; pointer-events: none; }
+.inertia-toggle {
+  position: absolute;
+  left: 18px;
+  bottom: 62px;
+  pointer-events: auto;
+  padding: 10px 14px;
+  max-width: calc(100% - 36px);
+  font: 600 14px 'Segoe UI', Arial, sans-serif;
+  color: #a7bdce;
+  background: rgba(9, 20, 33, 0.95);
+  border: 1px solid #415a70;
+}
+.inertia-toggle[aria-pressed="true"] { color: #8eecff; border-color: #50b8d0; }
+.inertia-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
+.inertia-toggle:focus-visible { outline: 2px solid #b2f3ff; outline-offset: 3px; }
 .hud-card {
   position: absolute;
   border: 1px solid var(--line);

@@ -6,6 +6,7 @@
   const manifest = {
     module_frame: "assets/modules/frame.png",
     module_core: "assets/modules/core.png",
+    module_computer: "assets/modules/shield.png",
     module_laser: "assets/modules/laser.png",
     module_thruster: "assets/modules/thruster.png",
     module_booster: "assets/modules/booster.png",
