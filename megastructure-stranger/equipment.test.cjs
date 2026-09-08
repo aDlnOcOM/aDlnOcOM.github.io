@@ -71,7 +71,7 @@ test('panning ignores right button and scrollbars; cancellation releases draggin
 // In-memory saves and DOM doubles: never reads or changes the player's save.
 function game(saved = {}) {
   let stored = JSON.stringify(saved);
-  const node = () => ({ width: 960, height: 600, getContext: () => ({}),
+  const node = () => ({ dataset: {}, width: 960, height: 600, getContext: () => ({}),
     addEventListener() {}, appendChild() {} });
   const scope = { window: {}, document: { getElementById: node, createElement: node },
     performance: { now: () => 0 }, localStorage: {

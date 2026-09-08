@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 function load() {
-  const node = () => ({ width: 960, height: 600, getContext: () => ({}), addEventListener() {}, appendChild() {} });
+  const node = () => ({ dataset: {}, width: 960, height: 600, getContext: () => ({}), addEventListener() {}, appendChild() {} });
   const context = { window: { addEventListener() {}, requestAnimationFrame() {} },
     document: { getElementById: node, createElement: node }, performance: { now: () => 0 },
     localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(context);
-  for (const file of ['equipment.js', 'perception.js', 'security-ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
+  for (const file of ['equipment.js', 'perception.js', 'security-ai.js', 'power-inventory.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
+  context.window.PowerInventory.render = () => {};
   let source = fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8');
   source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, updateSensors, updatePlayer, reloadSmg, emitNoise, triggerAlarm, createGuard }; })();');
   vm.runInContext(source, context);
@@ -124,6 +125,7 @@ test('noise respects listeners, wall attenuation and suspicion versus alarm', ()
 
 test('actual movement and reload sounds cause investigation, never remote omniscience', () => {
   const { state, updatePlayer, reloadSmg } = load(); prepare(state);
+  state.powerInventory = { loaded: 0, battery: 150, magazines: [{ id: 0, capacity: 32, energy: 1 }] };
   state.active = true;
   Object.assign(state.player, { x: 0, y: 0, radius: 12, speed: 100, weapon: 'knife', reload: 0 });
   state.input.keys.add('KeyD');

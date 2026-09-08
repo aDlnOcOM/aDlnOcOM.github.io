@@ -1,0 +1,31 @@
+.inventory-layout { display:grid; grid-template-columns:minmax(320px,.85fr) minmax(380px,1.15fr); gap:32px; }
+.inventory-layout h3 { color:#a6bfb5; font:12px Consolas,monospace; text-transform:uppercase; letter-spacing:.15em; }
+.equipment-body { border-right:1px solid #2c4241; padding-right:24px; }
+#panel-equipment .loadout-list,.field-slots { position:relative; display:grid; grid-template-columns:1fr 1fr; grid-template-areas:'helmet helmet' 'smg bag' 'chest knife' 'pants pants' 'boots boots'; gap:14px; padding:24px 0; background:radial-gradient(ellipse at 50% 22%,#58706a24 0 12%,transparent 13%),linear-gradient(90deg,transparent 28%,#3e575222 29% 71%,transparent 72%); }
+#panel-equipment .loadout-item,.field-slot { min-height:100px; padding:12px; background:#102020dc; border:1px solid #40574f; }
+#panel-equipment [data-gear=helmet],.field-slot[data-gear=helmet] { grid-area:helmet; width:55%; justify-self:center; }
+#panel-equipment [data-gear=smg],.field-slot[data-gear=smg] { grid-area:smg; }
+#panel-equipment [data-gear=bag],.field-slot[data-gear=bag] { grid-area:bag; }
+#panel-equipment [data-gear=chest],.field-slot[data-gear=chest] { grid-area:chest; }
+#panel-equipment [data-gear=knife],.field-slot[data-gear=knife] { grid-area:knife; }
+#panel-equipment [data-gear=pants],.field-slot[data-gear=pants] { grid-area:pants; width:55%; justify-self:center; }
+#panel-equipment [data-gear=boots],.field-slot[data-gear=boots] { grid-area:boots; width:55%; justify-self:center; }
+.supply-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.supply-cell { padding:18px; border:1px solid #3c524d; background:linear-gradient(135deg,#213631,#111c20); min-width:0; }
+.supply-icon { display:block; color:#86d3b5; font-size:36px; margin-bottom:12px; }
+.supply-cell small,.field-slot small { display:block; color:#8fae9e; font:9px/1.6 Consolas,monospace; text-transform:uppercase; }
+.supply-cell h4 { color:#d0ded5; font-size:12px; font-weight:500; line-height:1.5; margin:10px 0; }
+.supply-cell strong { color:#a5dac0; font:22px Consolas,monospace; }
+.supply-cell strong span { font-size:11px; color:#7e998e; }
+.supply-cell meter { display:block; width:100%; height:6px; margin:12px 0; }
+.supply-cell p { color:#8b9e92; font-size:11px; line-height:1.6; }
+.supply-cell button { width:100%; margin-top:12px; font-size:10px; }
+.supply-cell button:disabled { opacity:.4; cursor:not-allowed; }
+.battery-cell { border-color:#6f684b; background:linear-gradient(135deg,#343426,#191f1c); }
+.battery-cell .supply-icon { color:#c9c083; }
+.supply-empty { min-height:70px; display:grid; place-items:center; border:1px dashed #2e4140; color:#374e48; background:#0c181b; }
+.field-inventory { width:min(1150px,94vw); max-height:92vh; overflow:auto; padding:28px; color:#d5e3db; border:1px solid #8bbaa5; background:#0d181c; }
+.field-inventory::backdrop { background:#03090ce8; backdrop-filter:blur(5px); }
+.field-inventory>header { display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid #334941; margin-bottom:24px; padding-bottom:16px; }
+.field-slot strong { display:block; margin-top:14px; font-size:12px; }
+@media(max-width:850px) { .inventory-layout { grid-template-columns:1fr; } .equipment-body { border-right:0; padding-right:0; } }

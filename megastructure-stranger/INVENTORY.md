@@ -1,0 +1,24 @@
+# Energy equipment and inventory
+
+The equipment tab is a two-column panel: positioned equipment slots on the left,
+inventory cells on the right. Equipment slots retain their upgrade-tree actions.
+I or the sidebar inventory button opens a paused field panel; Escape closes it.
+Field equipment is read-only; magazine refill buttons transfer energy from Mk I.
+
+Default loadout: three low-voltage battery magazines (one loaded) and one Mk I
+weapon battery with 150 energy. Standard magazines hold 32; extended upgrades
+hold 44 / 52. Quick-feed variants retain 32 capacity and the existing faster reload.
+One SMG shot consumes one energy regardless of its damage upgrades.
+
+R starts the existing timed reload. At completion it swaps to the reserve with
+the most energy, preserving the old magazine; if no reserve is more charged,
+it draws only the available energy from Mk I. Empty stocks cannot produce shots.
+Energy persists across floors. Returning to Hideout provides full default supplies
+for the next run; opening field inventory never replenishes them for free.
+Run supplies are transient, like the existing run state; this change introduces
+no save-format migration, item loot, drag-and-drop or consumable purchases.
+
+Tests: `node --test power-inventory.test.cjs` plus the existing suites. Covers
+types/capacities, one-energy shots, partial swaps, finite transfer, depletion,
+real timed reload integration and floor/reset boundaries. Browser visual QA is
+still unverified because local-file access is policy-blocked.

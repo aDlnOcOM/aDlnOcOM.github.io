@@ -34,8 +34,8 @@
           { id: "incendiary", name: "Зажигательный", effect: "+1 урон", cost: 25, tier: { name: "Термозаряд", effect: "+2 урон", cost: 42 } },
           { id: "armor-piercing", name: "Бронебойный", effect: "+2 урона", cost: 28, tier: { name: "Вольфрамовый", effect: "+3 урона", cost: 46 } }
         ] },
-        { id: "magazine", base: "Обычный магазин", options: [
-          { id: "extended", name: "Удлинённый", effect: "+12 патронов", cost: 30, tier: { name: "Барабан", effect: "+8 патронов", cost: 44 } },
+        { id: "magazine", base: "Штатный аккумуляторный магазин", options: [
+          { id: "extended", name: "Увеличенный аккумулятор", effect: "+12 ед. энергии", cost: 30, tier: { name: "Барабанный аккумулятор", effect: "+8 ед. энергии", cost: 44 } },
           { id: "quick-feed", name: "Быстрая подача", effect: "−22% перезарядка", cost: 27, tier: { name: "Автоподача", effect: "ещё −18%", cost: 40 } }
         ] },
         { id: "optic", base: "Iron sights", options: [
@@ -216,6 +216,7 @@
   }
 
   function updateHome() {
+    if (window.PowerInventory) window.PowerInventory.render(element("supply-grid"), createPowerStock());
     window.HideoutShell?.refresh(progression, STARTER_LOADOUT);
     element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
@@ -233,6 +234,7 @@
       const entry = document.createElement("button");
       entry.className = `loadout-item ${state.selectedGear === item.id ? "selected" : ""}`;
       entry.type = "button";
+      entry.dataset.gear = item.id;
       entry.innerHTML = `<span class="loadout-icon">${item.icon}</span><span><small>${item.slot}</small><strong>${item.name}</strong></span>`;
       entry.addEventListener("click", () => {
         state.selectedGear = item.id;
@@ -245,6 +247,23 @@
   function canBuy(item, collection) {
     const requirements = item.requires || [];
     return !progression[collection].includes(item.id) && progression.salvage >= item.cost && requirements.every(hasImplant);
+  }
+
+  function createPowerStock() {
+    return window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"));
+  }
+
+  function openFieldInventory() {
+    if (!state.active || state.inventoryOpen) return;
+    state.inventoryOpen = true;
+    state.active = false;
+    state.input.keys.clear();
+    state.input.mouseDown = false;
+    window.PowerInventory.show(state.powerInventory, STARTER_LOADOUT, id => {
+      window.PowerInventory.refill(state.powerInventory, id);
+      state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
+      updateRunUi();
+    }, () => { state.inventoryOpen = false; state.active = state.runActive; });
   }
 
   function renderImplants() {
@@ -973,6 +992,7 @@
 
   function beginRun() {
     state.floor = 1;
+    state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);
     state.runSalvage = 0;
     state.runActive = true;
@@ -1015,7 +1035,7 @@
       speed: stats.speed,
       invulnerability: 0,
       weapon: "smg",
-      ammo: stats.magazine,
+      ammo: state.powerInventory.magazines[state.powerInventory.loaded].energy,
       magazine: stats.magazine,
       fireCooldown: 0,
       reload: 0,
@@ -1063,7 +1083,7 @@
 
     const knife = player.weapon === "knife";
     element("weapon-name").textContent = knife ? "НОЖ ОХРАНЫ" : "ПП ОХРАНЫ";
-    element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + "</small>";
+    element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " ЭН.</small>";
     const lightStatus = " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ / ЗАМЕТЕН" : "ВЫКЛ");
     element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
@@ -1268,7 +1288,7 @@
     player.knifeFlash = Math.max(0, player.knifeFlash - delta);
     if (player.reload > 0) {
       player.reload -= delta;
-      if (player.reload <= 0) player.ammo = player.magazine;
+      if (player.reload <= 0) player.ammo = window.PowerInventory.reload(state.powerInventory);
       return;
     }
     if (player.weapon === "smg" && state.input.mouseDown && player.fireCooldown <= 0) fireSmg();
@@ -1313,7 +1333,8 @@
     const stats = playerStats();
     const aim = playerAimAngle() + randomBetween(-stats.spread, stats.spread);
     state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, color: "#9ffdf3", lifetime: 1.4 });
-    player.ammo -= 1;
+    window.PowerInventory.fire(state.powerInventory);
+    player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
     player.fireCooldown = .105;
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
     const suppressed = hasUpgrade("smg", "muzzle", "suppressor");
@@ -1324,6 +1345,7 @@
   function reloadSmg() {
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
+    if (!window.PowerInventory.canReload(state.powerInventory)) return;
     player.reload = playerStats().reload;
     emitNoise(player.x, player.y, 105, "звук перезарядки");
   }
@@ -1815,13 +1837,15 @@
   }
 
   window.addEventListener("keydown", event => {
-    if (state.selectedGear || !state.runActive) return;
+    if (state.selectedGear || state.inventoryOpen || !state.runActive) return;
+    if (event.code === "KeyI" && !event.repeat) { openFieldInventory(); return; }
     if (event.code === "KeyE" && !event.repeat) tryInteract();
     if (event.code === "KeyF" && !event.repeat) toggleFlashlight();
   });
 
 
   element("start-run").addEventListener("click", beginRun);
+  element("field-inventory").addEventListener("click", openFieldInventory);
   element("open-equipment").addEventListener("click", () => {
     state.selectedGear = "smg";
     renderEquipmentTree();
@@ -1829,7 +1853,7 @@
   element("room-overlay").addEventListener("click", onOverlayClick);
   element("abort-run").addEventListener("click", () => finishRun(1));
   window.addEventListener("keydown", event => {
-    if (state.selectedGear || !state.runActive) return;
+    if (state.selectedGear || state.inventoryOpen || !state.runActive) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR") reloadSmg();

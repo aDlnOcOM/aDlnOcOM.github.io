@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 function load(full = false) {
-  const node = () => ({ width: 960, height: 600, getContext: () => ({}), addEventListener() {}, appendChild() {} });
+  const node = () => ({ dataset: {}, width: 960, height: 600, getContext: () => ({}), addEventListener() {}, appendChild() {} });
   const context = { window: { addEventListener() {}, requestAnimationFrame() {} },
     document: { getElementById: node, createElement: node }, performance: { now: () => 0 },
     localStorage: { getItem: () => null, setItem() {} } };

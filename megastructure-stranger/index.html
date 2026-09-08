@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="equipment.css">
   <link rel="stylesheet" href="hideout.css">
+  <link rel="stylesheet" href="inventory.css">
 </head>
 <body data-screen="menu">
   <div class="build-watermark" aria-hidden="true">
@@ -103,8 +104,8 @@
           </div>
           <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
         </div>
-        <div id="loadout-list" class="loadout-list"></div>
-        <p class="section-note">Выберите предмет, чтобы открыть его дерево развития. Модификации сохраняются между забегами.</p>
+        <div class="inventory-layout"><section class="equipment-body"><h3>На персонаже</h3><div id="loadout-list" class="loadout-list"></div></section><section><h3>Инвентарь</h3><p class="section-note">Зарядная станция Hideout · запасы восстановлены</p><div id="supply-grid" class="supply-grid"></div></section></div>
+        <p class="section-note">ПП Охраны — маломощное энергетическое оружие: 1 выстрел = 1 ед. энергии. Выберите слот, чтобы открыть дерево развития. Тип аккумуляторных магазинов зависит от улучшений ПП.</p>
       </section>
       <section id="panel-storage" class="hideout-panel storage-panel" role="tabpanel" aria-labelledby="tab-storage" tabindex="0" hidden>
         <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
@@ -126,6 +127,7 @@
           <p id="signal-text">Шумоподавление включено. Путь до следующей комнаты свободен.</p>
         </div>
         <button id="abort-run" class="quiet-button" type="button">Вернуться в убежище</button>
+        <button id="field-inventory" class="quiet-button" type="button">Инвентарь · I</button>
       </aside>
 
       <section class="combat-section">
@@ -155,6 +157,7 @@
     </section>
   </main>
   <script src="equipment.js"></script>
+  <script src="power-inventory.js"></script>
   <script src="hideout.js"></script>
   <script src="security-ai.js"></script>
   <script src="perception.js"></script>
