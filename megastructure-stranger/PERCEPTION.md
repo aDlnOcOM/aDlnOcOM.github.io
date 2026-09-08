@@ -11,7 +11,10 @@ bots are silhouettes without health or status readouts. Darkness retains a
 a separate 29-degree, 336-unit beam before equipment upgrades, plus a dim spill
 extending 12.5 degrees beyond each beam edge at 85% range. Light edges fade.
 Unknown space is opaque; remembered geometry remains dim, never a live enemy map.
-The exploration grid now uses the same cell alignment as the memory renderer.
+Exploration is retained as continuous world-aligned pixel masks of the actual
+visibility image, not 32×32 revealed cells. Lazy 512-pixel storage chunks are
+clipped canvas buffers, not visible tiles; fractional camera positions are kept.
+Each new floor receives independent memory. No blur expands vision through walls.
 
 The rendered visibility mask uses obstacle-corner rays and angular/radial fading,
 not screen-space blur that leaks around walls. Static sector lights are decorative

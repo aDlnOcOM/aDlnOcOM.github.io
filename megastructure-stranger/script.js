@@ -874,7 +874,6 @@
     updateRunUi();
   }
   // Длинный этаж: скрытное исследование, единая тревога и шлюзовой босс.
-  const LONG_FLOOR_CELL = 32;
 
   function randomInteger(minimum, maximum) {
     return Math.floor(randomBetween(minimum, maximum + 1));
@@ -990,7 +989,6 @@
       bossStarted: false,
       bossDefeated: false,
       exitOpen: false,
-      explored: new Set(),
       lastRouteSector: -1
     };
   }
@@ -1022,7 +1020,6 @@
     state.lastContact = null;
     state.lastReportUi = 0;
     state.flashlight = false;
-    state.visionTimer = 0;
     resetPlayer();
     state.cameraX = 0;
     state.active = false;
@@ -1222,24 +1219,6 @@
     context.restore();
   }
 
-  function exploredCellKey(worldX, worldY) {
-    return Math.floor(worldX / LONG_FLOOR_CELL) + ":" + Math.floor(worldY / LONG_FLOOR_CELL);
-  }
-
-  function updateExploration(delta) {
-    state.visionTimer += delta;
-    if (state.visionTimer < .12) return;
-    state.visionTimer = 0;
-    const map = state.floorMap;
-    const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
-    for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
-      for (let y = 0; y < HEIGHT; y += LONG_FLOOR_CELL) {
-        const point = { x: x + LONG_FLOOR_CELL / 2, y: y + LONG_FLOOR_CELL / 2 };
-        if (isPointVisible(point)) map.explored.add(exploredCellKey(point.x, point.y));
-      }
-    }
-    map.explored.add(exploredCellKey(state.player.x, state.player.y));
-  }
 
   function moveCircle(entity, horizontal, vertical) {
     entity.x += horizontal;
@@ -1575,7 +1554,6 @@
     updateBullets(delta);
     updateParticles(delta);
     state.cameraX += (clamp(state.player.x - WIDTH * .42, 0, state.floorMap.width - WIDTH) - state.cameraX) * Math.min(1, delta * 7);
-    updateExploration(delta);
     updateRunUi();
   }
 
@@ -1752,14 +1730,8 @@
     const fog = state.fogCanvas.getContext("2d");
     const vision = state.visionCanvas.getContext("2d");
     fog.clearRect(0, 0, WIDTH, HEIGHT);
-    const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
-    for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
-      for (let y = 0; y < HEIGHT; y += LONG_FLOOR_CELL) {
-        const key = exploredCellKey(x + LONG_FLOOR_CELL / 2, y + LONG_FLOOR_CELL / 2);
-        fog.fillStyle = map.explored.has(key) ? (state.alarm ? "rgba(1, 4, 7, .91)" : "rgba(1, 4, 7, .78)") : "#010407";
-        fog.fillRect(Math.round(x - state.cameraX), y, LONG_FLOOR_CELL + 1, LONG_FLOOR_CELL + 1);
-      }
-    }
+    fog.fillStyle = '#010407';
+    fog.fillRect(0, 0, WIDTH, HEIGHT);
 
     vision.clearRect(0, 0, WIDTH, HEIGHT);
     const observer = { x: state.player.x, y: state.player.y, angle: playerAimAngle() };
@@ -1768,6 +1740,8 @@
       window.Perception.drawLayer(vision, observer, layer, walls, state.cameraX, Math.hypot(WIDTH, HEIGHT) + 200);
     }
 
+    window.FogMemory.rememberAndDraw(map, state.visionCanvas, fog, state.cameraX,
+      WIDTH, HEIGHT, state.alarm ? .09 : .22, () => document.createElement('canvas'));
     fog.save();
     fog.globalCompositeOperation = "destination-out";
     fog.drawImage(state.visionCanvas, 0, 0);
