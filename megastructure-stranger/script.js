@@ -216,6 +216,7 @@
   }
 
   function updateHome() {
+    window.HideoutShell?.refresh(progression, STARTER_LOADOUT);
     element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
     renderLoadout();
@@ -1774,7 +1775,7 @@
   }
 
   window.addEventListener("keydown", event => {
-    if (state.selectedGear) return;
+    if (state.selectedGear || !state.runActive) return;
     if (event.code === "KeyE" && !event.repeat) tryInteract();
     if (event.code === "KeyF" && !event.repeat) toggleFlashlight();
   });
@@ -1788,7 +1789,7 @@
   element("room-overlay").addEventListener("click", onOverlayClick);
   element("abort-run").addEventListener("click", () => finishRun(1));
   window.addEventListener("keydown", event => {
-    if (state.selectedGear) return;
+    if (state.selectedGear || !state.runActive) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR") reloadSmg();

@@ -7,8 +7,9 @@
   <title>Megastructure Stranger</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="equipment.css">
+  <link rel="stylesheet" href="hideout.css">
 </head>
-<body>
+<body data-screen="menu">
   <div class="build-watermark" aria-hidden="true">
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
@@ -40,7 +41,34 @@
       </div>
     </header>
 
-    <section id="home-screen" class="home-screen" aria-labelledby="home-title">
+    <section id="main-menu" class="main-menu" aria-labelledby="menu-title">
+      <div class="menu-console">
+        <p class="eyebrow">НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП / 0041</p>
+        <h1 id="menu-title">MEGA<span>STRUCTURE</span><em>STRANGER</em></h1>
+        <p class="menu-tagline">В стенах системы.<br>За пределами её контроля.</p>
+        <nav class="menu-actions" aria-label="Главное меню">
+          <button id="enter-hideout" type="button"><small>01</small> Войти в убежище <span>↗</span></button>
+          <button id="menu-equipment" type="button"><small>02</small> Экипировка <span>⌖</span></button>
+          <button id="menu-controls" type="button" aria-expanded="false" aria-controls="menu-help"><small>03</small> Управление <span>+</span></button>
+        </nav>
+        <p id="menu-help" class="menu-help" hidden>WASD / стрелки — движение · мышь — прицел · ЛКМ — огонь · Q — нож · R — перезарядка · 1/2 — оружие · E — шлюз · F — фонарь.</p>
+        <p class="menu-footer"><i></i> ЛОКАЛЬНЫЙ КОНТУР АКТИВЕН <span>EARLY BUILD</span></p>
+      </div>
+      <div class="mega-wall" aria-hidden="true"><div class="wall-spine"></div><div class="wall-door"><span>41</span><small>MAINTENANCE ACCESS<br>UNREGISTERED SECTOR</small></div><div class="wall-pipe"></div><span class="wall-caption">МЕГАСТРУКТУРА / ВНЕШНЯЯ ОБОЛОЧКА<br>ОБИТАТЕЛЬ НЕ ОБНАРУЖЕН</span></div>
+    </section>
+
+    <section id="home-screen" class="home-screen" hidden aria-label="Hideout">
+      <header class="hideout-header">
+        <button id="back-menu" class="hideout-brand" type="button" aria-label="Вернуться в главное меню">MS<span>← МЕНЮ</span></button>
+        <nav class="hideout-tabs" role="tablist" aria-label="Разделы убежища">
+          <button id="tab-shelter" type="button" role="tab" aria-selected="true" aria-controls="panel-shelter" data-tab="shelter">Убежище</button>
+          <button id="tab-equipment" type="button" role="tab" aria-selected="false" aria-controls="panel-equipment" tabindex="-1" data-tab="equipment">Экипировка</button>
+          <button id="tab-storage" type="button" role="tab" aria-selected="false" aria-controls="panel-storage" tabindex="-1" data-tab="storage">Склад</button>
+        </nav>
+        <button id="start-run" class="deploy-button" type="button">Забег <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4H4v16h6M8 12h12m-5-5 5 5-5 5"/></svg></button>
+      </header>
+      <div class="hideout-strip"><span><i class="status-dot"></i> УБЕЖИЩЕ 41 / СЛЕПАЯ ЗОНА</span><span>СВЯЗЬ С СИСТЕМОЙ: РАЗОРВАНА</span></div>
+      <section id="panel-shelter" class="hideout-panel shelter-layout" role="tabpanel" aria-labelledby="tab-shelter" tabindex="0">
       <div class="briefing-panel">
         <p class="eyebrow">убежище 41 / служебный уровень не отмечен</p>
         <h1 id="home-title">Пока система не видит тебя — ты жив.</h1>
@@ -50,7 +78,7 @@
           <div><span>Лучший этаж</span><strong id="best-floor">00</strong></div>
           <div><span>Состояние</span><strong>НЕ ЗАРЕГИСТРИРОВАН</strong></div>
         </div>
-        <button id="start-run" class="primary-button" type="button">Начать забег <span>↘</span></button>
+        <div class="shelter-scene" aria-hidden="true"><span>41 / SAFEHOUSE</span><div class="shelter-terminal">OFFLINE<br><b>▰ ▰ ▰ ▱</b></div><small>ВЕНТИЛЯЦИЯ · РЕЗЕРВНОЕ ПИТАНИЕ · ТИШИНА</small></div>
       </div>
 
       <div class="home-grid">
@@ -66,18 +94,24 @@
         </section>
 
       </div>
-
-      <section class="loadout-panel" aria-labelledby="loadout-title">
+      </section>
+      <section id="panel-equipment" class="hideout-panel loadout-panel" role="tabpanel" aria-labelledby="tab-equipment" tabindex="0" hidden>
         <div class="panel-heading">
           <div>
             <p class="eyebrow">перед выходом / инвентаризация</p>
-            <h2 id="loadout-title">Стартовый комплект</h2>
+            <h2 id="loadout-title">Экипировка</h2>
           </div>
           <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
         </div>
         <div id="loadout-list" class="loadout-list"></div>
+        <p class="section-note">Выберите предмет, чтобы открыть его дерево развития. Модификации сохраняются между забегами.</p>
       </section>
-
+      <section id="panel-storage" class="hideout-panel storage-panel" role="tabpanel" aria-labelledby="tab-storage" tabindex="0" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
+        <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов и модификаций.</p></div></div>
+        <h3>Закреплённое снаряжение</h3><div id="storage-items" class="storage-items"></div>
+        <p class="section-note">Здесь отображаются имеющиеся предметы и установленные модификации. Запасных предметов пока нет.</p>
+      </section>
     </section>
 
     <section id="run-screen" class="run-screen" hidden aria-label="Забег по мегаструктуре">
@@ -121,6 +155,7 @@
     </section>
   </main>
   <script src="equipment.js"></script>
+  <script src="hideout.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
