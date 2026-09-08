@@ -9,7 +9,7 @@ function load() {
     document: { getElementById: node, createElement: node }, performance: { now: () => 0 },
     localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(context);
-  for (const file of ['equipment.js', 'security-ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
+  for (const file of ['equipment.js', 'perception.js', 'security-ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
   let source = fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8');
   source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, updateSensors, emitNoise, triggerAlarm, createGuard }; })();');
   vm.runInContext(source, context);

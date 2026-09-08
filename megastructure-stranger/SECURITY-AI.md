@@ -1,9 +1,10 @@
 # Security behaviour
 
 - Global alarm latches until the next floor, switching emergency lighting on once.
-  Repeated radio reports do not reset the flashlight switch.
+  Alarm activation and repeated radio reports preserve the flashlight switch.
 - Guards confirm a target after 0.4 seconds inside their viewing cone; cameras
-  require 0.5 seconds. Exposure fades outside sight. Walls and closed gates block
+  require 0.5 seconds at full visibility. Peripheral targets take longer; see
+  PERCEPTION.md for light modifiers. Exposure fades outside sight. Walls and closed gates block
   the entire observation, including at point-blank range. No rear omniscience.
 - Cameras report again every 0.8 seconds while contact remains visible. A report
   snapshots coordinates. Units within 1100 world units investigate; other units

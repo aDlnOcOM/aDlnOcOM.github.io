@@ -1064,7 +1064,7 @@
     const knife = player.weapon === "knife";
     element("weapon-name").textContent = knife ? "НОЖ ОХРАНЫ" : "ПП ОХРАНЫ";
     element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + "</small>";
-    const lightStatus = state.alarm ? " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ" : "ВЫКЛ") : "";
+    const lightStatus = " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ / ЗАМЕТЕН" : "ВЫКЛ");
     element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
 
@@ -1156,34 +1156,32 @@
     return nearest;
   }
 
-  function hasLineOfSight(fromX, fromY, toX, toY, targetRadius = 0) {
-    const targetDistance = Math.hypot(toX - fromX, toY - fromY);
-    if (!targetDistance) return true;
-    const angle = Math.atan2(toY - fromY, toX - fromX);
-    return raycastDistance(fromX, fromY, angle, targetDistance) >= targetDistance - targetRadius - 3;
+  function hasLineOfSight(fromX, fromY, toX, toY) {
+    return window.Perception.lineOfSight(fromX, fromY, toX, toY, getWorldColliders());
   }
 
   function visionSettings() {
-    const stats = playerStats();
-    if (state.alarm) {
-      if (!state.flashlight) return { fov: Math.PI * 2, range: 58, blur: 4 };
-      return { fov: stats.flashlightAngle * Math.PI / 180, range: stats.flashlightRange, blur: 13 };
-    }
-    return { fov: 68 * Math.PI / 180, range: state.floorMap.width, blur: 9 };
+    return window.Perception.playerLayers(state.alarm, state.flashlight, playerStats());
+  }
+
+  function pointVisibility(point) {
+    if (!state.player) return 0;
+    return window.Perception.playerStrength(
+      { x: state.player.x, y: state.player.y, angle: playerAimAngle() },
+      point, visionSettings(), hasLineOfSight);
   }
 
   function isPointVisible(point) {
-    const player = state.player;
-    if (!player) return false;
-    const settings = visionSettings();
-    const differenceX = point.x - player.x;
-    const differenceY = point.y - player.y;
-    const targetDistance = Math.hypot(differenceX, differenceY);
-    if (targetDistance < player.radius + 8) return true;
-    if (targetDistance > settings.range) return false;
-    const angleDifference = Math.abs(normalizedAngle(Math.atan2(differenceY, differenceX) - playerAimAngle()));
-    if (angleDifference > settings.fov / 2) return false;
-    return hasLineOfSight(player.x, player.y, point.x, point.y, point.radius || 0);
+    return pointVisibility(point) >= .18;
+  }
+
+  function drawVisibleEntity(entity, drawEntity) {
+    const amount = pointVisibility(entity);
+    if (amount < .18) return;
+    context.save();
+    context.globalAlpha = Math.min(1, (amount - .12) / .5);
+    drawEntity(entity);
+    context.restore();
   }
 
   function exploredCellKey(worldX, worldY) {
@@ -1197,7 +1195,7 @@
     const map = state.floorMap;
     const startX = Math.floor(state.cameraX / LONG_FLOOR_CELL) * LONG_FLOOR_CELL;
     for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
-      for (let y = 28; y < HEIGHT - 28; y += LONG_FLOOR_CELL) {
+      for (let y = 0; y < HEIGHT; y += LONG_FLOOR_CELL) {
         const point = { x: x + LONG_FLOOR_CELL / 2, y: y + LONG_FLOOR_CELL / 2 };
         if (isPointVisible(point)) map.explored.add(exploredCellKey(point.x, point.y));
       }
@@ -1283,7 +1281,6 @@
   function triggerAlarm(reason) {
     if (state.alarm || !state.floorMap) return;
     state.alarm = true;
-    state.flashlight = false;
     state.alarmReason = reason;
     element("signal-text").textContent = "ТРЕВОГА: " + reason + ". Аварийное освещение включено; F — фонарь.";
     createParticles(state.player.x, state.player.y, "#ff6d68", 18, 66);
@@ -1334,9 +1331,9 @@
   function updateSensors(delta) {
     for (const sensor of state.sensors) {
       sensor.angle = sensor.homeAngle + Math.sin(state.elapsed * (state.alarm ? 1.3 : .45) + sensor.phase) * (state.alarm ? 1.12 : .35);
-      sensor.seesPlayer = window.SecurityAI.visible(sensor, state.player, sensor.range, sensor.fov,
-        (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, getWorldColliders()));
-      sensor.exposure = Math.max(0, Math.min(.5, sensor.exposure + (sensor.seesPlayer ? delta : -delta * 1.5)));
+      const strength = window.Perception.strength(sensor, state.player, sensor.range, sensor.fov, hasLineOfSight);
+      sensor.seesPlayer = strength > .08;
+      sensor.exposure = Math.max(0, Math.min(.5, sensor.exposure + (sensor.seesPlayer ? delta * strength * (state.flashlight ? 1.4 : 1) : -delta * 1.5)));
       if (sensor.seesPlayer && sensor.exposure >= .5 && state.elapsed >= (sensor.reportAt || 0)) {
         securityReport(sensor, state.player, "камера передала координаты нарушителя");
         sensor.reportAt = state.elapsed + .8;
@@ -1356,7 +1353,7 @@
   function updateBoss(enemy, delta) {
     const player = state.player;
     const seesPlayer = window.SecurityAI.visible(enemy, player, 900, Math.PI * 2,
-      (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, getWorldColliders()));
+      hasLineOfSight);
     const targetAngle = seesPlayer ? Math.atan2(player.y - enemy.y, player.x - enemy.x) : enemy.angle;
     if (seesPlayer) enemy.angle = targetAngle;
     const playerDistance = distance(player, enemy);
@@ -1373,8 +1370,8 @@
   function updateEnemies(delta) {
     const walls = getWorldColliders();
     const env = {
-      player: state.player, now: state.elapsed, alarm: state.alarm, walls,
-      los: (x, y, tx, ty) => window.SecurityAI.clear({ x, y }, { x: tx, y: ty }, walls),
+      player: state.player, now: state.elapsed, alarm: state.alarm, flashlight: state.flashlight, walls,
+      los: (x, y, tx, ty) => window.Perception.lineOfSight(x, y, tx, ty, walls),
       move: moveCircle, fire: fireEnemy,
       report: (enemy, point) => securityReport(enemy, point, "патруль подтвердил визуальный контакт")
     };
@@ -1503,11 +1500,11 @@
   }
 
   function toggleFlashlight() {
-    if (!state.active || !state.alarm) return;
+    if (!state.active) return;
     state.flashlight = !state.flashlight;
     element("signal-text").textContent = state.flashlight
-      ? "Фонарь включён. Узкий луч подсвечивает только ближайший маршрут."
-      : "Фонарь выключен. В аварийном свете виден только тепловой контур.";
+      ? "Фонарь включён. Узкий луч помогает видеть, но ускоряет распознавание охраной."
+      : "Фонарь выключен. В темноте остаётся лишь слабый обзор перед собой.";
   }
 
   function update(delta) {
@@ -1700,33 +1697,17 @@
     for (let x = startX; x < state.cameraX + WIDTH + LONG_FLOOR_CELL; x += LONG_FLOOR_CELL) {
       for (let y = 0; y < HEIGHT; y += LONG_FLOOR_CELL) {
         const key = exploredCellKey(x + LONG_FLOOR_CELL / 2, y + LONG_FLOOR_CELL / 2);
-        fog.fillStyle = map.explored.has(key) ? "rgba(1, 4, 7, .48)" : "rgba(1, 4, 7, .9)";
+        fog.fillStyle = map.explored.has(key) ? (state.alarm ? "rgba(1, 4, 7, .91)" : "rgba(1, 4, 7, .78)") : "#010407";
         fog.fillRect(Math.round(x - state.cameraX), y, LONG_FLOOR_CELL + 1, LONG_FLOOR_CELL + 1);
       }
     }
 
     vision.clearRect(0, 0, WIDTH, HEIGHT);
-    const settings = visionSettings();
-    const angle = playerAimAngle();
-    const segments = Math.max(20, Math.ceil(settings.fov * 64));
-    vision.save();
-    vision.filter = "blur(" + settings.blur + "px)";
-    const visionGradient = vision.createRadialGradient(state.player.x - state.cameraX, state.player.y, Math.max(0, settings.range * .06), state.player.x - state.cameraX, state.player.y, Math.max(1, settings.range));
-    visionGradient.addColorStop(0, "rgba(255,255,255,.99)");
-    visionGradient.addColorStop(state.alarm ? .54 : .92, "rgba(255,255,255,.96)");
-    visionGradient.addColorStop(state.alarm ? .86 : .995, "rgba(255,255,255,.16)");
-    visionGradient.addColorStop(1, "rgba(255,255,255,0)");
-    vision.fillStyle = visionGradient;
-    vision.beginPath();
-    vision.moveTo(state.player.x - state.cameraX, state.player.y);
-    for (let index = 0; index <= segments; index += 1) {
-      const rayAngle = angle - settings.fov / 2 + settings.fov * index / segments;
-      const range = raycastDistance(state.player.x, state.player.y, rayAngle, settings.range);
-      vision.lineTo(state.player.x - state.cameraX + Math.cos(rayAngle) * range, state.player.y + Math.sin(rayAngle) * range);
+    const observer = { x: state.player.x, y: state.player.y, angle: playerAimAngle() };
+    const walls = getWorldColliders();
+    for (const layer of visionSettings()) {
+      window.Perception.drawLayer(vision, observer, layer, walls, state.cameraX, Math.hypot(WIDTH, HEIGHT) + 200);
     }
-    vision.closePath();
-    vision.fill();
-    vision.restore();
 
     fog.save();
     fog.globalCompositeOperation = "destination-out";
@@ -1760,13 +1741,13 @@
 
   function drawDynamicWorld() {
     for (const sensor of state.sensors) {
-      if (isPointVisible(sensor)) drawSensor(sensor);
+      drawVisibleEntity(sensor, drawSensor);
     }
     for (const bullet of state.bullets) {
       if (isPointVisible(bullet)) drawBullet(bullet);
     }
     for (const enemy of state.enemies) {
-      if (isPointVisible(enemy)) drawEnemy(enemy);
+      drawVisibleEntity(enemy, drawEnemy);
     }
     for (const particle of state.particles) {
       if (isPointVisible(particle)) drawParticle(particle);

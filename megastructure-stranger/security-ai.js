@@ -4,9 +4,7 @@
   const angle = value => Math.atan2(Math.sin(value), Math.cos(value));
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   function visible(observer, target, range, fov, lineOfSight) {
-    return distance(observer, target) <= range
-      && Math.abs(angle(Math.atan2(target.y - observer.y, target.x - observer.x) - observer.angle)) <= fov / 2
-      && lineOfSight(observer.x, observer.y, target.x, target.y);
+    return window.Perception.strength(observer, target, range, fov, lineOfSight) > .08;
   }
   function init(guard) {
     if (guard.ai) return guard.ai;
@@ -103,8 +101,11 @@
   function tick(guard, delta, env) {
     const ai = init(guard);
     const turret = guard.type === 'turret';
-    const sees = visible(guard, env.player, turret ? 440 : 360, turret ? 1.05 : 1.3, env.los);
-    ai.exposure = Math.max(0, Math.min(.4, ai.exposure + (sees ? delta : -delta * 1.5)));
+    const range = (turret ? 440 : 360) * (env.alarm && !env.flashlight && !turret ? .8 : 1);
+    const strength = window.Perception.strength(guard, env.player, range, turret ? 1.05 : 1.3, env.los);
+    const sees = strength > .08;
+    const acquisition = strength * (env.flashlight ? 1.65 : 1);
+    ai.exposure = Math.max(0, Math.min(.4, ai.exposure + (sees ? delta * acquisition : -delta * 1.5)));
     guard.sighting = ai.exposure;
     guard.fireTimer = Math.max(0, guard.fireTimer - delta);
     if (sees && ai.exposure >= .4) {
