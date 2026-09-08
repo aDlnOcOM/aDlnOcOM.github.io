@@ -900,7 +900,7 @@
   }
 
   function createLongFloor(floor) {
-    const sectorCount = randomInteger(10, 12);
+    const sectorCount = state.runSectorCount || randomInteger(10, 12);
     const bodyLength = Math.round(sectorCount * WIDTH * Math.pow(1.2, floor - 1));
     const sectorWidth = bodyLength / sectorCount;
     const bossWidth = Math.round(WIDTH / 1.5);
@@ -914,41 +914,33 @@
     const guards = [];
     const sensors = [];
 
-    for (let index = 0; index < sectorCount; index += 1) {
-      const start = index * sectorWidth;
-      const fromTop = index % 2 === 0;
-      const verticalHeight = randomInteger(174, 286);
-      const wallX = Math.round(start + sectorWidth * randomBetween(.28, .42));
-      const wallY = fromTop ? 28 : HEIGHT - 28 - verticalHeight;
-      walls.push({ x: wallX, y: wallY, width: 42, height: verticalHeight, anchor: true });
-
-      const consoleWidth = randomInteger(126, 230);
-      const consoleY = fromTop ? randomInteger(300, 410) : randomInteger(150, 258);
-      const consoleX = Math.round(start + sectorWidth * randomBetween(.56, .7));
-      walls.push({ x: consoleX, y: consoleY, width: consoleWidth, height: 38, console: true });
-
-      const patrolY = fromTop ? HEIGHT - 126 : 126;
-      const patrolStart = Math.round(start + sectorWidth * .1);
-      const patrolEnd = Math.round(start + sectorWidth * .78);
-      guards.push(createGuard("watcher", patrolStart + 34, patrolY, patrolStart, patrolEnd, 0));
-      guards.push(createGuard("drone", patrolEnd - 48, HEIGHT - patrolY, patrolStart + 56, patrolEnd, Math.PI));
-
-      if (index % 2 === 0 || index === sectorCount - 1) {
-        const turretX = Math.round(start + sectorWidth * .83);
-        const turretY = fromTop ? 92 : HEIGHT - 92;
-        guards.push(createGuard("turret", turretX, turretY, turretX, turretX, fromTop ? Math.PI / 2 : -Math.PI / 2));
+    const seed = Math.floor(Math.random() * 4294967296);
+    const generated = window.SectorGenerator.generate(sectorCount, sectorWidth, HEIGHT, seed);
+    walls.push(...generated.walls);
+    for (const sector of generated.sectors) {
+      const start = sector.x;
+      const patrolStart = start + 140;
+      const patrolEnd = start + sectorWidth - 130;
+      const firstX = start + sectorWidth * (sector.index === 0 ? .6 : .32);
+      guards.push(createGuard("watcher", firstX, sector.lane - 22, patrolStart, patrolEnd, 0));
+      if (sector.security > 0) {
+        guards.push(createGuard(sector.id === "robotics" ? "drone" : "watcher",
+          start + sectorWidth * .74, sector.lane + 22, patrolStart, patrolEnd, Math.PI));
       }
-
-      sensors.push({
-        x: wallX + (fromTop ? 68 : -24),
-        y: fromTop ? verticalHeight + 46 : HEIGHT - verticalHeight - 46,
-        angle: fromTop ? Math.PI / 2 : -Math.PI / 2,
-        homeAngle: fromTop ? Math.PI / 2 : -Math.PI / 2,
-        phase: Math.random() * Math.PI * 2,
-        range: 168,
-        fov: .84,
-        exposure: 0
-      });
+      if (sector.security >= 2) {
+        const turretX = start + sectorWidth * .82;
+        guards.push(createGuard("turret", turretX, sector.lane - 44, turretX, turretX, Math.PI / 2));
+      }
+      if (sector.security >= 3) {
+        guards.push(createGuard("drone", start + sectorWidth * .5, sector.lane + 24, patrolStart, patrolEnd, 0));
+      }
+      if (sector.security > 0) {
+        sensors.push({
+          x: start + sectorWidth * .65, y: sector.lane + 50,
+          angle: -Math.PI / 2, homeAngle: -Math.PI / 2,
+          phase: Math.random() * Math.PI * 2, range: 168, fov: .84, exposure: 0
+        });
+      }
     }
 
     const entryGate = { x: bodyLength - 16, y: 28, width: 32, height: HEIGHT - 56 };
@@ -956,6 +948,8 @@
     return {
       floor,
       sectorCount,
+      seed,
+      sectors: generated.sectors,
       sectorWidth,
       bodyLength,
       bossWidth,
@@ -979,6 +973,7 @@
 
   function beginRun() {
     state.floor = 1;
+    state.runSectorCount = randomInteger(10, 12);
     state.runSalvage = 0;
     state.runActive = true;
     state.elapsed = 0;
@@ -1043,7 +1038,7 @@
     for (let index = 0; index < map.sectorCount; index += 1) {
       const node = document.createElement("div");
       node.className = "route-node" + (index === sector && !map.bossStarted ? " current" : "") + (index < sector ? " cleared" : "");
-      node.textContent = "СЕКТОР " + String(index + 1).padStart(2, "0");
+      node.textContent = String(index + 1).padStart(2, "0") + " / " + (index <= sector ? map.sectors[index].name : "НЕИЗВЕСТНЫЙ СЕКТОР");
       route.appendChild(node);
     }
     const boss = document.createElement("div");
@@ -1551,11 +1546,43 @@
     const map = state.floorMap;
     context.save();
     context.translate(-state.cameraX, 0);
+    window.SectorGenerator.draw(context, map, state.cameraX, WIDTH, HEIGHT, state.alarm);
     for (const wall of map.walls) {
+      if (wall.x + wall.width < state.cameraX || wall.x > state.cameraX + WIDTH) continue;
       context.fillStyle = wall.outer ? "#080b0d" : wall.console ? "#15191c" : "#0b0e10";
       context.fillRect(wall.x, wall.y, wall.width, wall.height);
       context.strokeStyle = wall.outer ? "#242a2d" : "#2c3438";
       context.strokeRect(wall.x + .5, wall.y + .5, wall.width - 1, wall.height - 1);
+      if (wall.material) {
+        context.fillStyle = wall.tint;
+        context.globalAlpha = .35;
+        context.fillRect(wall.x + 3, wall.y + 3, Math.max(2, wall.width - 6), 3);
+        context.globalAlpha = 1;
+        if (['machines', 'pods', 'racks'].includes(wall.material)) {
+          context.fillStyle = state.alarm ? '#b65849' : wall.tint;
+          context.fillRect(wall.x + 6, wall.y + 10, 4, 4);
+          context.strokeStyle = '#394448';
+          context.strokeRect(wall.x + 5, wall.y + 22, Math.max(4, wall.width - 10), Math.max(4, wall.height - 28));
+        }
+        if (wall.district === 'hydroponics') {
+          context.fillStyle = '#3e6146';
+          for (let y = wall.y + 12; y < wall.y + wall.height - 8; y += 16) {
+            context.beginPath(); context.ellipse(wall.x + wall.width / 2, y, Math.max(3, wall.width * .3), 5, 0, 0, Math.PI * 2); context.fill();
+          }
+        } else if (wall.district === 'medical') {
+          context.fillStyle = '#687d78';
+          context.fillRect(wall.x + 5, wall.y + 6, Math.max(2, wall.width - 10), 14);
+          context.fillStyle = '#9bb7a9';
+          context.fillRect(wall.x + wall.width / 2 - 1, wall.y + 30, 3, 11);
+          context.fillRect(wall.x + wall.width / 2 - 5, wall.y + 34, 11, 3);
+        } else if (wall.material === 'scrap') {
+          context.strokeStyle = '#5b5542';
+          context.beginPath(); context.moveTo(wall.x + 4, wall.y + 4); context.lineTo(wall.x + wall.width - 4, wall.y + wall.height - 4); context.stroke();
+        } else if (wall.material === 'furniture') {
+          context.fillStyle = wall.district === 'elite' ? '#6d6653' : '#4b5249';
+          context.fillRect(wall.x + 4, wall.y + 6, wall.width - 8, wall.height - 10);
+        }
+      }
     }
     const drawGate = (gate, open, label) => {
       context.fillStyle = open ? "rgba(125, 236, 194, .24)" : "rgba(255, 109, 104, .34)";
@@ -1749,7 +1776,7 @@
   function drawRoomLabel() {
     const map = state.floorMap;
     if (!map) return;
-    let label = "СЕКТОР " + String(currentSector() + 1).padStart(2, "0") + " / " + String(map.sectorCount).padStart(2, "0");
+    let label = String(currentSector() + 1).padStart(2, "0") + " / " + map.sectors[currentSector()].name.toUpperCase();
     if (map.bossStarted && !map.bossDefeated) label = "ШЛЮЗ СМОТРИТЕЛЯ // ВЫХОД ЗАПЕРТ";
     if (map.bossDefeated) label = "ШЛЮЗ ОЧИЩЕН // ЛИФТ СПРАВА";
     context.fillStyle = state.alarm ? "rgba(255, 182, 172, .78)" : "rgba(220, 236, 244, .62)";
