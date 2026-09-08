@@ -238,6 +238,7 @@
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
     renderLoadout();
     renderImplants();
+    window.ShelterLocation?.refresh(progression);
     if (state.selectedGear) {
       renderEquipmentTree();
     }

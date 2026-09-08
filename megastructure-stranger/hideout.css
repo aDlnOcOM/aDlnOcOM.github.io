@@ -1,4 +1,18 @@
 /* Architectural surfaces, cold terminals and sparse hazard-light accents. */
+.shelter-layout:has(.shelter-playfield) { display:block; }
+.shelter-layout:has(.shelter-playfield) .briefing-panel { padding:20px 26px; margin-bottom:18px; }
+.shelter-layout:has(.shelter-playfield) .briefing-copy { display:none; }
+.shelter-layout:has(.shelter-playfield) h1 { font-size:24px; margin:8px 0 18px; }
+.shelter-playfield { border:1px solid #3d5456; background:#0b1318; }
+#shelter-canvas { display:block; width:100%; height:auto; max-height:70vh; object-fit:contain; outline:none; }
+#shelter-canvas:focus-visible { outline:2px solid #a1c4b1; outline-offset:2px; }
+.shelter-controls { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 20px; border-top:1px solid #304448; }
+.shelter-controls p { color:#a8c5bc; font:12px/1.6 Consolas,monospace; }
+#shelter-console { width:min(680px,90vw); max-height:85vh; overflow:auto; padding:24px; border:1px solid #72978b; background:#0d171c; color:#d0ded9; }
+#shelter-console::backdrop { background:#02070bbb; }
+#shelter-console .facility-grid { display:block; }
+#shelter-console .facility-panel { padding:12px; }
+@media(max-width:600px) { .shelter-controls { flex-direction:column; align-items:stretch; } }
 .resource-card strong { display:block; margin:12px 0; color:#b7d8c7; font:26px Consolas,monospace; }
 .resource-card h4 { margin:0; color:#c6d6d2; }
 .facility-panel { grid-column:1 / -1; min-width:0; padding:24px; border:1px solid #314447; background:linear-gradient(120deg,#121e23,#090f13); }

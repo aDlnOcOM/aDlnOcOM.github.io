@@ -4,6 +4,7 @@
   const get = id => document.getElementById(id);
   const tabs = [...document.querySelectorAll('[data-tab]')];
   function selectTab(name, focus = false) {
+    window.ShelterLocation?.setActive(name === 'shelter' && !get('home-screen').hidden);
     for (const tab of tabs) {
       const selected = tab.dataset.tab === name;
       tab.setAttribute('aria-selected', String(selected));
@@ -21,6 +22,7 @@
   get('enter-hideout').addEventListener('click', () => enter());
   get('menu-equipment').addEventListener('click', () => enter('equipment'));
   get('back-menu').addEventListener('click', () => {
+    window.ShelterLocation?.setActive(false);
     get('home-screen').hidden = true;
     get('main-menu').hidden = false;
     document.body.dataset.screen = 'menu';
@@ -45,6 +47,7 @@
     });
   });
   get('start-run').addEventListener('click', () => {
+    window.ShelterLocation?.setActive(false);
     document.body.dataset.screen = 'run';
     get('main-menu').hidden = true;
   });

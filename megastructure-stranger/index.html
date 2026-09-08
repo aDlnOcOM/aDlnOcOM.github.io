@@ -79,10 +79,14 @@
           <div><span>Лучший этаж</span><strong id="best-floor">00</strong></div>
           <div><span>Состояние</span><strong>НЕ ЗАРЕГИСТРИРОВАН</strong></div>
         </div>
-        <div class="shelter-scene" aria-hidden="true"><span>41 / SAFEHOUSE</span><div class="shelter-terminal">OFFLINE<br><b>▰ ▰ ▰ ▱</b></div><small>ВЕНТИЛЯЦИЯ · РЕЗЕРВНОЕ ПИТАНИЕ · ТИШИНА</small></div>
       </div>
-
-      <div class="home-grid">
+      <section class="shelter-playfield" aria-label="Интерактивная локация убежища">
+        <canvas id="shelter-canvas" width="960" height="500" tabindex="0" aria-label="Убежище. Нажмите на локацию или перейдите сюда клавишей Tab. WASD или стрелки — движение, E — взаимодействие с ближайшим объектом."></canvas>
+        <div class="shelter-controls"><p id="shelter-prompt" role="status">Нажмите на локацию · WASD / стрелки — движение · E — взаимодействие</p><button id="shelter-interact" type="button" class="quiet-button" disabled>Взаимодействовать · E</button></div>
+      </section>
+      <dialog id="shelter-console" aria-labelledby="shelter-console-title">
+      <header class="panel-heading"><h2 id="shelter-console-title">Терминал убежища</h2><button id="shelter-console-close" class="quiet-button" type="button">Закрыть · Esc</button></header>
+      <div id="shelter-implants" class="home-grid" hidden>
         <section class="terminal-panel implant-panel" aria-labelledby="implant-title">
           <div class="panel-heading">
             <div>
@@ -95,12 +99,13 @@
         </section>
 
       </div>
-      <section class="facility-panel" aria-labelledby="facility-title">
+      <section id="shelter-facility-panel" class="facility-panel" aria-labelledby="facility-title" hidden>
         <div class="panel-heading"><div><p class="eyebrow">ИНФРАСТРУКТУРА / МОДУЛЬНОЕ РАЗВИТИЕ</p><h2 id="facility-title">Оснащение убежища</h2></div></div>
         <p class="section-note">Пять ступеней качества: от самодельного до идеального. Строительство и улучшения оплачиваются ломом и сохраняются. Производство, расход топлива и энергосеть появятся позже; сейчас установки не дают боевых бонусов и не меняют пополнение запасов.</p>
         <p id="hideout-upgrade-status" class="facility-feedback" role="status" aria-live="polite"></p>
         <div id="hideout-facilities" class="facility-grid"></div>
       </section>
+      </dialog>
       </section>
       <section id="panel-equipment" class="hideout-panel loadout-panel" role="tabpanel" aria-labelledby="tab-equipment" tabindex="0" hidden>
         <div class="panel-heading">
@@ -168,6 +173,7 @@
   <script src="power-inventory.js"></script>
   <script src="hideout.js"></script>
   <script src="hideout-upgrades.js"></script>
+  <script src="shelter-location.js"></script>
   <script src="security-ai.js"></script>
   <script src="enemy-specialists.js"></script>
   <script src="perception.js"></script>
