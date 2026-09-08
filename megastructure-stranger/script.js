@@ -1292,7 +1292,8 @@
     if (state.input.keys.has("KeyD") || state.input.keys.has("ArrowRight")) horizontal += 1;
     if (state.input.keys.has("KeyW") || state.input.keys.has("ArrowUp")) vertical -= 1;
     if (state.input.keys.has("KeyS") || state.input.keys.has("ArrowDown")) vertical += 1;
-    if (horizontal || vertical) {
+    const dashing = window.PlayerDash?.tick(player, delta, moveCircle);
+    if (!dashing && (horizontal || vertical)) {
       const length = Math.hypot(horizontal, vertical);
       const before = { x: player.x, y: player.y };
       moveCircle(player, horizontal / length * player.speed * delta, vertical / length * player.speed * delta);
@@ -1846,9 +1847,11 @@
   function drawPlayer() {
     const player = state.player;
     const angle = playerAimAngle();
+    window.PlayerDash?.draw(context, player, state.cameraX, isPointVisible);
     context.save();
     context.translate(player.x - state.cameraX, player.y);
     context.rotate(angle);
+    if (player.dash?.remaining > 0) context.scale(1.25, .8);
     context.fillStyle = "#8ff7ef";
     context.shadowBlur = 14;
     context.shadowColor = "#63e4dd";
@@ -1908,6 +1911,9 @@
     context.fillStyle = state.alarm ? "rgba(255, 182, 172, .78)" : "rgba(220, 236, 244, .62)";
     context.font = "11px Consolas, monospace";
     context.fillText(label + " // " + (state.alarm ? "ТРЕВОГА" : "ТИШИНА"), 16, 25);
+    const dashCooldown = state.player.dash?.cooldown || 0;
+    context.fillStyle = dashCooldown > 0 ? "#819a9a" : "#8ff7ef";
+    context.fillText("CTRL · РЫВОК " + (dashCooldown > 0 ? dashCooldown.toFixed(1) + " с" : "ГОТОВ"), 16, HEIGHT - 18);
 
     if (!map.bossStarted && state.player.x > map.entryGate.x - 126) {
       context.fillStyle = "#d4ee70";
@@ -1944,6 +1950,12 @@
   window.addEventListener("keydown", event => {
     if (state.selectedGear || state.inventoryOpen || !state.runActive) return;
     if (event.code === "KeyI" && !event.repeat) { openFieldInventory(); return; }
+    if (event.code === "ControlLeft" || event.code === "ControlRight") {
+      event.preventDefault();
+      if (!event.repeat && state.active && window.PlayerDash?.start(state.player, state.input.keys, playerAimAngle())) {
+        emitNoise(state.player.x, state.player.y, 260, "шум рывка");
+      }
+    }
     if (event.code === "KeyE" && !event.repeat) tryInteract();
     if (event.code === "KeyF" && !event.repeat) toggleFlashlight();
   });
