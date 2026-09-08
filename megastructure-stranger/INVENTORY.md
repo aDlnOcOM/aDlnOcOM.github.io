@@ -1,7 +1,9 @@
 # Energy equipment and inventory
 
 The equipment tab is a two-column panel: positioned equipment slots on the left,
-inventory cells on the right. Equipment slots retain their upgrade-tree actions.
+inventory containers on the right: loaded magazine, quick-access magazine pouches,
+four pockets and the office bag. Magazines occupy 1×2 cells; Mk I occupies 2×2.
+Clicking an item opens its details and refill action. Equipment slots retain their upgrade-tree actions.
 I or the sidebar inventory button opens a paused field panel; Escape closes it.
 Field equipment is read-only; magazine refill buttons transfer energy from Mk I.
 
@@ -10,7 +12,9 @@ weapon battery with 150 energy. Standard magazines hold 32; extended upgrades
 hold 44 / 52. Quick-feed variants retain 32 capacity and the existing faster reload.
 One SMG shot consumes one energy regardless of its damage upgrades.
 
-R starts the existing timed reload. At completion it swaps to the reserve with
+R starts the existing timed reload (keyboard repeats are ignored). Completion
+clamps the timer to zero, preventing a stuck reload label; shots are blocked while
+the timer is active. At completion it swaps to the reserve with
 the most energy, preserving the old magazine; if no reserve is more charged,
 it draws only the available energy from Mk I. Empty stocks cannot produce shots.
 Energy persists across floors. Returning to Hideout provides full default supplies

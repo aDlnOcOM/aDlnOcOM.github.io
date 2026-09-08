@@ -64,9 +64,33 @@ test('game firing, timed reload and floor player reset preserve stock; hideout r
   assert.equal(state.player.ammo, 31); assert.equal(total(state.powerInventory), 245);
   resetPlayer(); assert.equal(state.player.ammo, 31);
   reloadSmg(); assert.ok(state.player.reload > 0);
+  fireSmg(); assert.equal(total(state.powerInventory), 245, 'firing during reload cannot spend energy');
   assert.equal(state.powerInventory.loaded, 0);
   updatePlayer(2);
+  assert.equal(state.player.reload, 0, 'completed reload must not leave a negative, truthy timer');
   assert.equal(state.powerInventory.loaded, 1); assert.equal(state.player.ammo, 32);
   assert.equal(total(state.powerInventory), 245);
   assert.equal(total(createPowerStock()), 246);
+});
+
+test('inventory uses separate loaded-magazine, rig, pocket and backpack grids', () => {
+  const scope = { window: {} };
+  const node = () => ({ children: [], style: { setProperty() {} }, classList: { add() {} },
+    setAttribute() {}, append(...children) { this.children.push(...children); },
+    appendChild(child) { this.children.push(child); }, replaceChildren() { this.children = []; } });
+  scope.document = { createElement: node };
+  vm.createContext(scope);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'power-inventory.js'), 'utf8'), scope);
+  const stock = scope.window.PowerInventory.create(32), container = node();
+  scope.window.PowerInventory.render(container, stock);
+  assert.equal(container.children.length, 5);
+  const grids = container.children.slice(0, 4).map(section => section.children[1]);
+  assert.equal(grids[0].children.length, 1);
+  assert.equal(grids[1].children.length, 2);
+  assert.equal(grids[2].children.length, 4);
+  assert.equal(grids[3].children.length, 1);
+  assert.equal(grids[0].children[0].style.gridRow, '1 / span 2');
+  assert.equal(grids[3].children[0].style.gridColumn, '1 / span 2');
+  grids[0].children[0].onclick();
+  assert.ok(container.children[4].innerHTML.includes('Аккумуляторный магазин'));
 });

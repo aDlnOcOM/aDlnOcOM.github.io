@@ -29,26 +29,54 @@
   }
   function render(container, stock, onRefill) {
     container.replaceChildren();
-    stock.magazines.forEach(magazine => {
-      const cell = document.createElement('article');
-      cell.className = 'supply-cell magazine-cell';
-      cell.innerHTML = `<span class="supply-icon" aria-hidden="true">▥</span><small>${magazine.id === stock.loaded ? 'В ОРУЖИИ' : 'РЕЗЕРВ'} / ${magazine.variant}</small><h4>Аккумуляторный магазин пониженного напряжения</h4><strong>${magazine.energy} <span>/ ${magazine.capacity} ед.</span></strong><meter min="0" max="${magazine.capacity}" value="${magazine.energy}">${magazine.energy}</meter>`;
-      if (onRefill) {
-        const button = document.createElement('button');
-        button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
+    container.classList.add('container-inventory');
+    const details = document.createElement('section');
+    details.className = 'item-inspector';
+    details.setAttribute('aria-live', 'polite');
+    details.textContent = 'Выберите предмет для осмотра.';
+    function section(name, columns, rows) {
+      const wrapper = document.createElement('section'); wrapper.className = 'inventory-container';
+      const heading = document.createElement('h4'); heading.textContent = name;
+      const grid = document.createElement('div'); grid.className = 'tactical-grid';
+      grid.style.setProperty('--cols', columns); grid.style.setProperty('--rows', rows);
+      wrapper.append(heading, grid); container.appendChild(wrapper);
+      return grid;
+    }
+    const weapon = section('В ОРУЖИИ / ПП ОХРАНЫ', 4, 2);
+    const rig = section('МАГАЗИННЫЕ ПОДСУМКИ / БЫСТРЫЙ ДОСТУП', 6, 2);
+    const pockets = section('КАРМАНЫ / 4 ЯЧЕЙКИ', 4, 1);
+    const backpack = section('ОФИСНАЯ СУМКА / 6 × 3', 6, 3);
+    for (let i = 0; i < 4; i++) {
+      const empty = document.createElement('span'); empty.className = 'pocket-empty'; empty.setAttribute('aria-hidden', 'true'); pockets.appendChild(empty);
+    }
+    function inspect(magazine) {
+      const battery = !magazine;
+      details.innerHTML = battery
+        ? '<small>ИСТОЧНИК ЭНЕРГИИ</small><h4>Оружейный аккумулятор Мк I</h4><p>' + stock.battery + ' / 150 ед. энергии. Пополняет аккумуляторные магазины пониженного напряжения.</p>'
+        : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>Аккумуляторный магазин пониженного напряжения</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. энергии · ' + (magazine.id === stock.loaded ? 'Установлен в ПП' : 'Запасной в подсумке') + '</p>';
+      if (magazine && onRefill) {
+        const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
         button.disabled = !stock.battery || magazine.energy === magazine.capacity;
         button.onclick = () => onRefill(magazine.id);
-        cell.appendChild(button);
+        details.appendChild(button);
       }
-      container.appendChild(cell);
-    });
-    const battery = document.createElement('article'); battery.className = 'supply-cell battery-cell';
-    battery.innerHTML = `<span class="supply-icon" aria-hidden="true">▰</span><small>ИСТОЧНИК ЭНЕРГИИ / Мк I</small><h4>Оружейный аккумулятор Мк I</h4><strong>${stock.battery} <span>/ 150 ед.</span></strong><p>Пополняет магазины пониженного напряжения.</p>`;
-    container.appendChild(battery);
-    for (let i = 0; i < 4; i++) {
-      const empty = document.createElement('div'); empty.className = 'supply-empty';
-      empty.setAttribute('aria-hidden', 'true'); empty.textContent = '+'; container.appendChild(empty);
     }
+    stock.magazines.forEach(magazine => {
+      const cell = document.createElement('button'); cell.type = 'button'; cell.className = 'tactical-item energy-mag';
+      cell.style.gridColumn = magazine.id === stock.loaded ? '1 / span 1' : 'auto / span 1';
+      cell.style.gridRow = '1 / span 2';
+      cell.setAttribute('aria-label', 'Аккумуляторный магазин: ' + magazine.variant + ', ' + magazine.energy + ' из ' + magazine.capacity);
+      cell.title = 'Аккумуляторный магазин пониженного напряжения / ' + magazine.variant;
+      cell.innerHTML = '<small>НН-' + magazine.capacity + '</small><span class="mag-drawing" aria-hidden="true"></span><strong>' + magazine.energy + '/' + magazine.capacity + '</strong>';
+      cell.onclick = () => inspect(magazine);
+      (magazine.id === stock.loaded ? weapon : rig).appendChild(cell);
+    });
+    const battery = document.createElement('button'); battery.type = 'button'; battery.className = 'tactical-item energy-battery';
+    battery.style.gridColumn = '1 / span 2'; battery.style.gridRow = '1 / span 2';
+    battery.setAttribute('aria-label', 'Оружейный аккумулятор Мк I, ' + stock.battery + ' из 150');
+    battery.innerHTML = '<small>АККУМУЛЯТОР Мк I</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + stock.battery + '/150</strong>';
+    battery.onclick = () => inspect(null); backpack.appendChild(battery);
+    container.appendChild(details);
   }
   function show(stock, items, onRefill, onClose) {
     const dialog = document.createElement('dialog'); dialog.className = 'field-inventory';

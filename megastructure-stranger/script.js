@@ -1288,7 +1288,10 @@
     player.knifeFlash = Math.max(0, player.knifeFlash - delta);
     if (player.reload > 0) {
       player.reload -= delta;
-      if (player.reload <= 0) player.ammo = window.PowerInventory.reload(state.powerInventory);
+      if (player.reload <= 0) {
+        player.reload = 0;
+        player.ammo = window.PowerInventory.reload(state.powerInventory);
+      }
       return;
     }
     if (player.weapon === "smg" && state.input.mouseDown && player.fireCooldown <= 0) fireSmg();
@@ -1325,7 +1328,7 @@
 
   function fireSmg() {
     const player = state.player;
-    if (!state.active || !player) return;
+    if (!state.active || !player || player.reload > 0) return;
     if (!player.ammo) {
       reloadSmg();
       return;
@@ -1856,7 +1859,7 @@
     if (state.selectedGear || state.inventoryOpen || !state.runActive) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
-    if (event.code === "KeyR") reloadSmg();
+    if (event.code === "KeyR" && !event.repeat) reloadSmg();
     if (event.code === "KeyQ") knifeAttack();
     if (event.code === "Digit1") switchWeapon("smg");
     if (event.code === "Digit2") switchWeapon("knife");
