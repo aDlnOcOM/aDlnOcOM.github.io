@@ -16,7 +16,14 @@ R starts the existing timed reload (keyboard repeats are ignored). Completion
 clamps the timer to zero, preventing a stuck reload label; shots are blocked while
 the timer is active. At completion it swaps to the reserve with
 the most energy, preserving the old magazine; if no reserve is more charged,
-it draws only the available energy from Mk I. Empty stocks cannot produce shots.
+R starts a separate timed refill from Mk I when there is no better reserve.
+Transfer rate is 3.2 energy/second: empty magazines take 10 / 13.75 / 16.25 seconds
+for 32 / 44 / 52 capacity. Partial refills scale with missing/available energy,
+but every refill takes at least 10 seconds.
+Energy transfers incrementally. Inventory shows remaining time and a cancel
+button; closing it cancels refill but keeps energy already transferred. Charging
+continues during the inventory pause, but not during death/start overlays.
+Empty stocks cannot produce shots; firing is blocked while charging.
 Energy persists across floors. Returning to Hideout provides full default supplies
 for the next run; opening field inventory never replenishes them for free.
 Run supplies are transient, like the existing run state; this change introduces

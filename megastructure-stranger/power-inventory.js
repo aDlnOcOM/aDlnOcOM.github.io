@@ -10,17 +10,32 @@
     if (magazine.energy < 1) return false;
     magazine.energy--; return true;
   }
-  function refill(stock, id) {
+  function startRefill(stock, id) {
+    if (stock.refilling) return false;
     const magazine = stock.magazines.find(item => item.id === id);
-    if (!magazine) return 0;
+    if (!magazine) return false;
     const amount = Math.min(magazine.capacity - magazine.energy, stock.battery);
-    magazine.energy += amount; stock.battery -= amount; return amount;
+    if (amount <= 0) return false;
+    stock.refilling = { id, amount, transferred: 0, elapsed: 0, duration: Math.max(10, amount / 3.2) };
+    return true;
+  }
+  function tickRefill(stock, delta) {
+    const job = stock.refilling;
+    if (!job || !Number.isFinite(delta) || delta <= 0) return;
+    job.elapsed = Math.min(job.duration, job.elapsed + delta);
+    const magazine = stock.magazines.find(item => item.id === job.id);
+    const due = Math.min(job.amount, Math.floor(job.elapsed / job.duration * job.amount + 1e-8));
+    const amount = Math.min(due - job.transferred, stock.battery, magazine.capacity - magazine.energy);
+    magazine.energy += amount; stock.battery -= amount; job.transferred += amount;
+    if (job.elapsed >= job.duration || stock.battery <= 0 || magazine.energy >= magazine.capacity) stock.refilling = null;
+  }
+  function cancelRefill(stock) {
+    stock.refilling = null;
   }
   function reload(stock) {
     const current = stock.magazines[stock.loaded];
     const next = stock.magazines.reduce((best, item) => item.energy > best.energy ? item : best, current);
     if (next.id !== current.id) stock.loaded = next.id;
-    else refill(stock, current.id);
     return stock.magazines[stock.loaded].energy;
   }
   function canReload(stock) {
@@ -56,7 +71,8 @@
         : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>Аккумуляторный магазин пониженного напряжения</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. энергии · ' + (magazine.id === stock.loaded ? 'Установлен в ПП' : 'Запасной в подсумке') + '</p>';
       if (magazine && onRefill) {
         const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
-        button.disabled = !stock.battery || magazine.energy === magazine.capacity;
+        button.disabled = Boolean(stock.refilling) || !stock.battery || magazine.energy === magazine.capacity;
+        button.textContent = 'Пополнить · ' + Math.max(10, Math.min(magazine.capacity - magazine.energy, stock.battery) / 3.2).toFixed(1) + ' с';
         button.onclick = () => onRefill(magazine.id);
         details.appendChild(button);
       }
@@ -68,15 +84,23 @@
       cell.setAttribute('aria-label', 'Аккумуляторный магазин: ' + magazine.variant + ', ' + magazine.energy + ' из ' + magazine.capacity);
       cell.title = 'Аккумуляторный магазин пониженного напряжения / ' + magazine.variant;
       cell.innerHTML = '<small>НН-' + magazine.capacity + '</small><span class="mag-drawing" aria-hidden="true"></span><strong>' + magazine.energy + '/' + magazine.capacity + '</strong>';
-      cell.onclick = () => inspect(magazine);
+      cell.onclick = () => { stock.inspectId = magazine.id; inspect(magazine); };
       (magazine.id === stock.loaded ? weapon : rig).appendChild(cell);
     });
     const battery = document.createElement('button'); battery.type = 'button'; battery.className = 'tactical-item energy-battery';
     battery.style.gridColumn = '1 / span 2'; battery.style.gridRow = '1 / span 2';
     battery.setAttribute('aria-label', 'Оружейный аккумулятор Мк I, ' + stock.battery + ' из 150');
     battery.innerHTML = '<small>АККУМУЛЯТОР Мк I</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + stock.battery + '/150</strong>';
-    battery.onclick = () => inspect(null); backpack.appendChild(battery);
+    battery.onclick = () => { stock.inspectId = null; inspect(null); }; backpack.appendChild(battery);
     container.appendChild(details);
+    if (stock.inspectId !== undefined) inspect(stock.magazines.find(item => item.id === stock.inspectId));
+    if (stock.refilling) {
+      const progress = document.createElement('p');
+      progress.textContent = 'Пополнение: осталось ' + Math.max(0, stock.refilling.duration - stock.refilling.elapsed).toFixed(1) + ' с';
+      const cancel = document.createElement('button'); cancel.className = 'quiet-button'; cancel.textContent = 'Прервать';
+      cancel.onclick = () => { cancelRefill(stock); render(container, stock, onRefill); };
+      details.append(progress, cancel);
+    }
   }
   function show(stock, items, onRefill, onClose) {
     const dialog = document.createElement('dialog'); dialog.className = 'field-inventory';
@@ -88,8 +112,10 @@
       slot.innerHTML = `<small>${item.slot}</small><strong>${item.name}</strong>`; slots.appendChild(slot); });
     const draw = () => render(dialog.querySelector('.supply-grid'), stock, id => { onRefill(id); draw(); });
     draw(); dialog.querySelector('[data-close]').onclick = () => dialog.close();
-    dialog.onclose = () => { dialog.remove(); onClose(); if (opener?.isConnected) opener.focus(); };
+    const refreshTimer = window.setInterval(() => { if (stock.refilling || wasCharging) draw(); wasCharging = Boolean(stock.refilling); }, 250);
+    let wasCharging = false;
+    dialog.onclose = () => { window.clearInterval(refreshTimer); cancelRefill(stock); dialog.remove(); onClose(); if (opener?.isConnected) opener.focus(); };
     document.body.appendChild(dialog); dialog.showModal();
   }
-  window.PowerInventory = { create, fire, refill, reload, canReload, render, show };
+  window.PowerInventory = { create, fire, startRefill, tickRefill, cancelRefill, reload, canReload, render, show };
 })();

@@ -260,7 +260,8 @@
     state.input.keys.clear();
     state.input.mouseDown = false;
     window.PowerInventory.show(state.powerInventory, STARTER_LOADOUT, id => {
-      window.PowerInventory.refill(state.powerInventory, id);
+      if (state.player.reload > 0) return;
+      window.PowerInventory.startRefill(state.powerInventory, id);
       state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
       updateRunUi();
     }, () => { state.inventoryOpen = false; state.active = state.runActive; });
@@ -400,6 +401,10 @@
     element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : `${player.ammo} <small>/ ${player.magazine}</small>`;
     element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · 1/2 — смена";
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
+    if (state.powerInventory?.refilling) {
+      const job = state.powerInventory.refilling;
+      element("weapon-hint").textContent = "ПОПОЛНЕНИЕ ИЗ Мк I · " + Math.max(0, job.duration - job.elapsed).toFixed(1) + " с · I — инвентарь";
+    }
     element("threat-label").textContent = state.enemies.length > 5 ? "КРИТИЧЕСКАЯ" : state.enemies.length ? "АКТИВНАЯ" : "НИЗКАЯ";
     element("abort-run").disabled = !state.room || state.room.type !== "boss" || state.room.state !== "cleared";
   }
@@ -854,6 +859,10 @@
   function frame(time) {
     const delta = Math.min(.035, (time - state.lastFrame) / 1000 || 0);
     state.lastFrame = time;
+    if ((state.active || state.inventoryOpen) && state.powerInventory?.refilling) {
+      window.PowerInventory.tickRefill(state.powerInventory, delta);
+      state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
+    }
     update(delta);
     if (!element("run-screen").hidden) draw();
     window.requestAnimationFrame(frame);
@@ -1328,7 +1337,7 @@
 
   function fireSmg() {
     const player = state.player;
-    if (!state.active || !player || player.reload > 0) return;
+    if (!state.active || !player || player.reload > 0 || state.powerInventory.refilling) return;
     if (!player.ammo) {
       reloadSmg();
       return;
@@ -1349,6 +1358,13 @@
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
     if (!window.PowerInventory.canReload(state.powerInventory)) return;
+    if (state.powerInventory.refilling) return;
+    const stock = state.powerInventory;
+    if (!stock.magazines.some(item => item.energy > stock.magazines[stock.loaded].energy)) {
+      window.PowerInventory.startRefill(stock, stock.loaded);
+      emitNoise(player.x, player.y, 105, "пополнение магазина");
+      return;
+    }
     player.reload = playerStats().reload;
     emitNoise(player.x, player.y, 105, "звук перезарядки");
   }

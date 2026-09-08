@@ -21,6 +21,23 @@ function load(game = false) {
   return { power: scope.window.PowerInventory, ...scope.window.test };
 }
 const total = stock => stock.battery + stock.magazines.reduce((sum, item) => sum + item.energy, 0);
+test('empty magazines take 10, 13.75 and 16.25 seconds with incremental conserved transfer', () => {
+  const { power } = load();
+  for (const capacity of [32, 44, 52]) {
+    const stock = power.create(capacity); stock.magazines[0].energy = 0;
+    const before = total(stock);
+    power.startRefill(stock, 0);
+    assert.equal(stock.refilling.duration, capacity / 3.2);
+    power.tickRefill(stock, 5);
+    assert.equal(stock.magazines[0].energy, 16); assert.equal(total(stock), before);
+    assert.equal(power.startRefill(stock, 1), false);
+    power.cancelRefill(stock); power.tickRefill(stock, 10);
+    assert.equal(stock.magazines[0].energy, 16);
+    power.startRefill(stock, 0); power.tickRefill(stock, Math.max(10, (capacity - 16) / 3.2));
+    assert.equal(stock.magazines[0].energy, capacity); assert.equal(stock.refilling, null);
+    assert.equal(total(stock), before);
+  }
+});
 test('starter stock has three compatible magazines and one 150-energy battery', () => {
   const { power } = load();
   for (const capacity of [32, 44, 52]) {
@@ -40,17 +57,26 @@ test('shots consume one energy; swapping preserves partial magazines', () => {
 test('charging is finite, conserved and cannot overfill', () => {
   const { power } = load(), stock = power.create(32);
   stock.magazines[0].energy = 0; stock.battery = 7;
-  assert.equal(power.refill(stock, 0), 7); assert.equal(stock.battery, 0);
+  assert.equal(power.startRefill(stock, 0), true);
+  assert.equal(stock.battery, 7);
+  assert.equal(stock.refilling.duration, 10);
+  power.tickRefill(stock, 10);
+  assert.equal(stock.battery, 0);
   assert.equal(stock.magazines[0].energy, 7);
-  assert.equal(power.refill(stock, 0), 0);
-  assert.equal(power.refill(stock, 99), 0);
+  assert.equal(power.startRefill(stock, 0), false);
+  assert.equal(power.startRefill(stock, 99), false);
 });
 test('complete depletion cannot generate further energy by reloading', () => {
   const { power } = load(), stock = power.create(32);
   let shots = 0;
   while (total(stock) > 0) {
     if (power.fire(stock)) shots++;
-    else power.reload(stock);
+    else {
+      power.reload(stock);
+      if (!stock.magazines[stock.loaded].energy) {
+        power.startRefill(stock, stock.loaded); power.tickRefill(stock, 100);
+      }
+    }
   }
   assert.equal(shots, 246);
   assert.equal(power.canReload(stock), false);
