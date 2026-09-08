@@ -16,7 +16,8 @@
         const kind = random() < .45 ? 'salvage' : 'supply';
         containers.push({ id: `${sector.index}-${slot}`, ...point, radius: 15, kind,
           salvage: 5 + Math.floor(random() * 9), ammoType,
-          ammo: kind === 'supply' ? 18 + Math.floor(random() * 25) : 0, opened: false });
+          ammo: kind === 'supply' ? 18 + Math.floor(random() * 25) : 0, opened: false,
+          resources: window.Resources?.roll('sectors', sector.id, random, 3) || {} });
       }
     }
     return containers;
@@ -31,7 +32,7 @@
         stock.extraSupplies[container.ammoType] = (stock.extraSupplies[container.ammoType] || 0) + container.ammo;
       }
     }
-    return { salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType };
+    return { salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType, resources: container.resources || {} };
   }
   window.LootContainers = { generate, collect };
 })();

@@ -1,4 +1,6 @@
 /* Architectural surfaces, cold terminals and sparse hazard-light accents. */
+.resource-card strong { display:block; margin:12px 0; color:#b7d8c7; font:26px Consolas,monospace; }
+.resource-card h4 { margin:0; color:#c6d6d2; }
 .facility-panel { grid-column:1 / -1; min-width:0; padding:24px; border:1px solid #314447; background:linear-gradient(120deg,#121e23,#090f13); }
 .facility-panel .section-note { margin:0 0 16px; }
 .facility-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:16px; }

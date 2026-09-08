@@ -163,7 +163,8 @@
         bestFloor: Number.isFinite(saved.bestFloor) ? saved.bestFloor : 0,
         implants: Array.isArray(saved.implants) ? saved.implants : [],
         equipment,
-        hideout: window.HideoutUpgrades?.normalize(saved.hideout) || {}
+        hideout: window.HideoutUpgrades?.normalize(saved.hideout) || {},
+        resources: window.Resources?.normalize(saved.resources) || {}
       };
     } catch {
       return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress(), hideout: window.HideoutUpgrades?.normalize() || {} };
@@ -222,6 +223,7 @@
   }
 
   function updateHome() {
+    window.Resources?.render(element("storage-materials"), progression.resources, progression.salvage);
     window.HideoutUpgrades?.render(element("hideout-facilities"), progression, id => {
       if (state.runActive) return;
       const result = window.HideoutUpgrades.purchase(progression, id, candidate => {
@@ -1029,6 +1031,7 @@
     state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);
     state.runSalvage = 0;
+    state.runResources = {};
     state.runActive = true;
     state.elapsed = 0;
     element("home-screen").hidden = true;
@@ -1156,10 +1159,19 @@
   }
 
   function finishRun(multiplier) {
+    if (!state.runActive) return;
+    if (state.player?.health <= 0) multiplier = playerStats().deathRetention;
+    const resources = window.Resources?.normalize(progression.resources) || {};
+    window.Resources?.add(resources, state.runResources, multiplier);
     const collected = Math.floor(state.runSalvage * multiplier);
-    progression.salvage += collected;
-    progression.bestFloor = Math.max(progression.bestFloor, state.floor);
-    saveProgression();
+    const candidate = { ...progression, resources, salvage: progression.salvage + collected,
+      bestFloor: Math.max(progression.bestFloor, state.floor) };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(candidate)); }
+    catch {
+      element("signal-text").textContent = "Не удалось сохранить добычу. Освободите место и повторите возвращение: рюкзак сохранён в текущем забеге.";
+      return;
+    }
+    progression = candidate;
     state.active = false;
     state.runActive = false;
     state.floorMap = null;
@@ -1515,6 +1527,7 @@
   }
 
   function damageEnemy(enemy, amount, damageType = "energy") {
+    if (enemy.health <= 0) return;
     amount = window.DamageTypes.resolve(amount, enemy.type, damageType);
     enemy.health -= amount;
     enemy.hitFlash = .12;
@@ -1523,6 +1536,12 @@
     if (enemy.health > 0) return;
     state.enemies = state.enemies.filter(candidate => candidate !== enemy);
     state.runSalvage += Math.ceil(enemy.reward * playerStats().salvageMultiplier);
+    if (window.Resources) {
+      const materials = window.Resources.roll("enemies", enemy.type, Math.random, enemy.boss ? 6 : 1);
+      state.runResources ||= {};
+      window.Resources.add(state.runResources, materials);
+      element("signal-text").textContent = "Разбор охраны: " + window.Resources.summary(materials);
+    }
     createParticles(enemy.x, enemy.y, "#d4ee70", enemy.boss ? 20 : 9, enemy.boss ? 100 : 58);
     if (enemy.boss) {
       state.floorMap.bossDefeated = true;
@@ -1588,10 +1607,13 @@
       .sort((a, b) => distance(a, state.player) - distance(b, state.player))[0];
     if (crate) {
       const loot = window.LootContainers.collect(crate, state.powerInventory);
+      state.runResources ||= {};
+      window.Resources?.add(state.runResources, loot.resources);
       state.runSalvage += Math.ceil(loot.salvage * playerStats().salvageMultiplier);
       emitNoise(state.player.x, state.player.y, 160, "шум вскрываемого ящика");
       element("signal-text").textContent = "Ящик открыт: лом +" + Math.ceil(loot.salvage * playerStats().salvageMultiplier)
-        + (loot.ammo ? ", " + window.DamageTypes.get(loot.ammoType).name + " запас +" + loot.ammo : "") + ".";
+        + (loot.ammo ? ", " + window.DamageTypes.get(loot.ammoType).name + " запас +" + loot.ammo : "")
+        + (window.Resources?.total(loot.resources) ? ", " + window.Resources.summary(loot.resources) : "") + ".";
       updateRunUi();
       return;
     }
@@ -1914,6 +1936,7 @@
     const dashCooldown = state.player.dash?.cooldown || 0;
     context.fillStyle = dashCooldown > 0 ? "#819a9a" : "#8ff7ef";
     context.fillText("CTRL · РЫВОК " + (dashCooldown > 0 ? dashCooldown.toFixed(1) + " с" : "ГОТОВ"), 16, HEIGHT - 18);
+    if (window.Resources) context.fillText("МАТЕРИАЛЫ В РЮКЗАКЕ · " + window.Resources.total(state.runResources), 260, HEIGHT - 18);
 
     if (!map.bossStarted && state.player.x > map.entryGate.x - 126) {
       context.fillStyle = "#d4ee70";
