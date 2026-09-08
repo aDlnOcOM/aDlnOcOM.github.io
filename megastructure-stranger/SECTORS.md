@@ -12,7 +12,11 @@ Furniture is solid geometry shared by collision, vision and AI navigation.
 Cosmetic markings and light pools are drawn below fog of war.
 
 Each floor keeps its boss airlock and a connected service corridor with varying
-height and wide connecting vestibules. Security density follows district type:
+height and wide connecting vestibules. Shell-connected bulkheads near each
+sector entrance and exit interrupt top/bottom perimeter alleys and require
+crossing the patrol corridor through 132-unit openings. Cameras in equipped
+sectors face the exit checkpoint; cover and patrol timing still allow stealth.
+Security density follows district type:
 slums have light patrols; robotics and elite areas add drones and turrets. Spawns
 are placed within the clear corridor rather than inside furniture.
 

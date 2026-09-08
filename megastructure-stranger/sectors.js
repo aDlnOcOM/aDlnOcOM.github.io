@@ -37,6 +37,14 @@
         if (bw <= 0 || bh <= 0) return;
         walls.push({ x: bx, y: by, width: bw, height: bh, material, district: type.id, tint: type.color, sector: index });
       };
+      // Tie partitions into the outer shell: perimeter alleys cannot bypass
+      // the patrol corridor. Keep the same 132-unit navigable opening.
+      sector.checkpoints = [x + 100, x + width - 112];
+      for (const checkpoint of sector.checkpoints) {
+        add(checkpoint, 28, 24, lane - 66 - 28, 'bulkhead');
+        add(checkpoint, lane + 66, 24, height - 28 - lane - 66, 'bulkhead');
+        sector.props.push({ x: checkpoint, y: lane - 62, w: 24, h: 124, kind: 'hazard' });
+      }
       const modules = Math.max(2, Math.floor((width - 240) / 260));
       const cell = (width - 240) / modules;
       for (let m = 0; m < modules; m++) {

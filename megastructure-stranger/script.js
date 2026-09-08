@@ -963,8 +963,8 @@
       }
       if (sector.security > 0) {
         sensors.push({
-          x: start + sectorWidth * .65, y: sector.lane + 50,
-          angle: -Math.PI / 2, homeAngle: -Math.PI / 2,
+          x: start + sectorWidth - 210, y: sector.lane + 50,
+          angle: Math.atan2(-50, 110), homeAngle: Math.atan2(-50, 110),
           phase: Math.random() * Math.PI * 2, range: 168, fov: .84, exposure: 0
         });
       }

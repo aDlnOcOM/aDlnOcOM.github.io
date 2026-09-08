@@ -50,8 +50,29 @@ test('200 layouts keep service corridors, entry vestibules and inter-sector link
       }
       for (const wall of local) {
         assert.ok(wall.x > sector.x && wall.x + wall.width < sector.x + sector.width);
-        assert.ok(wall.y > 28 && wall.y + wall.height < 572);
+        assert.ok(wall.y >= 28 && wall.y + wall.height <= 572);
         assert.ok(wall.width > 0 && wall.height > 0);
+      }
+    }
+  }
+});
+test('perimeter routes are cut by shell-connected checkpoints without closing the patrol corridor', () => {
+  const { gen, ai } = load();
+  for (let seed = 0; seed < 100; seed++) {
+    const map = gen.generate(10, 960, 600, seed);
+    for (const sector of map.sectors) {
+      const walls = map.walls.filter(wall => wall.sector === sector.index);
+      const bulkheads = walls.filter(wall => wall.material === 'bulkhead');
+      assert.equal(bulkheads.length, 4);
+      for (const x of sector.checkpoints) {
+        const pair = bulkheads.filter(wall => wall.x === x).sort((a, b) => a.y - b.y);
+        assert.equal(pair[0].y, 28);
+        assert.equal(pair[1].y + pair[1].height, 572);
+        assert.equal(pair[1].y - pair[0].y - pair[0].height, 132);
+        assert.ok(ai.clear({ x: x - 25, y: sector.lane }, { x: x + 50, y: sector.lane }, walls, 20));
+      }
+      for (const y of [42, 60, 100, 500, 540, 558]) {
+        assert.equal(ai.clear({ x: sector.x + 40, y }, { x: sector.x + 920, y }, walls, 13), false);
       }
     }
   }
