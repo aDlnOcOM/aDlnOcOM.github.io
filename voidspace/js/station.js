@@ -34,8 +34,8 @@
 
       ctx.save();
       ctx.translate(screenOrigin.x, screenOrigin.y);
+      this.drawStructures(ctx);
       this.drawDock(ctx, images, time);
-      this.drawStructures(ctx, images);
       this.drawHub(ctx, images, 0, 0, "core");
       this.drawHub(ctx, images, 165, 0, "cargo");
       for (const y of [-185, 185]) {
@@ -44,29 +44,56 @@
         ctx.fillStyle = `rgba(115, 230, 255, ${0.65 + Math.sin(time * 2) * 0.2})`;
         ctx.fillRect(-17, y + Math.sign(y) * 42, 34, 2);
       }
-      this.drawLabel(ctx, -275, -29, "ДОК СТАНЦИИ", "СТЫКОВКА / РЕМОНТ");
-      this.drawLabel(ctx, 95, -88, "КОМАНДНЫЙ", "ЦЕНТР");
-      this.drawLabel(ctx, 165, 82, "СЕРВИС", "СНАБЖЕНИЕ");
       ctx.restore();
     }
 
-    drawStructures(ctx, images) {
-      const connectors = [
-        { x: -99, y: 0, length: 110, rotation: 0 },
-        { x: 75, y: 0, length: 72, rotation: 0 },
-        { x: 0, y: -99, length: 130, rotation: Math.PI / 2 },
-        { x: 0, y: 99, length: 130, rotation: Math.PI / 2 },
+    getConnectors() {
+      // Endpoints meet the outside faces, not the centres of attached modules.
+      return [
+        { x: -82.5, y: 0, length: 55, rotation: 0 }, // Dock -110 → command -55.
+        { x: 82.5, y: 0, length: 55, rotation: 0 },
+        { x: 0, y: -101.5, length: 93, rotation: Math.PI / 2 },
+        { x: 0, y: 101.5, length: 93, rotation: Math.PI / 2 },
       ];
-      for (const connector of connectors) {
-        Utils.drawImage(
-          ctx,
-          images.station_beam,
-          connector.x,
-          connector.y,
-          connector.length,
-          28,
-          connector.rotation,
-        );
+    }
+
+    drawStructures(ctx) {
+      for (const connector of this.getConnectors()) {
+        ctx.save();
+        ctx.translate(connector.x, connector.y);
+        ctx.rotate(connector.rotation);
+        const left = -connector.length / 2;
+        ctx.fillStyle = "#09121e";
+        ctx.fillRect(left, -10, connector.length, 20);
+        // Resolution-independent rails and repeated braces replace stretched pixels.
+        const bays = Math.ceil(connector.length / 18);
+        const step = connector.length / bays;
+        ctx.strokeStyle = "#566a80";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < bays; i++) {
+          const x = left + i * step;
+          ctx.beginPath();
+          ctx.moveTo(x, -7);
+          ctx.lineTo(x + step, 7);
+          ctx.moveTo(x, 7);
+          ctx.lineTo(x + step, -7);
+          ctx.stroke();
+        }
+        for (const y of [-11, 7]) {
+          ctx.fillStyle = "#23364c";
+          ctx.fillRect(left, y, connector.length, 4);
+          ctx.fillStyle = "#8495a4";
+          ctx.fillRect(left, y, connector.length, 1);
+        }
+        ctx.fillStyle = "#205069";
+        ctx.fillRect(left, -1, connector.length, 2);
+        for (const x of [left, -left - 4]) {
+          ctx.fillStyle = "#52677b";
+          ctx.fillRect(x, -11, 4, 22);
+          ctx.fillStyle = "#6bd0e4";
+          ctx.fillRect(x + 1, -3, 2, 6);
+        }
+        ctx.restore();
       }
     }
 
@@ -101,7 +128,8 @@
         this.drawModule(ctx, images, "hull", -45, dy, 20);
         this.drawModule(ctx, images, "hull", 45, dy, 20);
       }
-      this.drawModule(ctx, images, type, 0, 0, 70);
+      if (type === "core") this.drawCommandCapsule(ctx, images);
+      else this.drawModule(ctx, images, type, 0, 0, 70);
       ctx.fillStyle = "#72dceb";
       for (const dx of [-1, 1]) {
         for (const dy of [-1, 1]) ctx.fillRect(dx * 44 - 5, dy * 44 - 1, 10, 2);
@@ -151,22 +179,40 @@
       }
     }
 
-    drawLabel(ctx, x, y, title, subtitle) {
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
-      const titleWidth = ctx.measureText(title).width;
-      ctx.font = "14px 'Segoe UI', Arial, sans-serif";
-      const width = Math.max(titleWidth, ctx.measureText(subtitle).width) + 16;
-      ctx.fillStyle = "rgba(4, 12, 20, 0.9)";
-      ctx.fillRect(x - width / 2, y - 17, width, 43);
-      ctx.fillStyle = "#d9f7ff";
-      ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
-      ctx.fillText(title, Math.round(x), Math.round(y));
-      ctx.fillStyle = "#82a7b6";
-      ctx.font = "14px 'Segoe UI', Arial, sans-serif";
-      ctx.fillText(subtitle, Math.round(x), Math.round(y + 21));
-      ctx.restore();
+    drawCommandCapsule(ctx, images) {
+      // Use the detailed 256px armour, not an enlarged 41×37 cockpit crop.
+      this.drawModule(ctx, images, "cargo", 0, 0, 70);
+      for (const [radius, colour] of [[26, "#080f19"], [24, "#7e90a0"], [22, "#253d54"], [19, "#101e31"], [16, "#468299"]]) {
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const angle = (i + 0.5) * Math.PI / 4;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = colour;
+        ctx.fill();
+      }
+      const glass = ctx.createRadialGradient(-4, -5, 1, 0, 0, 14);
+      glass.addColorStop(0, "#d0faff");
+      glass.addColorStop(0.35, "#61dcee");
+      glass.addColorStop(1, "#096089");
+      ctx.fillStyle = glass;
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#91dae5";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
+      ctx.moveTo(0, -12); ctx.lineTo(0, 12);
+      ctx.stroke();
+      for (const x of [-29, 27]) {
+        ctx.fillStyle = "#7bdfee";
+        ctx.fillRect(x, -6, 2, 12);
+      }
     }
   }
 

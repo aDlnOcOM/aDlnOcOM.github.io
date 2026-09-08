@@ -24,10 +24,18 @@ test('station redesign preserves docking and safety boundaries', () => {
 test('station renders with missing images and restores canvas state', () => {
   let depth = 0;
   const context = new Proxy({
+    createRadialGradient() { return { addColorStop() {} }; },
+    fillText() { assert.fail('Station must not display labels'); },
     measureText(text) { return { width: text.length * 8 }; },
     save() { depth++; },
     restore() { depth--; assert.ok(depth >= 0); },
   }, { get(target, key) { return key in target ? target[key] : () => {}; } });
   new Station().draw(context, { x: -100, y: 0 }, { width: 1000, height: 800 }, {}, 2);
   assert.equal(depth, 0);
+});
+
+test('dock connector stops at the outer face of the dock hull', () => {
+  const connector = new Station().getConnectors()[0];
+  assert.equal(connector.x - connector.length / 2, -110);
+  assert.equal(connector.x + connector.length / 2, -55);
 });
