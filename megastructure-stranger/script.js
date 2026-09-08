@@ -109,6 +109,8 @@
   const randomBetween = (minimum, maximum) => minimum + Math.random() * (maximum - minimum);
   const hasImplant = id => progression.implants.includes(id);
 
+  window.EquipmentWorkbench.extend(EQUIPMENT_TREES);
+
   function createEquipmentProgress(savedEquipment = {}) {
     const equipment = {};
     Object.entries(EQUIPMENT_TREES).forEach(([gearId, tree]) => {
@@ -188,6 +190,10 @@
   }
 
   function playerStats() {
+    return window.EquipmentWorkbench.applyBonuses(basePlayerStats(), progression.equipment, EQUIPMENT_TREES);
+  }
+
+  function basePlayerStats() {
     const isChoice = (branchId, choiceId) => hasUpgrade("smg", branchId, choiceId);
     const isMaxed = (branchId, choiceId) => hasTier("smg", branchId, choiceId);
     return {
@@ -216,8 +222,6 @@
     renderImplants();
     if (state.selectedGear) {
       renderEquipmentTree();
-    } else {
-      element("equipment-workbench").hidden = true;
     }
   }
 
@@ -231,9 +235,7 @@
       entry.innerHTML = `<span class="loadout-icon">${item.icon}</span><span><small>${item.slot}</small><strong>${item.name}</strong></span>`;
       entry.addEventListener("click", () => {
         state.selectedGear = item.id;
-        renderLoadout();
         renderEquipmentTree();
-        element("equipment-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
       });
       list.appendChild(entry);
     });
@@ -269,66 +271,16 @@
   }
 
   function renderEquipmentTree() {
-    if (!state.selectedGear) {
-      element("equipment-workbench").hidden = true;
-      return;
-    }
-    const gear = EQUIPMENT_TREES[state.selectedGear];
-    const selectedItem = STARTER_LOADOUT.find(item => item.id === state.selectedGear);
-    const tree = element("equipment-tree");
-    element("equipment-workbench").hidden = false;
-    const branchCount = gear.branches.filter(branch => getBranchProgress(state.selectedGear, branch.id).choice).length;
-    element("tree-eyebrow").textContent = gear.label;
-    element("tree-state").textContent = branchCount ? `${branchCount} ВЕТВ. ВЫБРАНО` : "БАЗОВАЯ СХЕМА";
-    element("tree-note").textContent = `${selectedItem.name}: каждая сота первого слоя ведёт в две взаимоисключающие специализации. Выбор нельзя отменить в текущем MVP.`;
-    tree.innerHTML = "";
-    gear.branches.forEach(branch => {
-      const progress = getBranchProgress(state.selectedGear, branch.id);
-      const group = document.createElement("article");
-      group.className = "upgrade-branch";
-      const root = document.createElement("div");
-      root.className = "hex-node hex-root";
-      root.innerHTML = `<small>1 СЛОЙ</small><strong>${branch.base}</strong><em>${branch.id.toUpperCase()}</em>`;
-      group.appendChild(root);
-      const stem = document.createElement("div");
-      stem.className = "tree-stem";
-      group.appendChild(stem);
-      const choices = document.createElement("div");
-      choices.className = "branch-choices";
-      branch.options.forEach(option => {
-        const selected = progress.choice === option.id;
-        const blocked = Boolean(progress.choice && !selected);
-        const choiceSlot = document.createElement("div");
-        choiceSlot.className = "branch-choice-slot";
-        const choice = document.createElement("button");
-        choice.type = "button";
-        choice.className = `hex-node hex-choice ${selected ? "active" : ""} ${blocked ? "blocked" : ""}`;
-        choice.disabled = selected || blocked || progression.salvage < option.cost;
-        choice.innerHTML = `<small>${selected ? "ВЫБРАНО" : `${option.cost} ЛОМА`}</small><strong>${option.name}</strong><em>${option.effect}</em>`;
-        choice.addEventListener("click", () => purchaseTreeChoice(state.selectedGear, branch, option));
-        choiceSlot.appendChild(choice);
-        choices.appendChild(choiceSlot);
-      });
-      group.appendChild(choices);
-      const tier = document.createElement("div");
-      const activeOption = branch.options.find(option => option.id === progress.choice);
-      const activeOptionIndex = branch.options.indexOf(activeOption);
-      tier.className = `branch-tier ${activeOption ? activeOptionIndex === 0 ? "left" : "right" : "waiting"}`;
-      if (!activeOption) {
-        tier.innerHTML = "<span class=\"branch-locked\">выбери одну из двух дорог</span>";
-      } else if (progress.tier) {
-        tier.innerHTML = `<div class="hex-node hex-choice active"><small>3 СЛОЙ · УСТАНОВЛЕНО</small><strong>${activeOption.tier.name}</strong><em>${activeOption.tier.effect}</em></div>`;
-      } else {
-        const tierButton = document.createElement("button");
-        tierButton.type = "button";
-        tierButton.className = "hex-node hex-choice";
-        tierButton.disabled = progression.salvage < activeOption.tier.cost;
-        tierButton.innerHTML = `<small>3 СЛОЙ · ${activeOption.tier.cost} ЛОМА</small><strong>${activeOption.tier.name}</strong><em>${activeOption.tier.effect}</em>`;
-        tierButton.addEventListener("click", () => purchaseTreeTier(state.selectedGear, branch, activeOption));
-        tier.appendChild(tierButton);
+    if (!state.selectedGear) return;
+    window.EquipmentWorkbench.show({
+      selected: state.selectedGear, items: STARTER_LOADOUT, trees: EQUIPMENT_TREES,
+      progress: progression.equipment, salvage: progression.salvage,
+      select(id) { state.selectedGear = id; renderEquipmentTree(); },
+      close() { state.selectedGear = null; },
+      buy(branch, option, tier) {
+        if (tier) purchaseTreeTier(state.selectedGear, branch, option);
+        else purchaseTreeChoice(state.selectedGear, branch, option);
       }
-      group.appendChild(tier);
-      tree.appendChild(group);
     });
   }
 
@@ -1822,20 +1774,21 @@
   }
 
   window.addEventListener("keydown", event => {
+    if (state.selectedGear) return;
     if (event.code === "KeyE" && !event.repeat) tryInteract();
     if (event.code === "KeyF" && !event.repeat) toggleFlashlight();
   });
 
 
   element("start-run").addEventListener("click", beginRun);
+  element("open-equipment").addEventListener("click", () => {
+    state.selectedGear = "smg";
+    renderEquipmentTree();
+  });
   element("room-overlay").addEventListener("click", onOverlayClick);
   element("abort-run").addEventListener("click", () => finishRun(1));
-  element("close-tree").addEventListener("click", () => {
-    state.selectedGear = null;
-    element("equipment-workbench").hidden = true;
-    renderLoadout();
-  });
   window.addEventListener("keydown", event => {
+    if (state.selectedGear) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR") reloadSmg();

@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>Megastructure Stranger</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="equipment.css">
 </head>
 <body>
   <div class="build-watermark" aria-hidden="true">
@@ -72,25 +73,11 @@
             <p class="eyebrow">перед выходом / инвентаризация</p>
             <h2 id="loadout-title">Стартовый комплект</h2>
           </div>
-          <span class="terminal-state">7 / 7 СЛОТОВ</span>
+          <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
         </div>
         <div id="loadout-list" class="loadout-list"></div>
       </section>
 
-      <section id="equipment-workbench" class="terminal-panel equipment-panel" aria-labelledby="equipment-tree-title" hidden>
-        <div class="panel-heading">
-          <div>
-            <p id="tree-eyebrow" class="eyebrow">оружейный шкаф / ПП Охраны</p>
-            <h2 id="equipment-tree-title">Дерево оснащения</h2>
-          </div>
-          <div class="tree-heading-actions">
-            <span id="tree-state" class="terminal-state">0 ВЕТВЕЙ</span>
-            <button id="close-tree" class="quiet-button" type="button">К экипировке</button>
-          </div>
-        </div>
-        <p id="tree-note" class="tree-note">Выбери предмет в стартовом комплекте, чтобы открыть его нелегальную схему модификации.</p>
-        <div id="equipment-tree" class="equipment-tree"></div>
-      </section>
     </section>
 
     <section id="run-screen" class="run-screen" hidden aria-label="Забег по мегаструктуре">
@@ -133,6 +120,7 @@
       </section>
     </section>
   </main>
+  <script src="equipment.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
