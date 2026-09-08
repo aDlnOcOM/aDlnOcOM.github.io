@@ -12,8 +12,17 @@
     const variant = capacity >= 52 ? 'барабанный' : capacity > 32 ? 'увеличенный' : fastFeed ? 'быстрой подачи' : 'штатный';
     return { type, loaded: 0, magazines: Array.from({ length: 3 }, (_, id) => ({ id, type, capacity, energy: capacity, variant })), battery: supplies[type].capacity };
   }
+  function supplyFor(key) {
+    if (key.includes(':') && window.Arsenal) {
+      const [family, type] = key.split(':');
+      const profile = window.Arsenal.families.find(item => item.id === family);
+      if (profile) return { ...supplies[type], code: profile.caliber, box: 'Боезапас ' + profile.caliber + ' / ' + type };
+    }
+    return supplies[key] || supplies.energy;
+  }
   function fire(stock) {
     const magazine = stock.magazines[stock.loaded];
+    if (stock.ammoKey && magazine.ammoKey !== stock.ammoKey) return false;
     if ((magazine.type || 'energy') !== (stock.type || 'energy')) return false;
     if (magazine.energy < 1) return false;
     magazine.energy--; return true;
@@ -22,6 +31,7 @@
     if (stock.refilling) return false;
     const magazine = stock.magazines.find(item => item.id === id);
     if (!magazine) return false;
+    if (stock.ammoKey && magazine.ammoKey !== stock.ammoKey) return false;
     if ((magazine.type || 'energy') !== (stock.type || 'energy')) return false;
     const amount = Math.min(magazine.capacity - magazine.energy, stock.battery);
     if (amount <= 0) return false;
@@ -43,16 +53,16 @@
   }
   function reload(stock) {
     const current = stock.magazines[stock.loaded];
-    const next = stock.magazines.reduce((best, item) => (item.type || 'energy') === (stock.type || 'energy') && item.energy > best.energy ? item : best, current);
+    const next = stock.magazines.reduce((best, item) => (!stock.ammoKey || item.ammoKey === stock.ammoKey) && (item.type || 'energy') === (stock.type || 'energy') && item.energy > best.energy ? item : best, current);
     if (next.id !== current.id) stock.loaded = next.id;
     return stock.magazines[stock.loaded].energy;
   }
   function canReload(stock) {
     const current = stock.magazines[stock.loaded];
-    return current.energy < current.capacity && (stock.battery > 0 || stock.magazines.some(item => (item.type || 'energy') === (stock.type || 'energy') && item.energy > current.energy));
+    return current.energy < current.capacity && (stock.battery > 0 || stock.magazines.some(item => (!stock.ammoKey || item.ammoKey === stock.ammoKey) && (item.type || 'energy') === (stock.type || 'energy') && item.energy > current.energy));
   }
   function render(container, stock, onRefill) {
-    const info = supplies[stock.type] || supplies.energy;
+    const info = stock.supply || supplies[stock.type] || supplies.energy;
     container.replaceChildren();
     container.classList.add('container-inventory');
     const details = document.createElement('section');
@@ -67,11 +77,11 @@
       wrapper.append(heading, grid); container.appendChild(wrapper);
       return grid;
     }
-    const weapon = section('В ОРУЖИИ / ПП ОХРАНЫ', 4, 2);
+    const weapon = section('В ОРУЖИИ / ' + (stock.weaponName || 'ПП ОХРАНЫ'), 4, 2);
     const rig = section('МАГАЗИННЫЕ ПОДСУМКИ / БЫСТРЫЙ ДОСТУП', 6, 2);
     const pockets = section('КАРМАНЫ / 4 ЯЧЕЙКИ', 4, 1);
     const extras = Object.entries(stock.extraSupplies || {}).filter(([, amount]) => amount > 0);
-    const backpack = section('ОФИСНАЯ СУМКА / ЗАПАСЫ', 6, extras.length > 2 ? 4 : 3);
+    const backpack = section('СУМКА / ЗАПАСЫ', 6, extras.length > 2 ? 4 : 3);
     for (let i = 0; i < 4; i++) {
       const empty = document.createElement('span'); empty.className = 'pocket-empty'; empty.setAttribute('aria-hidden', 'true'); pockets.appendChild(empty);
     }
@@ -79,7 +89,7 @@
       const battery = !magazine;
       details.innerHTML = battery
         ? '<small>ЗАПАС БОЕПРИПАСОВ</small><h4>' + info.box + '</h4><p>Всего ' + stock.battery + ' ед. · Ёмкость упаковки ' + info.capacity + ' · Совместимость: ' + info.code + '</p>'
-        : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.id === stock.loaded ? 'Установлен в ПП' : 'Запасной в подсумке') + '</p>';
+        : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.id === stock.loaded ? 'Установлен в оружии' : 'Запасной в подсумке') + '</p>';
       if (magazine && onRefill) {
         const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
         button.disabled = Boolean(stock.refilling) || !stock.battery || magazine.energy === magazine.capacity;
@@ -107,10 +117,11 @@
     battery.innerHTML = '<small>' + info.box + '</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + stock.battery + ' ед.</strong>';
     battery.onclick = () => { stock.inspectId = null; inspect(null); }; backpack.appendChild(battery);
     for (const [type, amount] of extras) {
+      const extraInfo = supplyFor(type);
       const cell = document.createElement('button'); cell.type = 'button'; cell.className = 'tactical-item energy-battery';
       cell.dataset.ammoType = type; cell.style.gridColumn = 'auto / span 2'; cell.style.gridRow = 'auto / span 2';
-      cell.innerHTML = '<small>' + supplies[type].code + ' / ЛУТ</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + amount + ' ед.</strong>';
-      cell.onclick = () => { details.innerHTML = '<h4>' + supplies[type].box + '</h4><p>' + amount + ' ед. Не подходит установленному конвертеру ПП.</p>'; };
+      cell.innerHTML = '<small>' + extraInfo.code + ' / ЛУТ</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + amount + ' ед.</strong>';
+      cell.onclick = () => { details.innerHTML = '<h4>' + extraInfo.box + '</h4><p>' + amount + ' ед. Несовместимо с текущим оружием.</p>'; };
       backpack.appendChild(cell);
     }
     container.appendChild(details);

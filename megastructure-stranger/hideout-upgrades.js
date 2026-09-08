@@ -52,7 +52,7 @@
       card.setAttribute("data-facility", facility.id);
       card.style.setProperty("--facility-accent", facility.color);
       const dependencies = offer.requirements.map(item => `${facilities.find(entry => entry.id === item.id).name}: ур. ${item.level} ${item.met ? "✓" : "— требуется"}`).join(" · ");
-      card.innerHTML = `<div class="facility-code" aria-hidden="true">${facility.code}<span>${String(offer.level).padStart(2, "0")}</span></div><h3>${facility.name}</h3><p class="facility-current">${offer.level ? tiers[offer.level - 1] : "Не построено"} · ${offer.level}/5</p><ol class="facility-tiers" aria-label="Уровни установки">${tiers.map((tier, index) => `<li class="${index < offer.level ? "built" : ""}"><span>${index + 1}</span>${tier}</li>`).join("")}</ol><p class="facility-future">В будущем: ${facility.future}.</p><p class="facility-requirements">${dependencies || (offer.level === 5 ? "Все ступени освоены" : "Без дополнительных требований")}</p>`;
+      card.innerHTML = `<div class="facility-code" aria-hidden="true">${facility.code}<span>${String(offer.level).padStart(2, "0")}</span></div><h3>${facility.name}</h3><p class="facility-current">${offer.level ? tiers[offer.level - 1] : "Не построено"} · ${offer.level}/5</p><ol class="facility-tiers" aria-label="Уровни установки">${tiers.map((tier, index) => `<li class="${index < offer.level ? "built" : ""}"><span>${index + 1}</span>${tier}</li>`).join("")}</ol><p class="facility-future">Назначение: ${facility.future}.</p><p class="facility-requirements">${dependencies || (offer.level === 5 ? "Все ступени освоены" : "Без дополнительных требований")}</p>`;
       const button = document.createElement("button");
       button.type = "button";
       button.disabled = !offer.allowed;

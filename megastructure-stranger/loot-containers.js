@@ -13,11 +13,14 @@
         // Wide boundary vestibules provide reachable fallback alcoves.
         point ||= { x: sector.x + 64, y: sector.lane + (slot ? 195 : -195) };
         const ammoType = ['energy', 'ballistic', 'elemental', 'mechanical'][Math.floor(random() * 4)];
+        const ammoFamilies = window.Arsenal?.families.filter(family => family.type === ammoType);
+        const ammoKey = ammoFamilies ? ammoFamilies[Math.floor(random() * ammoFamilies.length)].id + ':' + ammoType : undefined;
         const kind = random() < .45 ? 'salvage' : 'supply';
         containers.push({ id: `${sector.index}-${slot}`, ...point, radius: 15, kind,
-          salvage: 5 + Math.floor(random() * 9), ammoType,
+          salvage: 5 + Math.floor(random() * 9), ammoType, ammoKey,
           ammo: kind === 'supply' ? 18 + Math.floor(random() * 25) : 0, opened: false,
-          resources: window.Resources?.roll('sectors', sector.id, random, 3) || {} });
+          resources: window.Resources?.roll('sectors', sector.id, random, 3) || {},
+          items: window.Workshop && ((sector.index === 0 && slot === 0) || random() < .3) ? [window.Workshop.loot(random, sector.index === 0 && slot === 0)] : [] });
       }
     }
     return containers;
@@ -26,13 +29,14 @@
     if (container.opened) return null;
     container.opened = true;
     if (container.ammo > 0) {
-      if (container.ammoType === (stock.type || 'energy')) stock.battery += container.ammo;
+      if (container.ammoType === (stock.type || 'energy') && (!stock.ammoKey || stock.ammoKey === (container.ammoKey || 'smg:energy'))) stock.battery += container.ammo;
       else {
         stock.extraSupplies ||= {};
-        stock.extraSupplies[container.ammoType] = (stock.extraSupplies[container.ammoType] || 0) + container.ammo;
+        const key = container.ammoKey || container.ammoType;
+        stock.extraSupplies[key] = (stock.extraSupplies[key] || 0) + container.ammo;
       }
     }
-    return { salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType, resources: container.resources || {} };
+    return { salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType, resources: container.resources || {}, items: container.items || [] };
   }
   window.LootContainers = { generate, collect };
 })();

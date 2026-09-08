@@ -101,7 +101,7 @@
       </div>
       <section id="shelter-facility-panel" class="facility-panel" aria-labelledby="facility-title" hidden>
         <div class="panel-heading"><div><p class="eyebrow">ИНФРАСТРУКТУРА / МОДУЛЬНОЕ РАЗВИТИЕ</p><h2 id="facility-title">Оснащение убежища</h2></div></div>
-        <p class="section-note">Пять ступеней качества: от самодельного до идеального. Строительство и улучшения оплачиваются ломом и сохраняются. Производство, расход топлива и энергосеть появятся позже; сейчас установки не дают боевых бонусов и не меняют пополнение запасов.</p>
+        <p class="section-note">Пять ступеней качества: от самодельного до идеального. Строительство и улучшения оплачиваются ломом. Уровень установки открывает рецепты и качество изделий в терминале исследований. Расход топлива и энергосеть ещё не реализованы.</p>
         <p id="hideout-upgrade-status" class="facility-feedback" role="status" aria-live="polite"></p>
         <div id="hideout-facilities" class="facility-grid"></div>
       </section>
@@ -114,16 +114,17 @@
             <h2 id="loadout-title">Экипировка</h2>
           </div>
           <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
+          <button id="open-workshop" class="quiet-button" type="button">Исследования / производство / предметы</button>
         </div>
         <div class="inventory-layout"><section class="equipment-body"><h3>На персонаже</h3><div id="loadout-list" class="loadout-list"></div></section><section><h3>Инвентарь</h3><p class="section-note">Зарядная станция Hideout · запасы восстановлены</p><div id="supply-grid" class="supply-grid"></div></section></div>
-        <p class="section-note">ПП Охраны — маломощное энергетическое оружие: 1 выстрел = 1 ед. энергии. Выберите слот, чтобы открыть дерево развития. Тип аккумуляторных магазинов зависит от улучшений ПП.</p>
+        <p class="section-note">Выбор предметов, ремонт и производство — в терминале исследований. Нажмите слот для дерева развития: каждое улучшение требует изготовленного модуля. Магазины и коробки совместимы по платформе и типу боеприпаса. В убежище боезапас пополняется; износ снаряжения не восстанавливается автоматически.</p>
       </section>
       <section id="panel-storage" class="hideout-panel storage-panel" role="tabpanel" aria-labelledby="tab-storage" tabindex="0" hidden>
         <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
         <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов, модификаций и оснащения убежища.</p></div></div>
-        <h3>Материалы</h3><p class="section-note">Добывайте материалы в ящиках профильных этажей и при разборе поверженной охраны. При возвращении они поступают на склад; при гибели сохраняется только часть. Крафт из материалов появится позже. Лом — общий запас, не отдельная копия валюты.</p><div id="storage-materials" class="storage-items"></div>
+        <h3>Материалы</h3><p class="section-note">Добывайте материалы в ящиках профильных этажей и при разборе поверженной охраны. При возвращении они поступают на склад; при гибели сохраняется только часть. Исследуйте образцы и используйте материалы в производстве. Лом — общий запас, не отдельная копия валюты.</p><div id="storage-materials" class="storage-items"></div>
         <h3>Закреплённое снаряжение</h3><div id="storage-items" class="storage-items"></div>
-        <p class="section-note">Здесь отображаются имеющиеся предметы и установленные модификации. Запасных предметов пока нет.</p>
+        <p class="section-note">Здесь отображается надетый комплект. Найденные и изготовленные предметы, ремонт и бронеплиты доступны в терминале исследований: вкладка «Предметы».</p>
       </section>
     </section>
 
@@ -180,6 +181,9 @@
   <script src="fog-memory.js"></script>
   <script src="sectors.js"></script>
   <script src="resources.js"></script>
+  <script src="arsenal.js"></script>
+  <script src="workshop.js"></script>
+  <script src="workshop-ui.js"></script>
   <script src="loot-containers.js"></script>
   <script src="player-dash.js"></script>
   <script src="script.js"></script>

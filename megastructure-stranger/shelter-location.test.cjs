@@ -12,8 +12,8 @@ function load(ui=false){
   function frame(time){const entry=frames.entries().next().value;assert.ok(entry);frames.delete(entry[0]);entry[1](time);}
   return {api:scope.window.ShelterLocation,get,frames,frame};
 }
-test('mini-location has five facility sites and four service interactions',()=>{
-  const {api}=load();assert.equal(api.points.length,9);
+test('mini-location has five facility sites, research table and four services',()=>{
+  const {api}=load();assert.equal(api.points.length,10);
   for(const point of api.points){const apron={x:point.x,y:point.y+(point.y<250?65:-65)};assert.equal(api.nearest(apron).id,point.id);}
   assert.equal(api.nearest({x:470,y:250}),undefined);
 });

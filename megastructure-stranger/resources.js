@@ -26,7 +26,23 @@
     ['composite','Композит',4,'industrial,robotics','turret,marksman'],
     ['superComposite','Сверхкомпозит',1,'elite,robotics','warden,breaker'],
     ['conductor','Проводник',7,'utilities,industrial,archive','watcher,drone,turret'],
-    ['superconductor','Сверхпроводник',1,'robotics,archive','warden']
+    ['superconductor','Сверхпроводник',1,'robotics,archive','warden'],
+    ['fastener','Крепёж',7,'industrial,utilities','drone'],
+    ['spring','Пружина',6,'industrial,slums','watcher'],
+    ['wire','Изолированный провод',7,'utilities,archive','drone'],
+    ['resin','Связующая смола',5,'industrial,medical',''],
+    ['polymerSheet','Полимерный лист',5,'industrial,market',''],
+    ['armorMesh','Армирующая сетка',4,'industrial,robotics','enforcer'],
+    ['plateBlank','Заготовка бронеплиты',3,'industrial','enforcer'],
+    ['barrelBlank','Ствольная заготовка',3,'industrial','marksman'],
+    ['weaponFrame','Оружейная рама',3,'industrial,robotics','marksman'],
+    ['triggerGroup','Спусковой узел',3,'robotics','marksman'],
+    ['circuitModule','Управляющий модуль',2,'robotics,archive','turret'],
+    ['capacitor','Конденсатор',4,'robotics,utilities','watcher'],
+    ['opticalGlass','Оптическое стекло',4,'medical,archive','marksman'],
+    ['grip','Заготовка рукояти',5,'industrial,slums',''],
+    ['buckle','Пряжка',6,'residential,slums','enforcer'],
+    ['ceramicPowder','Керамический порошок',4,'industrial,medical','']
   ].map(([id,name,weight,sectors,enemies]) => Object.freeze({id,name,weight,sectors: sectors.split(','),enemies: enemies.split(',').filter(Boolean)}));
   const districts = { residential:'Жилые', industrial:'Производственные', slums:'Трущобы', market:'Торговые', robotics:'Роботизированные', elite:'Элитные', medical:'Медицинские', hydroponics:'Гидропоника', archive:'Архив', utilities:'Коммунальные' };
   const enemies = { watcher:'наблюдатели', drone:'сборщики', turret:'турели', burstTurret:'очередные турели', enforcer:'штурмовики', marksman:'стрелки', warden:'Смотритель', breaker:'Таран' };

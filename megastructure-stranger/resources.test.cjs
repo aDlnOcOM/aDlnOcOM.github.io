@@ -7,15 +7,15 @@ function load() {
   for (const file of ['resources.js', 'sectors.js', 'loot-containers.js']) vm.runInContext(fs.readFileSync(`${__dirname}/${file}`, 'utf8'), scope);
   return scope.window;
 }
-test('all 25 resources have unique names, stable IDs and reachable sources', () => {
+test('all 41 resources have unique names, stable IDs and reachable sources', () => {
   const { Resources: r, SectorGenerator: s } = load();
-  assert.equal(r.catalog.length, 25);
-  assert.equal(new Set(r.catalog.map(item => item.id)).size, 25);
+  assert.equal(r.catalog.length, 41);
+  assert.equal(new Set(r.catalog.map(item => item.id)).size, 41);
   const seen = new Set();
   for (const sector of s.types) for (let seed = 0; seed < 200; seed++) {
     Object.keys(r.roll('sectors', sector.id, s.seeded(seed), 10)).forEach(id => seen.add(id));
   }
-  assert.equal(seen.size, 24);
+  assert.equal(seen.size, 40);
   for (const item of r.catalog) assert.ok(item.sectors.every(id => s.types.some(type => type.id === id)));
   assert.equal(Object.hasOwn(r.normalize({salvage: 99}), 'salvage'), false);
 });
@@ -54,7 +54,7 @@ test('warehouse renders every resource with stock and acquisition hints', () => 
   const scope = vm.createContext({window:{},document:{createElement:node}});
   vm.runInContext(fs.readFileSync(`${__dirname}/resources.js`,'utf8'),scope);
   const root = node(); scope.window.Resources.render(root,{metal:8},35);
-  assert.equal(root.children.length,25);
+  assert.equal(root.children.length,41);
   assert.equal(root.children[3].children[1].textContent,'8');
   assert.equal(root.children[4].children[1].textContent,'35');
   assert.match(root.children[0].children[3].textContent,/Ящики:.*Разбор/);

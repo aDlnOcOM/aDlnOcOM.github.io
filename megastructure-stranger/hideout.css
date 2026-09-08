@@ -1,4 +1,13 @@
 /* Architectural surfaces, cold terminals and sparse hazard-light accents. */
+.workshop-dialog { width:min(1100px,94vw); max-height:88vh; overflow:auto; background:#101b21; color:#c9dbd5; border:1px solid #7dafa0; padding:24px; }
+.workshop-dialog::backdrop { background:#02070cd9; }
+.workshop-nav { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+.workshop-nav input,.workshop-nav select { color:#c9dbd5; background:#15262c; border:1px solid #577069; padding:10px; max-width:100%; }
+.workshop-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); gap:12px; }
+.workshop-list article { border:1px solid #344b50; background:#122128; padding:16px; }
+.workshop-list h3 { font-size:15px; color:#b4d8c6; }
+.workshop-list p { font:12px/1.7 Consolas,monospace; color:#98afaf; }
+.workshop-list button { display:block; width:100%; margin:8px 0; }
 .shelter-layout:has(.shelter-playfield) { display:block; }
 .shelter-layout:has(.shelter-playfield) .briefing-panel { padding:20px 26px; margin-bottom:18px; }
 .shelter-layout:has(.shelter-playfield) .briefing-copy { display:none; }

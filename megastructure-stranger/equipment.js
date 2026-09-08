@@ -165,9 +165,10 @@
           const data = tier ? option.tier : option;
           const installed = progress.choice === option.id && (!tier || progress.tier);
           const needsParent = tier && progress.choice !== option.id;
-          const status = installed ? "Установлено" : blocked ? "Другая специализация" : needsParent ? `Нужно: ${option.name}` : api.salvage < data.cost ? "Недостаточно лома" : "Доступно";
+          const partMissing = api.partRequirement?.(branch, option, tier) || "";
+          const status = installed ? "Установлено" : blocked ? "Другая специализация" : needsParent ? `Нужно: ${option.name}` : partMissing || (api.salvage < data.cost ? "Недостаточно лома" : "Доступно");
           const id = `${gearId}/${branch.id}/${option.id}/${tier}`;
-          const node = { id, branch, option, tier, data, installed, blocked, needsParent, status };
+          const node = { id, branch, option, tier, data, installed, blocked, needsParent, status, partMissing };
           allNodes.push(node);
           const button = document.createElement("button");
           button.className = `gear-node ${installed ? "installed" : blocked ? "excluded" : needsParent ? "locked" : "available"}`;
@@ -186,7 +187,7 @@
       dialog.querySelectorAll(".gear-node").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.node === node.id)));
       panel.innerHTML = `<p class="eyebrow">СХЕМА / ${node.tier ? "III" : "II"} СЛОЙ</p><h3>${node.data.name}</h3><p class="gear-effect">${node.data.effect}</p><dl><dt>Предшественник</dt><dd>${node.tier ? node.option.name : node.branch.base}</dd><dt>Состояние</dt><dd>${node.status}</dd><dt>Цена</dt><dd>${node.data.cost} лома</dd></dl><p class="gear-warning">${node.tier ? "Усиливает выбранную специализацию." : "Выбор необратим: соседняя специализация этой ветви будет закрыта."}</p><button class="primary-button" data-install>Установить модуль</button><p class="gear-feedback" role="status"></p>`;
       const install = panel.querySelector("[data-install]");
-      install.disabled = node.installed || node.blocked || node.needsParent || api.salvage < node.data.cost;
+      install.disabled = node.installed || node.blocked || node.needsParent || Boolean(node.partMissing) || api.salvage < node.data.cost;
       install.onclick = () => {
         api.buy(node.branch, node.option, node.tier);
         const installedButton = [...dialog.querySelectorAll(".gear-node")].find(button => button.dataset.node === node.id);

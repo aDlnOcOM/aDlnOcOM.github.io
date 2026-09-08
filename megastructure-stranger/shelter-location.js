@@ -5,7 +5,8 @@
     {id:'solder',name:'Паяльная станция',x:550,y:110}, {id:'mill',name:'Фрезер ЧПУ',x:750,y:110},
     {id:'forming',name:'Металлоформовка',x:750,y:390}, {id:'implants',name:'Нейротерминал',x:150,y:390},
     {id:'storage',name:'Склад',x:350,y:390}, {id:'equipment',name:'Экипировка',x:550,y:390},
-    {id:'exit',name:'Выход в забег',x:880,y:250}
+    {id:'exit',name:'Выход в забег',x:880,y:250},
+    {id:'research',name:'Стол исследований',x:80,y:250}
   ];
   function nearest(player) { return points.filter(point => Math.hypot(point.x-player.x,point.y-player.y)<96).sort((a,b)=>Math.hypot(a.x-player.x,a.y-player.y)-Math.hypot(b.x-player.x,b.y-player.y))[0]; }
   function unstick(player,levels) {
@@ -35,6 +36,7 @@
     if(!active||dialog.open)return;
     const point=nearest(player);if(!point)return;
     keys.clear();selected=point.id;
+    if(point.id==='research'){window.openShelterWorkshop?.();return;}
     if(point.id==='exit'){get('start-run').click();return;}
     if(point.id==='storage'||point.id==='equipment'){get('tab-'+point.id).click();return;}
     get('shelter-implants').hidden=point.id!=='implants';
@@ -42,7 +44,7 @@
     get('shelter-console-title').textContent=point.name;
     get('hideout-upgrade-status').textContent='';filterCards();dialog.showModal();get('shelter-console-close').focus();
   }
-  api.refresh=progression=>{levels=window.HideoutUpgrades.normalize(progression.hideout);unstick(player,levels);if(dialog.open)filterCards();};
+  api.refresh=progression=>{levels={...window.HideoutUpgrades.normalize(progression.hideout),research:progression.workshop?.table||0};unstick(player,levels);if(dialog.open)filterCards();};
   api.setActive=value=>{
     active=value;keys.clear();last=0;
     if(!active){if(frameId!==null)window.cancelAnimationFrame(frameId);frameId=null;close();}
@@ -60,7 +62,7 @@
     context.fillStyle='#5b7476';context.fillText('41 / СЛЕПАЯ ЗОНА · УБЕЖИЩЕ',470,225);
     const near=nearest(player);
     for(const point of points){
-      const facility=window.HideoutUpgrades.facilities.find(item=>item.id===point.id),level=levels[point.id]||0;
+      const facility=window.HideoutUpgrades.facilities.find(item=>item.id===point.id)||(point.id==='research'?{color:'#89b8d0'}:null),level=levels[point.id]||0;
       const built=!facility||level>0;
       context.save();context.translate(point.x,point.y);
       context.strokeStyle=near===point?'#d8eac5':facility?.color||'#7da3a6';context.lineWidth=near===point?2:1;

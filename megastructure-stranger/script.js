@@ -164,7 +164,8 @@
         implants: Array.isArray(saved.implants) ? saved.implants : [],
         equipment,
         hideout: window.HideoutUpgrades?.normalize(saved.hideout) || {},
-        resources: window.Resources?.normalize(saved.resources) || {}
+        resources: window.Resources?.normalize(saved.resources) || {},
+        workshop: saved.workshop
       };
     } catch {
       return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress(), hideout: window.HideoutUpgrades?.normalize() || {} };
@@ -172,6 +173,7 @@
   }
 
   let progression = loadProgression();
+  window.Workshop?.init(progression, EQUIPMENT_TREES);
   const state = {
     active: false,
     runActive: false,
@@ -197,7 +199,32 @@
   }
 
   function playerStats() {
-    return window.EquipmentWorkbench.applyBonuses(basePlayerStats(), progression.equipment, EQUIPMENT_TREES);
+    const stats = window.EquipmentWorkbench.applyBonuses(basePlayerStats(), progression.equipment, EQUIPMENT_TREES);
+    return window.Workshop ? window.Workshop.stats(progression, stats) : stats;
+  }
+
+  function currentLoadout() {
+    return STARTER_LOADOUT.map(item => {
+      const owned = window.Workshop?.equipped(progression, item.id);
+      const def = window.Workshop?.definition(owned);
+      return { ...item, name: def ? def.name + " · " + Math.ceil(owned.condition) + "%" : item.name };
+    });
+  }
+
+  function openWorkshop() {
+    if (state.runActive || !window.WorkshopUI) return;
+    window.WorkshopUI.show({ get: () => progression, action(name, ...args) {
+      if (state.runActive) return "Недоступно во время забега";
+      const candidate = JSON.parse(JSON.stringify(progression));
+      const result = window.Workshop[name](candidate, ...args);
+      if (typeof result === "string" && result) return result;
+      candidate.equipment = createEquipmentProgress(candidate.equipment);
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(candidate)); }
+      catch { return "Ошибка сохранения. Ресурсы и предметы не списаны."; }
+      progression = candidate;
+      updateHome();
+      return "";
+    } });
   }
 
   function basePlayerStats() {
@@ -233,7 +260,7 @@
       element("hideout-upgrade-status").textContent = result.reason;
     });
     if (window.PowerInventory) window.PowerInventory.render(element("supply-grid"), createPowerStock());
-    window.HideoutShell?.refresh(progression, STARTER_LOADOUT);
+    window.HideoutShell?.refresh(progression, currentLoadout());
     element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
     element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
     renderLoadout();
@@ -247,7 +274,7 @@
   function renderLoadout() {
     const list = element("loadout-list");
     list.innerHTML = "";
-    STARTER_LOADOUT.forEach(item => {
+    currentLoadout().forEach(item => {
       const entry = document.createElement("button");
       entry.className = `loadout-item ${state.selectedGear === item.id ? "selected" : ""}`;
       entry.type = "button";
@@ -269,7 +296,17 @@
   function createPowerStock() {
     const choice = progression.equipment.smg.ammo.choice;
     const type = choice === 'incendiary' ? 'elemental' : choice === 'armor-piercing' ? 'ballistic' : choice === 'flechette' ? 'mechanical' : 'energy';
-    return window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"), type);
+    const gun = window.Workshop?.definition(window.Workshop.equipped(progression, "smg"));
+    const actualType = choice ? type : gun?.type || type;
+    const stock = window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType);
+    if (gun) {
+      stock.supply = window.Arsenal.ammoInfo(gun, actualType);
+      stock.ammoKey = stock.supply.key;
+      stock.weaponName = gun.name;
+      stock.battery = stock.supply.capacity;
+      stock.magazines.forEach(magazine => { magazine.ammoKey = stock.ammoKey; });
+    }
+    return stock;
   }
 
   function openFieldInventory() {
@@ -278,7 +315,7 @@
     state.active = false;
     state.input.keys.clear();
     state.input.mouseDown = false;
-    window.PowerInventory.show(state.powerInventory, STARTER_LOADOUT, id => {
+    window.PowerInventory.show(state.powerInventory, currentLoadout(), id => {
       if (state.player.reload > 0) return;
       window.PowerInventory.startRefill(state.powerInventory, id);
       state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
@@ -313,7 +350,11 @@
   function renderEquipmentTree() {
     if (!state.selectedGear) return;
     window.EquipmentWorkbench.show({
-      selected: state.selectedGear, items: STARTER_LOADOUT, trees: EQUIPMENT_TREES,
+      selected: state.selectedGear, items: currentLoadout(), trees: EQUIPMENT_TREES,
+      partRequirement(branch, option, tier) {
+        if (!window.Workshop) return "";
+        return window.Workshop.partAvailable(progression, window.Workshop.partKey(state.selectedGear, branch.id, option.id, tier)) ? "" : "Сначала изготовьте модуль: " + (tier ? option.tier.name : option.name);
+      },
       progress: progression.equipment, salvage: progression.salvage,
       select(id) { state.selectedGear = id; renderEquipmentTree(); },
       close() { state.selectedGear = null; },
@@ -325,6 +366,7 @@
   }
 
   function purchaseTreeChoice(gearId, branch, option) {
+    if (window.Workshop) { installCraftedModule(gearId, branch, option, false); return; }
     const progress = getBranchProgress(gearId, branch.id);
     if (progress.choice || progression.salvage < option.cost) return;
     progression.salvage -= option.cost;
@@ -333,7 +375,25 @@
     updateHome();
   }
 
+  function installCraftedModule(gearId, branch, option, tier) {
+    if (state.runActive) return;
+    const candidate = JSON.parse(JSON.stringify(progression));
+    const selected = candidate.equipment[gearId][branch.id];
+    if (tier ? selected.choice !== option.id || selected.tier : selected.choice) return;
+    const cost = (tier ? option.tier : option).cost;
+    if (candidate.salvage < cost || !window.Workshop.consumePart(candidate, window.Workshop.partKey(gearId, branch.id, option.id, tier))) return;
+    candidate.salvage -= cost;
+    if (tier) selected.tier = true; else selected.choice = option.id;
+    const item = window.Workshop.equipped(candidate, gearId);
+    if (item) item.upgrades = JSON.parse(JSON.stringify(candidate.equipment[gearId]));
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(candidate)); }
+    catch { element("hideout-upgrade-status").textContent = "Не удалось сохранить установку модуля. Предмет не списан."; return; }
+    progression = candidate;
+    updateHome();
+  }
+
   function purchaseTreeTier(gearId, branch, option) {
+    if (window.Workshop) { installCraftedModule(gearId, branch, option, true); return; }
     const progress = getBranchProgress(gearId, branch.id);
     if (progress.choice !== option.id || progress.tier || progression.salvage < option.tier.cost) return;
     progression.salvage -= option.tier.cost;
@@ -343,6 +403,7 @@
   }
 
   function generateFloor(floor) {
+    // Legacy room generator retained for compatibility; long-floor version is below.
     const combatCount = 3 + Math.floor(Math.random() * 3);
     const rooms = [{ type: "start", name: "Шлюз отшельника", state: "current" }];
     for (let index = 0; index < combatCount; index += 1) {
@@ -1028,6 +1089,8 @@
   }
 
   function beginRun() {
+    if (state.runActive && window.Workshop) window.Workshop.age(progression);
+    state.runItems = [];
     state.floor = 1;
     state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);
@@ -1119,10 +1182,10 @@
     element("armor-bar").style.width = (player.armor / player.maxArmor) * 100 + "%";
 
     const knife = player.weapon === "knife";
-    element("weapon-name").textContent = knife ? "НОЖ ОХРАНЫ" : "ПП ОХРАНЫ";
+    element("weapon-name").textContent = currentLoadout().find(item => item.id === (knife ? "knife" : "smg")).name;
     element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " " + ({ energy: 'ЭН', ballistic: 'БЛ', elemental: 'ЭЛ', mechanical: 'МХ' }[state.powerInventory.type] || 'ЭН') + "</small>";
     const lightStatus = " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ / ЗАМЕТЕН" : "ВЫКЛ");
-    element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
+    element("weapon-hint").textContent = knife ? "Q — удар · 1 — основное оружие" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
 
     const threat = map.bossStarted && !map.bossDefeated ? "БОСС / ШЛЮЗ" : state.alarm ? "ТРЕВОГА" : "ТИШИНА";
@@ -1165,8 +1228,13 @@
     const resources = window.Resources?.normalize(progression.resources) || {};
     window.Resources?.add(resources, state.runResources, multiplier);
     const collected = Math.floor(state.runSalvage * multiplier);
-    const candidate = { ...progression, resources, salvage: progression.salvage + collected,
-      bestFloor: Math.max(progression.bestFloor, state.floor) };
+    const candidate = JSON.parse(JSON.stringify({ ...progression, resources, salvage: progression.salvage + collected,
+      bestFloor: Math.max(progression.bestFloor, state.floor) }));
+    if (window.Workshop) {
+      const drops = state.runItems || [];
+      window.Workshop.receive(candidate, drops.slice(0, multiplier >= 1 ? drops.length : Math.floor(drops.length * multiplier)));
+      window.Workshop.age(candidate);
+    }
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(candidate)); }
     catch {
       element("signal-text").textContent = "Не удалось сохранить добычу. Освободите место и повторите возвращение: рюкзак сохранён в текущем забеге.";
@@ -1368,12 +1436,17 @@
       return;
     }
     const stats = playerStats();
+    if (stats.damage <= 0) { element("signal-text").textContent = "Оружие сломано. Нужен ремонт в убежище."; return; }
     const damageType = state.powerInventory.type || "energy";
     if (!window.PowerInventory.fire(state.powerInventory)) return;
     const aim = playerAimAngle() + randomBetween(-stats.spread, stats.spread);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, damageType, color: window.DamageTypes.get(damageType).color, lifetime: 1.4 });
+    for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
+    const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * stats.bulletSpeed, vy: Math.sin(shotAngle) * stats.bulletSpeed, radius: 3, damage: stats.damage, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / stats.bulletSpeed });
+    }
+    window.Workshop?.wear(progression, "smg", .07);
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
-    player.fireCooldown = .105;
+    player.fireCooldown = stats.fireDelay || .105;
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
     const suppressed = hasUpgrade("smg", "muzzle", "suppressor");
     const noiseScale = suppressed ? (hasTier("smg", "muzzle", "suppressor") ? .55 : .75) : 1;
@@ -1398,15 +1471,18 @@
   function knifeAttack() {
     const player = state.player;
     if (!state.active || !player || player.knifeCooldown > 0) return;
-    player.knifeCooldown = playerStats().knifeDelay;
-    player.knifeFlash = .16;
+    const stats = playerStats();
+    if (stats.knifeDamage <= 0) return;
+    player.knifeCooldown = stats.knifeDelay;
+    window.Workshop?.wear(progression, "knife", .2);
+    player.knifeFlash = window.Workshop ? .25 : .16;
     const angle = playerAimAngle();
     let hit = false;
     state.enemies.forEach(enemy => {
       const enemyAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
       const difference = normalizedAngle(enemyAngle - angle);
-      if (distance(player, enemy) < 83 && Math.abs(difference) < .92 && window.SecurityAI.clear(player, enemy, getWorldColliders())) {
-        damageEnemy(enemy, playerStats().knifeDamage, "mechanical");
+      if (distance(player, enemy) < (stats.meleeRange || 83) && Math.abs(difference) < (stats.meleeArc || .92) && window.SecurityAI.clear(player, enemy, getWorldColliders())) {
+        damageEnemy(enemy, stats.knifeDamage, window.Workshop?.definition(window.Workshop.equipped(progression, "knife"))?.type || "mechanical");
         hit = true;
       }
     });
@@ -1556,6 +1632,10 @@
   function damagePlayer(amount, damageType = "mechanical") {
     const player = state.player;
     if (!player || player.invulnerability > 0) return;
+    if (window.Workshop) {
+      amount -= window.Workshop.plateAbsorb(progression, amount, damageType);
+      for (const slot of ["chest", "helmet", "pants", "boots"]) window.Workshop.wear(progression, slot, amount * .08);
+    }
     const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
     player.armor -= armorAbsorb;
     player.health = Math.max(0, player.health - Math.max(1, amount - armorAbsorb));
@@ -1608,13 +1688,20 @@
       .sort((a, b) => distance(a, state.player) - distance(b, state.player))[0];
     if (crate) {
       const loot = window.LootContainers.collect(crate, state.powerInventory);
+      state.runItems ||= [];
+      const bag = window.Workshop?.definition(window.Workshop.equipped(progression, "bag"));
+      const free = Math.max(0, (bag?.capacity || 4) - state.runItems.length);
+      const foundItems = (loot.items || []).slice(0, free);
+      state.runItems.push(...foundItems);
       state.runResources ||= {};
       window.Resources?.add(state.runResources, loot.resources);
       state.runSalvage += Math.ceil(loot.salvage * playerStats().salvageMultiplier);
       emitNoise(state.player.x, state.player.y, 160, "шум вскрываемого ящика");
       element("signal-text").textContent = "Ящик открыт: лом +" + Math.ceil(loot.salvage * playerStats().salvageMultiplier)
         + (loot.ammo ? ", " + window.DamageTypes.get(loot.ammoType).name + " запас +" + loot.ammo : "")
-        + (window.Resources?.total(loot.resources) ? ", " + window.Resources.summary(loot.resources) : "") + ".";
+        + (window.Resources?.total(loot.resources) ? ", " + window.Resources.summary(loot.resources) : "")
+        + (foundItems.length ? ", ПРЕДМЕТ: " + foundItems.map(item => window.Arsenal.byId[item.defId].name).join(", ") : "")
+        + ((loot.items || []).length > free ? ". Нет места для остальных предметов" : "") + ".";
       updateRunUi();
       return;
     }
@@ -1883,7 +1970,10 @@
     context.fillRect(4, -3, 19, 6);
     context.restore();
     context.shadowBlur = 0;
-    if (player.knifeFlash > 0) {
+    if (player.knifeFlash > 0 && window.Arsenal) {
+      window.Arsenal.drawMelee(context, { ...player, x: player.x - state.cameraX }, angle,
+        window.Workshop.definition(window.Workshop.equipped(progression, "knife")));
+    } else if (player.knifeFlash > 0) {
       context.strokeStyle = "#f4fbbe";
       context.lineWidth = 5;
       context.beginPath();
@@ -1938,6 +2028,7 @@
     context.fillStyle = dashCooldown > 0 ? "#819a9a" : "#8ff7ef";
     context.fillText("CTRL · РЫВОК " + (dashCooldown > 0 ? dashCooldown.toFixed(1) + " с" : "ГОТОВ"), 16, HEIGHT - 18);
     if (window.Resources) context.fillText("МАТЕРИАЛЫ В РЮКЗАКЕ · " + window.Resources.total(state.runResources), 260, HEIGHT - 18);
+    if (window.Workshop) context.fillText("ПРЕДМЕТЫ · " + (state.runItems?.length || 0), 580, HEIGHT - 18);
 
     if (!map.bossStarted && state.player.x > map.entryGate.x - 126) {
       context.fillStyle = "#d4ee70";
@@ -1967,6 +2058,13 @@
     const delta = Math.min(.035, (time - state.lastFrame) / 1000 || 0);
     state.lastFrame = time;
     update(delta);
+    if ((state.active || state.inventoryOpen) && state.powerInventory?.refilling) {
+      window.PowerInventory.tickRefill(state.powerInventory, delta);
+      state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
+    }
+    if (window.Workshop && state.runActive && time - (state.lastWearSave || 0) > 5000) {
+      try { saveProgression(); state.lastWearSave = time; } catch { /* Retry without interrupting combat. */ }
+    }
     if (!element("run-screen").hidden) draw();
     window.requestAnimationFrame(frame);
   }
@@ -1986,6 +2084,8 @@
 
 
   element("start-run").addEventListener("click", beginRun);
+  element("open-workshop").addEventListener("click", openWorkshop);
+  window.openShelterWorkshop = openWorkshop;
   element("field-inventory").addEventListener("click", openFieldInventory);
   element("open-equipment").addEventListener("click", () => {
     state.selectedGear = "smg";
