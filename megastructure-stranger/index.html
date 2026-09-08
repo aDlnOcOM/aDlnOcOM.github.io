@@ -95,6 +95,12 @@
         </section>
 
       </div>
+      <section class="facility-panel" aria-labelledby="facility-title">
+        <div class="panel-heading"><div><p class="eyebrow">ИНФРАСТРУКТУРА / МОДУЛЬНОЕ РАЗВИТИЕ</p><h2 id="facility-title">Оснащение убежища</h2></div></div>
+        <p class="section-note">Пять ступеней качества: от самодельного до идеального. Строительство и улучшения оплачиваются ломом и сохраняются. Производство, расход топлива и энергосеть появятся позже; сейчас установки не дают боевых бонусов и не меняют пополнение запасов.</p>
+        <p id="hideout-upgrade-status" class="facility-feedback" role="status" aria-live="polite"></p>
+        <div id="hideout-facilities" class="facility-grid"></div>
+      </section>
       </section>
       <section id="panel-equipment" class="hideout-panel loadout-panel" role="tabpanel" aria-labelledby="tab-equipment" tabindex="0" hidden>
         <div class="panel-heading">
@@ -109,7 +115,7 @@
       </section>
       <section id="panel-storage" class="hideout-panel storage-panel" role="tabpanel" aria-labelledby="tab-storage" tabindex="0" hidden>
         <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
-        <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов и модификаций.</p></div></div>
+        <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов, модификаций и оснащения убежища.</p></div></div>
         <h3>Закреплённое снаряжение</h3><div id="storage-items" class="storage-items"></div>
         <p class="section-note">Здесь отображаются имеющиеся предметы и установленные модификации. Запасных предметов пока нет.</p>
       </section>
@@ -160,6 +166,7 @@
   <script src="damage-types.js"></script>
   <script src="power-inventory.js"></script>
   <script src="hideout.js"></script>
+  <script src="hideout-upgrades.js"></script>
   <script src="security-ai.js"></script>
   <script src="enemy-specialists.js"></script>
   <script src="perception.js"></script>

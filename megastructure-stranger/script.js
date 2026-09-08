@@ -162,10 +162,11 @@
         salvage: Number.isFinite(saved.salvage) ? saved.salvage : 0,
         bestFloor: Number.isFinite(saved.bestFloor) ? saved.bestFloor : 0,
         implants: Array.isArray(saved.implants) ? saved.implants : [],
-        equipment
+        equipment,
+        hideout: window.HideoutUpgrades?.normalize(saved.hideout) || {}
       };
     } catch {
-      return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress() };
+      return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress(), hideout: window.HideoutUpgrades?.normalize() || {} };
     }
   }
 
@@ -221,6 +222,14 @@
   }
 
   function updateHome() {
+    window.HideoutUpgrades?.render(element("hideout-facilities"), progression, id => {
+      if (state.runActive) return;
+      const result = window.HideoutUpgrades.purchase(progression, id, candidate => {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(candidate));
+      });
+      updateHome();
+      element("hideout-upgrade-status").textContent = result.reason;
+    });
     if (window.PowerInventory) window.PowerInventory.render(element("supply-grid"), createPowerStock());
     window.HideoutShell?.refresh(progression, STARTER_LOADOUT);
     element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
