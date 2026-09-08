@@ -4,6 +4,70 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+function panHarness() {
+  const scope = { window: {} };
+  vm.createContext(scope);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'equipment.js'), 'utf8')
+    .replace('window.EquipmentWorkbench = {', 'window.EquipmentWorkbench = { bindPan,'), scope);
+  const handlers = {};
+  const classes = new Set();
+  let captured = null;
+  const viewport = {
+    scrollLeft: 200, scrollTop: 100, clientWidth: 600, clientHeight: 400,
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    classList: { add: name => classes.add(name), remove: name => classes.delete(name) },
+    setPointerCapture: id => { captured = id; },
+    hasPointerCapture: id => captured === id,
+    releasePointerCapture: () => { captured = null; },
+    addEventListener: (type, handler) => { handlers[type] = handler; }
+  };
+  scope.window.EquipmentWorkbench.bindPan(viewport);
+  function send(type, values = {}) {
+    const event = { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1,
+      clientX: 100, clientY: 100, detail: 1, prevented: false, stopped: false,
+      preventDefault() { this.prevented = true; },
+      stopImmediatePropagation() { this.stopped = true; }, ...values };
+    handlers[type](event);
+    return event;
+  }
+  return { viewport, send, classes };
+}
+
+test('drag pans both axes and suppresses the release click, not the next node click', () => {
+  const { viewport, send, classes } = panHarness();
+  send('pointerdown');
+  send('pointermove', { clientX: 140, clientY: 125 });
+  assert.equal(viewport.scrollLeft, 160);
+  assert.equal(viewport.scrollTop, 75);
+  assert.ok(classes.has('is-panning'));
+  send('pointerup');
+  assert.equal(classes.size, 0);
+  assert.ok(send('click').stopped);
+  send('pointerdown');
+  send('pointermove', { clientX: 102, clientY: 101 });
+  send('pointerup');
+  assert.equal(send('click').prevented, false);
+});
+
+test('panning ignores right button and scrollbars; cancellation releases dragging', () => {
+  for (const input of [{ button: 2 }, { clientX: 605 }, { pointerType: 'touch' }]) {
+    const { viewport, send } = panHarness();
+    send('pointerdown', input);
+    send('pointermove', { clientX: 150 });
+    assert.equal(viewport.scrollLeft, 200);
+  }
+  for (const end of ['pointercancel', 'lostpointercapture']) {
+    const { viewport, send, classes } = panHarness();
+    send('pointerdown');
+    send('pointermove', { clientX: 120 });
+    send(end);
+    send('pointermove', { clientX: 180 });
+    assert.equal(viewport.scrollLeft, 180);
+    assert.equal(classes.size, 0);
+    assert.equal(send('click', { detail: 0 }).prevented, false);
+  }
+});
+
 // In-memory saves and DOM doubles: never reads or changes the player's save.
 function game(saved = {}) {
   let stored = JSON.stringify(saved);

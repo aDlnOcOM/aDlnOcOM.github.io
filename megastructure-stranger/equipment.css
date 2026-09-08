@@ -4,6 +4,8 @@
 .gear-header { flex-shrink:0; }
 .gear-window .gear-layout { flex:1; min-height:0; height:auto; }
 body.gear-window-open { overflow:hidden; }
+.gear-viewport { cursor:grab; user-select:none; }
+.gear-viewport.is-panning, .gear-viewport.is-panning * { cursor:grabbing; }
 .gear-header { display:flex; align-items:center; gap:28px; padding:22px 26px; border-bottom:1px solid #293945; background:#101b26; }
 .gear-header h2 { margin:0; text-transform:uppercase; letter-spacing:.12em; font-size:24px; }
 .gear-header .eyebrow { color:var(--gear-accent); margin-bottom:8px; }

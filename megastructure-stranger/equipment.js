@@ -72,6 +72,51 @@
   let selection = null;
   let opener;
   let zoom = 1;
+  function bindPan(viewport) {
+    let pointer = null;
+    let suppressClick = false;
+    viewport.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.pointerType !== "mouse") return;
+      const rect = viewport.getBoundingClientRect();
+      // Leave native scrollbar dragging alone.
+      if (event.clientX >= rect.left + viewport.clientWidth || event.clientY >= rect.top + viewport.clientHeight) return;
+      suppressClick = false;
+      pointer = { id: event.pointerId, x: event.clientX, y: event.clientY,
+        left: viewport.scrollLeft, top: viewport.scrollTop, dragging: false };
+    });
+    viewport.addEventListener("pointermove", event => {
+      if (!pointer || event.pointerId !== pointer.id) return;
+      if (!(event.buttons & 1)) { finish(event); return; }
+      const dx = event.clientX - pointer.x;
+      const dy = event.clientY - pointer.y;
+      if (!pointer.dragging && Math.hypot(dx, dy) < 5) return;
+      if (!pointer.dragging) {
+        pointer.dragging = true;
+        suppressClick = true;
+        viewport.setPointerCapture(pointer.id);
+        viewport.classList.add("is-panning");
+      }
+      event.preventDefault();
+      viewport.scrollLeft = pointer.left - dx;
+      viewport.scrollTop = pointer.top - dy;
+    });
+    function finish(event) {
+      if (!pointer || event.pointerId !== pointer.id) return;
+      const id = pointer.id;
+      pointer = null;
+      viewport.classList.remove("is-panning");
+      if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
+    }
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) viewport.addEventListener(type, finish);
+    viewport.addEventListener("pointerleave", event => { if (!pointer?.dragging) finish(event); });
+    viewport.addEventListener("click", event => {
+      if (!suppressClick || event.detail === 0) return;
+      suppressClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    viewport.addEventListener("dragstart", event => event.preventDefault());
+  }
   function close() { dialog?.close(); }
   function show(api) {
     if (!dialog) {
@@ -156,6 +201,8 @@
     resize();
     if (opening) { dialog.showModal(); document.body.classList.add("gear-window-open"); }
     const viewport = dialog.querySelector(".gear-viewport");
+    bindPan(viewport);
+    viewport.title = "Зажмите левую кнопку мыши и перемещайте дерево";
     viewport.scrollLeft = sameGear ? scroll[0] : Math.max(0, (viewport.scrollWidth - viewport.clientWidth) / 2);
     viewport.scrollTop = scroll[1];
     if (!opening && !sameGear) dialog.querySelector('.gear-slot[aria-current="true"]').focus();
