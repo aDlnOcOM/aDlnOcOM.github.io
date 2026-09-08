@@ -993,6 +993,8 @@
       sectorCount,
       seed,
       sectors: generated.sectors,
+      containers: window.LootContainers.generate(generated.sectors, walls, seed,
+        window.SectorGenerator.seeded, window.SecurityAI.clear, window.SecurityAI.route),
       sectorWidth,
       bodyLength,
       bossWidth,
@@ -1164,6 +1166,7 @@
     const map = state.floorMap;
     if (!map) return [];
     const colliders = map.walls.slice();
+    for (const crate of map.containers || []) colliders.push({ x: crate.x - 15, y: crate.y - 15, width: 30, height: 30, lootId: crate.id });
     colliders.push(map.entryGate);
     if (!map.exitOpen) colliders.push(map.exitGate);
     return colliders;
@@ -1570,6 +1573,18 @@
   function tryInteract() {
     if (!state.active || !state.floorMap || !state.player) return;
     const map = state.floorMap;
+    const crate = (map.containers || []).filter(item => !item.opened && distance(item, state.player) < 72
+      && window.Perception.lineOfSight(state.player.x, state.player.y, item.x, item.y, getWorldColliders().filter(wall => wall.lootId !== item.id)))
+      .sort((a, b) => distance(a, state.player) - distance(b, state.player))[0];
+    if (crate) {
+      const loot = window.LootContainers.collect(crate, state.powerInventory);
+      state.runSalvage += Math.ceil(loot.salvage * playerStats().salvageMultiplier);
+      emitNoise(state.player.x, state.player.y, 160, "шум вскрываемого ящика");
+      element("signal-text").textContent = "Ящик открыт: лом +" + Math.ceil(loot.salvage * playerStats().salvageMultiplier)
+        + (loot.ammo ? ", " + window.DamageTypes.get(loot.ammoType).name + " запас +" + loot.ammo : "") + ".";
+      updateRunUi();
+      return;
+    }
     if (!map.bossStarted && state.player.x > map.entryGate.x - 96) {
       startBossAirlock();
       return;
@@ -1843,6 +1858,24 @@
   }
 
   function drawDynamicWorld() {
+    for (const crate of state.floorMap.containers || []) {
+      const d = distance(crate, state.player);
+      const near = { x: crate.x + (state.player.x - crate.x) * Math.min(1, 23 / Math.max(1, d)),
+        y: crate.y + (state.player.y - crate.y) * Math.min(1, 23 / Math.max(1, d)) };
+      if (!isPointVisible(near)) continue;
+      const x = crate.x - state.cameraX;
+      context.save();
+      context.fillStyle = crate.opened ? '#252c2a' : crate.kind === 'supply' ? '#4f6358' : '#665c43';
+      context.fillRect(x - 15, crate.y - 15, 30, 30);
+      context.strokeStyle = crate.opened ? '#53635a' : '#b5b58c'; context.lineWidth = 2;
+      context.strokeRect(x - 13, crate.y - 13, 26, 26);
+      context.fillStyle = '#a5bcb0'; context.fillRect(x - 2, crate.y - 13, 4, crate.opened ? 7 : 26);
+      if (!crate.opened && d < 72) {
+        context.font = '11px Consolas, monospace'; context.textAlign = 'center';
+        context.fillText('E · ОТКРЫТЬ', x, crate.y - 24);
+      }
+      context.restore();
+    }
     for (const sensor of state.sensors) {
       drawVisibleEntity(sensor, drawSensor);
     }

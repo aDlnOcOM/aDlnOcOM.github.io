@@ -70,14 +70,15 @@
     const weapon = section('В ОРУЖИИ / ПП ОХРАНЫ', 4, 2);
     const rig = section('МАГАЗИННЫЕ ПОДСУМКИ / БЫСТРЫЙ ДОСТУП', 6, 2);
     const pockets = section('КАРМАНЫ / 4 ЯЧЕЙКИ', 4, 1);
-    const backpack = section('ОФИСНАЯ СУМКА / 6 × 3', 6, 3);
+    const extras = Object.entries(stock.extraSupplies || {}).filter(([, amount]) => amount > 0);
+    const backpack = section('ОФИСНАЯ СУМКА / ЗАПАСЫ', 6, extras.length > 2 ? 4 : 3);
     for (let i = 0; i < 4; i++) {
       const empty = document.createElement('span'); empty.className = 'pocket-empty'; empty.setAttribute('aria-hidden', 'true'); pockets.appendChild(empty);
     }
     function inspect(magazine) {
       const battery = !magazine;
       details.innerHTML = battery
-        ? '<small>ЗАПАС БОЕПРИПАСОВ</small><h4>' + info.box + '</h4><p>' + stock.battery + ' / ' + info.capacity + ' ед. · Совместимость: ' + info.code + '</p>'
+        ? '<small>ЗАПАС БОЕПРИПАСОВ</small><h4>' + info.box + '</h4><p>Всего ' + stock.battery + ' ед. · Ёмкость упаковки ' + info.capacity + ' · Совместимость: ' + info.code + '</p>'
         : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.id === stock.loaded ? 'Установлен в ПП' : 'Запасной в подсумке') + '</p>';
       if (magazine && onRefill) {
         const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
@@ -100,11 +101,18 @@
     });
     const battery = document.createElement('button'); battery.type = 'button'; battery.className = 'tactical-item energy-battery';
     battery.style.gridColumn = '1 / span 2'; battery.style.gridRow = '1 / span 2';
-    battery.setAttribute('aria-label', info.box + ', ' + stock.battery + ' из ' + info.capacity);
+    battery.setAttribute('aria-label', info.box + ', всего ' + stock.battery);
     battery.dataset.ammoType = stock.type || 'energy';
     battery.title = info.box;
-    battery.innerHTML = '<small>' + info.box + '</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + stock.battery + '/' + info.capacity + '</strong>';
+    battery.innerHTML = '<small>' + info.box + '</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + stock.battery + ' ед.</strong>';
     battery.onclick = () => { stock.inspectId = null; inspect(null); }; backpack.appendChild(battery);
+    for (const [type, amount] of extras) {
+      const cell = document.createElement('button'); cell.type = 'button'; cell.className = 'tactical-item energy-battery';
+      cell.dataset.ammoType = type; cell.style.gridColumn = 'auto / span 2'; cell.style.gridRow = 'auto / span 2';
+      cell.innerHTML = '<small>' + supplies[type].code + ' / ЛУТ</small><span class="battery-drawing" aria-hidden="true"></span><strong>' + amount + ' ед.</strong>';
+      cell.onclick = () => { details.innerHTML = '<h4>' + supplies[type].box + '</h4><p>' + amount + ' ед. Не подходит установленному конвертеру ПП.</p>'; };
+      backpack.appendChild(cell);
+    }
     container.appendChild(details);
     if (stock.inspectId !== undefined) inspect(stock.magazines.find(item => item.id === stock.inspectId));
     if (stock.refilling) {

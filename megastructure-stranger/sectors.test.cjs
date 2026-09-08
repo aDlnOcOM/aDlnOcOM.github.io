@@ -9,7 +9,7 @@ function load(full = false) {
     document: { getElementById: node, createElement: node }, performance: { now: () => 0 },
     localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(context);
-  for (const file of ['sectors.js', 'perception.js', 'security-ai.js', ...(full ? ['equipment.js'] : [])]) {
+  for (const file of ['sectors.js', 'loot-containers.js', 'perception.js', 'security-ai.js', ...(full ? ['equipment.js'] : [])]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
   }
   if (full) {
