@@ -31,8 +31,9 @@
           { id: "suppressor", name: "Глушитель", effect: "−25% шума", cost: 24, tier: { name: "Глушитель II", effect: "−45% шума", cost: 36 } }
         ] },
         { id: "ammo", base: "Простой патрон", options: [
-          { id: "incendiary", name: "Зажигательный", effect: "+1 урон", cost: 25, tier: { name: "Термозаряд", effect: "+2 урон", cost: 42 } },
-          { id: "armor-piercing", name: "Бронебойный", effect: "+2 урона", cost: 28, tier: { name: "Вольфрамовый", effect: "+3 урона", cost: 46 } }
+          { id: "incendiary", name: "Термокапсульный конвертер", effect: "элементальный тип, +1 урон", cost: 25, tier: { name: "Термозаряд", effect: "+2 урон", cost: 42 } },
+          { id: "armor-piercing", name: "Баллистический конвертер", effect: "баллистический тип, +2 урона", cost: 28, tier: { name: "Вольфрамовый", effect: "+3 урона", cost: 46 } },
+          { id: "flechette", name: "Механический ускоритель", effect: "механический тип, +1 урона", cost: 28, bonus: { damage: 1 }, tier: { name: "Пакет микродротиков", effect: "+2 урона", cost: 44, bonus: { damage: 2 } } }
         ] },
         { id: "magazine", base: "Штатный аккумуляторный магазин", options: [
           { id: "extended", name: "Увеличенный аккумулятор", effect: "+12 ед. энергии", cost: 30, tier: { name: "Барабанный аккумулятор", effect: "+8 ед. энергии", cost: 44 } },
@@ -254,7 +255,9 @@
   }
 
   function createPowerStock() {
-    return window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"));
+    const choice = progression.equipment.smg.ammo.choice;
+    const type = choice === 'incendiary' ? 'elemental' : choice === 'armor-piercing' ? 'ballistic' : choice === 'flechette' ? 'mechanical' : 'energy';
+    return window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"), type);
   }
 
   function openFieldInventory() {
@@ -671,7 +674,9 @@
   }
 
   function createEnemyBullet(enemy, angle, speed, damage, color) {
-    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, color, lifetime: 4 });
+    const damageType = enemy.damageType || window.DamageTypes.attacks[enemy.type] || "energy";
+    color = window.DamageTypes.get(damageType).color;
+    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, damageType, color, lifetime: 4 });
   }
 
   function updateBullets(delta) {
@@ -728,6 +733,13 @@
       const angle = Math.random() * Math.PI * 2;
       state.particles.push({ x, y, vx: Math.cos(angle) * randomBetween(speed * .35, speed), vy: Math.sin(angle) * randomBetween(speed * .35, speed), color, lifetime: randomBetween(.16, .4) });
     }
+  }
+
+  function createImpact(x, y, damageType) {
+    const type = window.DamageTypes.get(damageType);
+    const start = state.particles.length;
+    createParticles(x, y, type.color, type.particles, damageType === 'mechanical' ? 105 : 65);
+    for (let i = start; i < state.particles.length; i++) state.particles[i].damageType = damageType;
   }
 
   function updateParticles(delta) {
@@ -1093,7 +1105,7 @@
 
     const knife = player.weapon === "knife";
     element("weapon-name").textContent = knife ? "НОЖ ОХРАНЫ" : "ПП ОХРАНЫ";
-    element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " ЭН.</small>";
+    element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " " + ({ energy: 'ЭН', ballistic: 'БЛ', elemental: 'ЭЛ', mechanical: 'МХ' }[state.powerInventory.type] || 'ЭН') + "</small>";
     const lightStatus = " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ / ЗАМЕТЕН" : "ВЫКЛ");
     element("weapon-hint").textContent = knife ? "Q — удар · 1 — ПП Охраны" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
@@ -1101,6 +1113,10 @@
     const threat = map.bossStarted && !map.bossDefeated ? "БОСС / ШЛЮЗ" : state.alarm ? "ТРЕВОГА" : "ТИШИНА";
     element("threat-label").textContent = threat;
     element("abort-run").disabled = map.bossStarted && !map.bossDefeated;
+    if (state.powerInventory?.refilling) {
+      const job = state.powerInventory.refilling;
+      element("weapon-hint").textContent = "ПОПОЛНЕНИЕ БОЕПРИПАСОВ · " + Math.max(0, job.duration - job.elapsed).toFixed(1) + " с · I — инвентарь";
+    }
   }
 
   function showStartOverlay() {
@@ -1326,9 +1342,10 @@
       return;
     }
     const stats = playerStats();
+    const damageType = state.powerInventory.type || "energy";
+    if (!window.PowerInventory.fire(state.powerInventory)) return;
     const aim = playerAimAngle() + randomBetween(-stats.spread, stats.spread);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, color: "#9ffdf3", lifetime: 1.4 });
-    window.PowerInventory.fire(state.powerInventory);
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(aim) * stats.bulletSpeed, vy: Math.sin(aim) * stats.bulletSpeed, radius: 3, damage: stats.damage, damageType, color: window.DamageTypes.get(damageType).color, lifetime: 1.4 });
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
     player.fireCooldown = .105;
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
@@ -1363,7 +1380,7 @@
       const enemyAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
       const difference = normalizedAngle(enemyAngle - angle);
       if (distance(player, enemy) < 83 && Math.abs(difference) < .92 && window.SecurityAI.clear(player, enemy, getWorldColliders())) {
-        damageEnemy(enemy, playerStats().knifeDamage);
+        damageEnemy(enemy, playerStats().knifeDamage, "mechanical");
         hit = true;
       }
     });
@@ -1454,7 +1471,9 @@
   }
 
   function createEnemyBullet(enemy, angle, speed, damage, color) {
-    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, color, lifetime: 4 });
+    const damageType = enemy.damageType || window.DamageTypes.attacks[enemy.type] || "energy";
+    color = window.DamageTypes.get(damageType).color;
+    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, damageType, color, lifetime: 4 });
   }
 
   function bulletHitsWorld(bullet) {
@@ -1471,21 +1490,22 @@
       if (bullet.owner === "player") {
         const target = state.enemies.find(enemy => distance(bullet, enemy) < bullet.radius + enemy.radius);
         if (target) {
-          damageEnemy(target, bullet.damage);
+          damageEnemy(target, bullet.damage, bullet.damageType);
           return false;
         }
       } else if (distance(bullet, state.player) < bullet.radius + state.player.radius) {
-        damagePlayer(bullet.damage);
+        damagePlayer(bullet.damage, bullet.damageType);
         return false;
       }
       return true;
     });
   }
 
-  function damageEnemy(enemy, amount) {
+  function damageEnemy(enemy, amount, damageType = "energy") {
+    amount = window.DamageTypes.resolve(amount, enemy.type, damageType);
     enemy.health -= amount;
     enemy.hitFlash = .12;
-    createParticles(enemy.x, enemy.y, enemy.color, 4, 48);
+    createImpact(enemy.x, enemy.y, damageType);
     if (!enemy.boss) securityReport(enemy, enemy, "сигнал повреждения охранного узла");
     if (enemy.health > 0) return;
     state.enemies = state.enemies.filter(candidate => candidate !== enemy);
@@ -1500,14 +1520,14 @@
     }
   }
 
-  function damagePlayer(amount) {
+  function damagePlayer(amount, damageType = "mechanical") {
     const player = state.player;
     if (!player || player.invulnerability > 0) return;
     const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
     player.armor -= armorAbsorb;
     player.health = Math.max(0, player.health - Math.max(1, amount - armorAbsorb));
     player.invulnerability = playerStats().invulnerability;
-    createParticles(player.x, player.y, "#ff6d68", 11, 80);
+    createImpact(player.x, player.y, damageType);
     if (player.health > 0) return;
     state.active = false;
     const recoveryRate = playerStats().deathRetention;
@@ -1691,14 +1711,19 @@
   }
 
   function drawBullet(bullet) {
-    const screenX = bullet.x - state.cameraX;
-    context.fillStyle = bullet.color;
-    context.shadowBlur = bullet.owner === "player" ? 12 : 8;
-    context.shadowColor = bullet.color;
-    context.beginPath();
-    context.arc(screenX, bullet.y, bullet.radius, 0, Math.PI * 2);
-    context.fill();
-    context.shadowBlur = 0;
+    const x = bullet.x - state.cameraX;
+    const type = window.DamageTypes.get(bullet.damageType);
+    context.save(); context.fillStyle = type.color; context.strokeStyle = type.color;
+    context.translate(x, bullet.y); context.rotate(Math.atan2(bullet.vy, bullet.vx));
+    if (type.shape === 'streak') {
+      context.lineWidth = 2; context.beginPath(); context.moveTo(-10, 0); context.lineTo(3, 0); context.stroke();
+    } else if (type.shape === 'shard') {
+      context.beginPath(); context.moveTo(6, 0); context.lineTo(-5, -3); context.lineTo(-2, 0); context.lineTo(-5, 3); context.closePath(); context.fill();
+    } else {
+      context.shadowBlur = type.shape === 'flame' ? 15 : 10; context.shadowColor = type.color;
+      context.beginPath(); context.ellipse(0, 0, bullet.radius * (type.shape === 'flame' ? 1.7 : 1), bullet.radius, 0, 0, Math.PI * 2); context.fill();
+    }
+    context.restore();
   }
 
   function drawEnemy(enemy) {
@@ -1754,7 +1779,11 @@
   function drawParticle(particle) {
     context.globalAlpha = clamp(particle.lifetime * 3, 0, 1);
     context.fillStyle = particle.color;
-    context.fillRect(particle.x - state.cameraX - 2, particle.y - 2, 4, 4);
+    if (particle.damageType === 'energy' || particle.damageType === 'elemental') {
+      context.beginPath(); context.arc(particle.x - state.cameraX, particle.y, particle.damageType === 'elemental' ? 3.5 : 2, 0, Math.PI * 2); context.fill();
+    } else if (particle.damageType === 'mechanical') {
+      context.fillRect(particle.x - state.cameraX - 3, particle.y - 1, 6, 2);
+    } else context.fillRect(particle.x - state.cameraX - 1, particle.y - 1, particle.damageType === 'ballistic' ? 2 : 4, 2);
     context.globalAlpha = 1;
   }
 

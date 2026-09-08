@@ -92,7 +92,7 @@ test('all seven items have developed trees with unique, priced descendants', () 
     assert.ok(tree.branches.length >= 3);
     assert.equal(new Set(tree.branches.map(branch => branch.id)).size, tree.branches.length);
     for (const branch of tree.branches) {
-      assert.equal(branch.options.length, 2);
+      assert.ok(branch.options.length >= 2);
       assert.notEqual(branch.options[0].id, branch.options[1].id);
       for (const option of branch.options) {
         assert.ok(option.cost > 0 && option.tier.cost > 0);

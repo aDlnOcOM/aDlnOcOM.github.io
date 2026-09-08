@@ -154,7 +154,9 @@
       const progress = api.progress[gearId][branch.id];
       const lane = document.createElement("section");
       lane.className = "gear-lane";
+      lane.style.width = `${branch.options.length * 158}px`;
       lane.innerHTML = `<div class="gear-base">${branch.base}</div><div class="gear-paths"></div>`;
+      lane.querySelector('.gear-paths').style.gridTemplateColumns = `repeat(${branch.options.length}, 1fr)`;
       for (const option of branch.options) {
         const path = document.createElement("div");
         path.className = "gear-path";

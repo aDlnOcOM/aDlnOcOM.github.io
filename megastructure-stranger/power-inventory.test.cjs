@@ -9,7 +9,7 @@ function load(game = false) {
     document: { getElementById: node, createElement: node }, performance: { now: () => 0 },
     localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(scope);
-  for (const file of ['power-inventory.js', ...(game ? ['equipment.js', 'security-ai.js', 'perception.js'] : [])]) {
+  for (const file of ['power-inventory.js', ...(game ? ['damage-types.js', 'equipment.js', 'security-ai.js', 'perception.js'] : [])]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), scope);
   }
   if (game) {
@@ -101,7 +101,7 @@ test('game firing, timed reload and floor player reset preserve stock; hideout r
 
 test('inventory uses separate loaded-magazine, rig, pocket and backpack grids', () => {
   const scope = { window: {} };
-  const node = () => ({ children: [], style: { setProperty() {} }, classList: { add() {} },
+  const node = () => ({ dataset: {}, children: [], style: { setProperty() {} }, classList: { add() {} },
     setAttribute() {}, append(...children) { this.children.push(...children); },
     appendChild(child) { this.children.push(child); }, replaceChildren() { this.children = []; } });
   scope.document = { createElement: node };

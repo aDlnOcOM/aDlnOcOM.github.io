@@ -40,6 +40,10 @@
 .mag-drawing { display:block; width:23px; height:53px; background:repeating-linear-gradient(0deg,#1a201b 0 8px,#6a7459 9px 11px); border:3px solid #899077; transform:rotate(9deg); box-shadow:3px 2px 0 #080d09; }
 .battery-drawing { display:block; width:58px; height:45px; border:4px solid #777e64; border-top:8px solid #a7a986; background:linear-gradient(90deg,#354235 45%,#9ca070 46% 54%,#354235 55%); box-shadow:3px 3px 0 #11170f; }
 .energy-battery { background:linear-gradient(130deg,#5a5338,#343320); }
+.tactical-item[data-ammo-type=energy] { border-color:#70b8b0; }
+.tactical-item[data-ammo-type=ballistic] { border-color:#c9b780; background:#453d29; }
+.tactical-item[data-ammo-type=elemental] { border-color:#d18c68; background:#4b3028; }
+.tactical-item[data-ammo-type=mechanical] { border-color:#a4b5c8; background:#303a46; }
 .item-inspector { min-height:135px; padding:18px; border-top:1px solid #6b6e54; background:#1b211b; color:#b5b8a6; font:12px/1.6 Consolas,monospace; }
 .item-inspector h4 { font-size:14px; color:#e1e0c8; margin:10px 0; }
 #panel-equipment .loadout-list,.field-slots { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-areas:'. helmet .' 'smg chest bag' 'smg pants knife' '. boots .'; gap:10px; background:radial-gradient(ellipse at 50% 18%,#77816b24 0 8%,transparent 9%),linear-gradient(90deg,transparent 35%,#56614c20 36% 64%,transparent 65%); }
