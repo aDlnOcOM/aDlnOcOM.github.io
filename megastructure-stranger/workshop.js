@@ -3,6 +3,22 @@
   const A=window.Arsenal,R=window.Resources;
   const starter={wood:12,metal:12,conductor:6};
   const tableCost={wood:8,metal:8,conductor:4};
+  const tableTiers=['Самодельный','Кустарный','Промышленный','Заводской','Идеальный'];
+  const researchTree={
+    steel:[2,'metal'],stainless:[3,'steel','acid'],alloySteel:[3,'steel','conductor'],premiumSteel:[4,'alloySteel'],
+    resin:[2,'acid','plastic'],textolite:[2,'resin','fabric'],pcbBlank:[2,'textolite','conductor'],pcbReady:[3,'pcbBlank','capacitor'],
+    regen:[3,'acid','pcbReady'],powder:[2,'acid','salvage'],thread:[1,'fabric'],aramid:[3,'thread','plastic'],
+    ceramic:[2,'acid','metal'],armorPlates:[3,'steel','ceramic'],kevlar:[3,'aramid'],polyethylene:[2,'plastic'],
+    composite:[4,'aramid','resin'],superComposite:[5,'composite','premiumSteel'],superconductor:[5,'conductor','pcbReady','premiumSteel'],
+    fastener:[1,'metal'],spring:[2,'steel'],wire:[1,'conductor','plastic'],polymerSheet:[2,'polyethylene'],
+    armorMesh:[3,'aramid','thread'],plateBlank:[3,'steel','ceramicPowder'],barrelBlank:[3,'alloySteel'],
+    weaponFrame:[2,'metal','steel'],triggerGroup:[2,'spring','fastener'],circuitModule:[3,'pcbReady','wire'],
+    capacitor:[2,'conductor','acid'],opticalGlass:[2,'ceramic','plastic'],grip:[1,'wood','plastic'],buckle:[1,'metal'],ceramicPowder:[2,'ceramic']
+  };
+  const tableUpgrades=[null,{cost:{steel:4,wood:6,conductor:4},requires:['metal','conductor']},
+    {cost:{steel:8,pcbBlank:3,wire:4},requires:['steel','pcbBlank']},
+    {cost:{alloySteel:8,pcbReady:3,opticalGlass:4},requires:['alloySteel','pcbReady']},
+    {cost:{premiumSteel:6,composite:6,circuitModule:4},requires:['premiumSteel','composite']}];
   const intermediate={fastener:{metal:2},spring:{steel:2},wire:{conductor:2,plastic:1},resin:{acid:1,plastic:2},polymerSheet:{polyethylene:3},armorMesh:{aramid:2,thread:2},plateBlank:{steel:3,ceramicPowder:1},barrelBlank:{alloySteel:2},weaponFrame:{metal:3,steel:2},triggerGroup:{spring:1,fastener:2},circuitModule:{pcbReady:1,wire:2},capacitor:{conductor:2,acid:1},opticalGlass:{ceramic:1,plastic:1},grip:{wood:2,plastic:1},buckle:{metal:1},ceramicPowder:{ceramic:1}};
   const parts={};
   const finite=(value,fallback=0)=>Number.isFinite(value)?value:fallback;
@@ -23,7 +39,7 @@
     }else{
       const ids=new Set();saved.items=(Array.isArray(saved.items)?saved.items:[]).filter(item=>item&&typeof item.uid==='string'&&!ids.has(item.uid)&&(A.byId[item.defId]||parts[item.defId])&&ids.add(item.uid)).slice(0,1500);
       for(const item of saved.items){item.quality=clamp(Math.floor(finite(item.quality,2)),0,4);item.ceiling=clamp(finite(item.ceiling,100),40,100);item.condition=clamp(finite(item.condition,100),0,item.ceiling);item.age=Math.max(0,finite(item.age));item.upgrades=item.upgrades&&typeof item.upgrades==='object'?item.upgrades:{};item.plates=Array.isArray(item.plates)?item.plates.filter(id=>ids.has(id)):[];}
-      saved.next=Math.max(1,finite(saved.next,1),...saved.items.map(item=>(Number(item.uid.slice(1))||0)+1));saved.table=saved.table?1:0;saved.equipped=saved.equipped&&typeof saved.equipped==='object'?saved.equipped:{};
+      saved.next=Math.max(1,finite(saved.next,1),...saved.items.map(item=>(Number(item.uid.slice(1))||0)+1));saved.table=clamp(Math.floor(finite(saved.table,saved.table===true?1:0)),0,5);saved.equipped=saved.equipped&&typeof saved.equipped==='object'?saved.equipped:{};
       saved.research=Object.fromEntries(R.catalog.filter(item=>saved.research?.[item.id]===true).map(item=>[item.id,true]));
       if(!saved.job||!R.catalog.some(item=>item.id===saved.job.id)||!Number.isFinite(saved.job.ends))saved.job=null;
       for(const [slot,uid] of Object.entries(saved.equipped))if(!saved.items.some(item=>item.uid===uid&&A.byId[item.defId]?.slot===slot))delete saved.equipped[slot];
@@ -37,10 +53,24 @@
   function pay(p,cost){if(!canPay(p,cost))return false;for(const [id,n]of Object.entries(cost)){if(id==='salvage')p.salvage-=n;else p.resources[id]-=n;}return true;}
   function build(p){if(p.workshop.table)return 'Стол уже построен';if(!pay(p,tableCost))return 'Недостаточно стартовых материалов';p.workshop.table=1;return '';}
   function settle(p,now=Date.now()){const job=p.workshop.job;if(job&&now>=job.ends){p.workshop.research[job.id]=true;p.workshop.job=null;return true;}return false;}
-  function researchQuote(p,id){const resource=R.catalog.find(item=>item.id===id);if(!resource)return null;return {cost:{[id]:resource.weight<=3?3:5},seconds:resource.weight<=3?120:45};}
+  function tableQuote(p){
+    const level=p.workshop.table,offer=tableUpgrades[level];
+    if(!level)return {reason:'Сначала постройте стол',cost:{}};
+    if(level>=5)return {reason:'Максимальный уровень',cost:{}};
+    const missing=offer.requires.filter(id=>!p.workshop.research[id]);
+    const reason=p.workshop.job?'Дождитесь завершения исследования':missing.length?'Исследуйте: '+missing.map(id=>R.catalog.find(r=>r.id===id).name).join(', '):!canPay(p,offer.cost)?'Недостаточно материалов':'';
+    return {...offer,missing,reason,next:level+1};
+  }
+  function upgradeTable(p){const offer=tableQuote(p);if(offer.reason)return offer.reason;pay(p,offer.cost);p.workshop.table++;return '';}
+  function researchQuote(p,id){
+    const resource=R.catalog.find(item=>item.id===id);if(!resource)return null;
+    const [level,...requires]=researchTree[id]||[1];const missing=requires.filter(parent=>!p.workshop.research[parent]);
+    const reason=p.workshop.table<level?'Нужен стол уровня '+level:missing.length?'Сначала: '+missing.map(parent=>R.catalog.find(r=>r.id===parent).name).join(', '):'';
+    return {cost:{[id]:resource.weight<=3?3:5},seconds:Math.ceil((resource.weight<=3?120:45)*(1-.12*Math.max(0,p.workshop.table-1))),level,requires,missing,reason};
+  }
   function research(p,id,now=Date.now()){
     if(!p.workshop.table)return 'Постройте исследовательский стол';if(p.workshop.job)return 'Стол занят исследованием';if(p.workshop.research[id])return 'Уже исследовано';
-    const offer=researchQuote(p,id);if(!offer||!pay(p,offer.cost))return 'Недостаточно образцов';p.workshop.job={id,ends:now+offer.seconds*1000};return '';
+    const offer=researchQuote(p,id);if(offer?.reason)return offer.reason;if(!offer||!pay(p,offer.cost))return 'Недостаточно образцов';p.workshop.job={id,ends:now+offer.seconds*1000};return '';
   }
   function recipe(id){if(intermediate[id])return {id,name:R.catalog.find(item=>item.id===id).name,kind:'resource',tier:1,station:'table',costs:intermediate[id]};return A.byId[id]||parts[id];}
   function craftQuote(p,id,quality=0){
@@ -87,5 +117,5 @@
   }
   function loot(random,guaranteeCarrier=false){const pool=guaranteeCarrier?A.items.filter(item=>item.carrier):A.items;const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*5),condition:45+Math.floor(random()*51)};}
   function receive(p,drops){for(const drop of drops||[]){if(!A.byId[drop.defId]||p.workshop.items.length>=1500)continue;const item=make(p.workshop,drop.defId,drop.quality);item.condition=clamp(finite(drop.condition,70),1,100);p.workshop.items.push(item);}}
-  window.Workshop={init,starter,tableCost,parts,intermediate,definition,equipped,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,repairQuote,repair,wear,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
+  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,repairQuote,repair,wear,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
 })();

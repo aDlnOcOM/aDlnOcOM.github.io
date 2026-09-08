@@ -38,7 +38,7 @@
     keys.clear();selected=point.id;
     if(point.id==='research'){window.openShelterWorkshop?.();return;}
     if(point.id==='exit'){get('start-run').click();return;}
-    if(point.id==='storage'||point.id==='equipment'){get('tab-'+point.id).click();return;}
+    if(point.id==='storage'||point.id==='equipment'){window.HideoutShell?.openService(point.id);return;}
     get('shelter-implants').hidden=point.id!=='implants';
     get('shelter-facility-panel').hidden=point.id==='implants';
     get('shelter-console-title').textContent=point.name;

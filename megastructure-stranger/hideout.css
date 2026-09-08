@@ -1,4 +1,8 @@
 /* Architectural surfaces, cold terminals and sparse hazard-light accents. */
+.hideout-location-title { align-self:center; color:#789991; font:12px Consolas,monospace; }
+.shelter-service { width:min(1200px,94vw); max-height:88vh; overflow:auto; color:#c9dbd5; padding:26px; }
+.shelter-service::backdrop { background:#02070ccc; }
+.shelter-service .panel-heading { flex-wrap:wrap; }
 .workshop-dialog { width:min(1100px,94vw); max-height:88vh; overflow:auto; background:#101b21; color:#c9dbd5; border:1px solid #7dafa0; padding:24px; }
 .workshop-dialog::backdrop { background:#02070cd9; }
 .workshop-nav { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }

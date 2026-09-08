@@ -15,11 +15,18 @@
     const nav=document.createElement('nav');nav.className='workshop-nav';for(const [id,label]of Object.entries(names)){const b=button(label,()=>{tab=id;if(id==='items'&&category==='resource')category='ranged';page=0;render();});b.setAttribute('aria-pressed',String(tab===id));nav.appendChild(b);}dialog.appendChild(nav);
     const note=document.createElement('p');note.className='section-note';note.textContent='Качество и прочность влияют на характеристики. Износ происходит в бою, старение — после забега. Ремонт снижает предел прочности. Модули дерева сначала нужно изготовить; готовый модуль расходуется при установке.';dialog.appendChild(note);
     if(!p.workshop.table){const info=document.createElement('p');info.textContent='Исследовательский стол не построен. Одноразовый стартовый набор: '+costs(W.starter)+'. Постройка: '+costs(W.tableCost);dialog.append(info,button('Собрать исследовательский стол',()=>act('build'),!W.canPay(p,W.tableCost)));}
+    else {
+      const offer=W.tableQuote(p),info=document.createElement('p');
+      info.textContent=`Стол ${p.workshop.table}/5 · ${W.tableTiers[p.workshop.table-1]} · Время исследований −${(p.workshop.table-1)*12}%`;
+      dialog.appendChild(info);
+      const detail=document.createElement('p');detail.textContent=offer.next?`Следующий уровень: ${W.tableTiers[offer.next-1]} · ${costs(offer.cost)} · ${offer.reason||'Доступно'}`:offer.reason;
+      dialog.append(detail,button('Улучшить стол',()=>act('upgradeTable'),Boolean(offer.reason)));
+    }
     const list=document.createElement('div');list.className='workshop-list';dialog.appendChild(list);
     function card(name,detail){const el=document.createElement('article'),title=document.createElement('h3'),text=document.createElement('p');title.textContent=name;text.textContent=detail;el.append(title,text);list.appendChild(el);return el;}
     if(tab==='research'){
       const job=p.workshop.job;if(job){const progress=document.createElement('p');progress.dataset.timer='';progress.textContent=`Исследуется ${resourceName(job.id)} · осталось ${Math.max(0,Math.ceil((job.ends-Date.now())/1000))} с`;dialog.insertBefore(progress,list);}
-      for(const r of window.Resources.catalog){const offer=W.researchQuote(p,r.id),done=p.workshop.research[r.id];const el=card(r.name,`${done?'ИССЛЕДОВАНО':'Образцы: '+costs(offer.cost)+' · '+offer.seconds+' с'} · В наличии: ${r.id==='salvage'?p.salvage:p.resources?.[r.id]||0}`);el.appendChild(button(done?'Изучено':'Пожертвовать образцы и исследовать',()=>act('research',r.id),done||!p.workshop.table||Boolean(job)||!W.canPay(p,offer.cost)));}
+      for(const r of window.Resources.catalog){const offer=W.researchQuote(p,r.id),done=p.workshop.research[r.id];const el=card(r.name,`${done?'ИССЛЕДОВАНО':'Образцы: '+costs(offer.cost)+' · '+offer.seconds+' с'} · В наличии: ${r.id==='salvage'?p.salvage:p.resources?.[r.id]||0} · Стол ≥ ${offer.level} · Предшественники: ${offer.requires.map(resourceName).join(', ')||'нет'}${!done&&offer.reason?' · '+offer.reason:''}`);el.appendChild(button(done?'Изучено':'Пожертвовать образцы и исследовать',()=>act('research',r.id),done||Boolean(offer.reason)||Boolean(job)||!W.canPay(p,offer.cost)));}
       return;
     }
     const filters=document.createElement('div');filters.className='workshop-nav';dialog.insertBefore(filters,list);

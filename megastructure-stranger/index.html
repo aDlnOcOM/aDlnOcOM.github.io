@@ -49,8 +49,7 @@
         <p class="menu-tagline">В стенах системы.<br>За пределами её контроля.</p>
         <nav class="menu-actions" aria-label="Главное меню">
           <button id="enter-hideout" type="button"><small>01</small> Войти в убежище <span>↗</span></button>
-          <button id="menu-equipment" type="button"><small>02</small> Экипировка <span>⌖</span></button>
-          <button id="menu-controls" type="button" aria-expanded="false" aria-controls="menu-help"><small>03</small> Управление <span>+</span></button>
+          <button id="menu-controls" type="button" aria-expanded="false" aria-controls="menu-help"><small>02</small> Управление <span>+</span></button>
         </nav>
         <p id="menu-help" class="menu-help" hidden>WASD / стрелки — движение · мышь — прицел · ЛКМ — огонь · Q — нож · R — перезарядка · 1/2 — оружие · E — шлюз · F — фонарь.</p>
         <p class="menu-footer"><i></i> ЛОКАЛЬНЫЙ КОНТУР АКТИВЕН <span>EARLY BUILD</span></p>
@@ -61,15 +60,11 @@
     <section id="home-screen" class="home-screen" hidden aria-label="Hideout">
       <header class="hideout-header">
         <button id="back-menu" class="hideout-brand" type="button" aria-label="Вернуться в главное меню">MS<span>← МЕНЮ</span></button>
-        <nav class="hideout-tabs" role="tablist" aria-label="Разделы убежища">
-          <button id="tab-shelter" type="button" role="tab" aria-selected="true" aria-controls="panel-shelter" data-tab="shelter">Убежище</button>
-          <button id="tab-equipment" type="button" role="tab" aria-selected="false" aria-controls="panel-equipment" tabindex="-1" data-tab="equipment">Экипировка</button>
-          <button id="tab-storage" type="button" role="tab" aria-selected="false" aria-controls="panel-storage" tabindex="-1" data-tab="storage">Склад</button>
-        </nav>
+        <p class="hideout-location-title">УБЕЖИЩЕ 41 / ЛИЧНЫЙ КОНТУР</p>
         <button id="start-run" class="deploy-button" type="button">Забег <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4H4v16h6M8 12h12m-5-5 5 5-5 5"/></svg></button>
       </header>
       <div class="hideout-strip"><span><i class="status-dot"></i> УБЕЖИЩЕ 41 / СЛЕПАЯ ЗОНА</span><span>СВЯЗЬ С СИСТЕМОЙ: РАЗОРВАНА</span></div>
-      <section id="panel-shelter" class="hideout-panel shelter-layout" role="tabpanel" aria-labelledby="tab-shelter" tabindex="0">
+      <section id="panel-shelter" class="hideout-panel shelter-layout" aria-labelledby="home-title">
       <div class="briefing-panel">
         <p class="eyebrow">убежище 41 / служебный уровень не отмечен</p>
         <h1 id="home-title">Пока система не видит тебя — ты жив.</h1>
@@ -107,7 +102,7 @@
       </section>
       </dialog>
       </section>
-      <section id="panel-equipment" class="hideout-panel loadout-panel" role="tabpanel" aria-labelledby="tab-equipment" tabindex="0" hidden>
+      <dialog id="panel-equipment" class="shelter-service loadout-panel" aria-labelledby="loadout-title">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">перед выходом / инвентаризация</p>
@@ -115,17 +110,19 @@
           </div>
           <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
           <button id="open-workshop" class="quiet-button" type="button">Исследования / производство / предметы</button>
+          <button id="close-equipment" class="quiet-button" type="button">Закрыть · Esc</button>
         </div>
         <div class="inventory-layout"><section class="equipment-body"><h3>На персонаже</h3><div id="loadout-list" class="loadout-list"></div></section><section><h3>Инвентарь</h3><p class="section-note">Зарядная станция Hideout · запасы восстановлены</p><div id="supply-grid" class="supply-grid"></div></section></div>
         <p class="section-note">Выбор предметов, ремонт и производство — в терминале исследований. Нажмите слот для дерева развития: каждое улучшение требует изготовленного модуля. Магазины и коробки совместимы по платформе и типу боеприпаса. В убежище боезапас пополняется; износ снаряжения не восстанавливается автоматически.</p>
-      </section>
-      <section id="panel-storage" class="hideout-panel storage-panel" role="tabpanel" aria-labelledby="tab-storage" tabindex="0" hidden>
+      </dialog>
+      <dialog id="panel-storage" class="shelter-service storage-panel" aria-label="Склад убежища">
+        <button id="close-storage" class="quiet-button" type="button">Закрыть · Esc</button>
         <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
         <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов, модификаций и оснащения убежища.</p></div></div>
         <h3>Материалы</h3><p class="section-note">Добывайте материалы в ящиках профильных этажей и при разборе поверженной охраны. При возвращении они поступают на склад; при гибели сохраняется только часть. Исследуйте образцы и используйте материалы в производстве. Лом — общий запас, не отдельная копия валюты.</p><div id="storage-materials" class="storage-items"></div>
         <h3>Закреплённое снаряжение</h3><div id="storage-items" class="storage-items"></div>
         <p class="section-note">Здесь отображается надетый комплект. Найденные и изготовленные предметы, ремонт и бронеплиты доступны в терминале исследований: вкладка «Предметы».</p>
-      </section>
+      </dialog>
     </section>
 
     <section id="run-screen" class="run-screen" hidden aria-label="Забег по мегаструктуре">

@@ -106,3 +106,32 @@ test('quality changes combat output and a broken weapon cannot fire',()=>{
   const {game:g,Workshop:W}=load(true);const item=W.equipped(g.get(),'smg');item.quality=0;const low=g.playerStats().damage;item.quality=4;assert.ok(g.playerStats().damage>low);
   item.condition=0;g.state.active=true;g.state.player={x:100,y:300,ammo:32,reload:0};g.state.powerInventory=g.createPowerStock();g.fireSmg();assert.equal(g.state.bullets.length,0);assert.equal(g.state.powerInventory.magazines[0].energy,32);
 });
+test('research dependencies block payment until all prerequisites and table levels are met',()=>{
+  const {p,Workshop:W,Resources:R}=load();rich(p,W,R);p.workshop.research={};p.workshop.table=1;
+  const before=p.resources.steel;assert.match(W.research(p,'steel',0),/уровня 2/);assert.equal(p.resources.steel,before);
+  p.workshop.table=2;assert.match(W.research(p,'steel',0),/Металл/);assert.equal(p.resources.steel,before);
+  p.workshop.research.metal=true;assert.equal(W.research(p,'steel',0),'');assert.equal(p.resources.steel,before-5);
+});
+test('table upgrades are sequential, gated, persistent and never retime active jobs',()=>{
+  const {p,Workshop:W,Resources:R}=load();rich(p,W,R);p.workshop.table=1;
+  p.workshop.research={};assert.ok(W.upgradeTable(p));p.workshop.research.metal=true;p.workshop.research.conductor=true;
+  const steel=p.resources.steel;assert.equal(W.upgradeTable(p),'');assert.equal(p.workshop.table,2);assert.equal(p.resources.steel,steel-4);
+  const seconds=W.researchQuote(p,'wood').seconds;assert.ok(seconds<45);
+  W.research(p,'wood',100);const end=p.workshop.job.ends;assert.ok(W.upgradeTable(p));assert.equal(p.workshop.job.ends,end);
+  W.settle(p,end);p.workshop.research=Object.fromEntries(R.catalog.map(r=>[r.id,true]));
+  for(let level=3;level<=5;level++){assert.equal(W.upgradeTable(p),'');assert.equal(p.workshop.table,level);}
+  assert.ok(W.upgradeTable(p));W.init(p);assert.equal(p.workshop.table,5);
+});
+test('research graph is acyclic and every table tier can be reached without a dependency deadlock',()=>{
+  const {p,Workshop:W,Resources:R}=load();rich(p,W,R);p.workshop.research={};p.workshop.table=1;
+  let now=0;
+  for(let level=1;level<=5;level++){
+    let advanced=true;
+    while(advanced){advanced=false;for(const resource of R.catalog){
+      if(p.workshop.research[resource.id]||W.researchQuote(p,resource.id).reason)continue;
+      assert.equal(W.research(p,resource.id,now),'');now=p.workshop.job.ends;W.settle(p,now);advanced=true;
+    }}
+    if(level<5)assert.equal(W.upgradeTable(p),'',`tier ${level+1} deadlock`);
+  }
+  assert.equal(Object.keys(p.workshop.research).length,R.catalog.length);
+});

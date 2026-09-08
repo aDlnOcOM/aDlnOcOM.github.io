@@ -7,7 +7,7 @@ function load(ui=false){
   const drawing=new Proxy({}, {get(target,key){return target[key]||(()=>{});}});
   drawing.createRadialGradient=()=>({addColorStop(){}});
   function get(id){if(!nodes.has(id))nodes.set(id,{id,handlers:{},children:[],dataset:{},open:false,textContent:'',getContext:()=>drawing,addEventListener(type,handler){this.handlers[type]=handler;},focus(){},click(){this.clicked=true;this.handlers.click?.();},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(id);}
-  const scope=vm.createContext({window:{addEventListener(){},requestAnimationFrame(callback){frames.set(++frameId,callback);return frameId;},cancelAnimationFrame(id){frames.delete(id);}},...(ui?{document:{getElementById:get}}:{})});
+  const scope=vm.createContext({window:{HideoutShell:{openService(name){get('service-'+name).clicked=true;}},addEventListener(){},requestAnimationFrame(callback){frames.set(++frameId,callback);return frameId;},cancelAnimationFrame(id){frames.delete(id);}},...(ui?{document:{getElementById:get}}:{})});
   for(const file of ['hideout-upgrades.js','shelter-location.js'])vm.runInContext(fs.readFileSync(`${__dirname}/${file}`,'utf8'),scope);
   function frame(time){const entry=frames.entries().next().value;assert.ok(entry);frames.delete(entry[0]);entry[1](time);}
   return {api:scope.window.ShelterLocation,get,frames,frame};
@@ -41,12 +41,12 @@ test('location animation starts once, pauses on exit and never runs in hidden ta
   frame(100);assert.equal(frames.size,1);assert.match(get('shelter-prompt').textContent,/WASD/);
   api.setActive(false);assert.equal(frames.size,0);
 });
-test('nearby equipment interaction opens its tab without affecting combat input',()=>{
+test('nearby equipment interaction opens its service window without affecting combat input',()=>{
   const {api,frame,get}=load(true);api.refresh({hideout:{}});api.setActive(true);frame(100);
   const key=code=>get('shelter-canvas').handlers.keydown({code,repeat:false,preventDefault(){},stopPropagation(){}});
   key('KeyD');for(let i=1;i<=8;i++)frame(100+i*50);
   get('shelter-canvas').handlers.blur();key('KeyS');for(let i=9;i<=16;i++)frame(100+i*50);
-  get('shelter-canvas').handlers.blur();key('KeyE');assert.equal(get('tab-equipment').clicked,true);
+  get('shelter-canvas').handlers.blur();key('KeyE');assert.equal(get('service-equipment').clicked,true);
 });
 test('facility terminal selects one station, refreshes and closes when leaving shelter',()=>{
   const {api,frame,get}=load(true);

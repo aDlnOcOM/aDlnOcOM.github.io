@@ -2,54 +2,49 @@
 (() => {
   "use strict";
   const get = id => document.getElementById(id);
-  const tabs = [...document.querySelectorAll('[data-tab]')];
-  function selectTab(name, focus = false) {
-    window.ShelterLocation?.setActive(name === 'shelter' && !get('home-screen').hidden);
-    for (const tab of tabs) {
-      const selected = tab.dataset.tab === name;
-      tab.setAttribute('aria-selected', String(selected));
-      tab.tabIndex = selected ? 0 : -1;
-      get(tab.getAttribute('aria-controls')).hidden = !selected;
-      if (selected && focus) tab.focus();
+  function closePanels() {
+    for (const id of ['panel-equipment','panel-storage']) {
+      const panel=get(id);
+      if(panel.open)panel.close();
     }
   }
-  function enter(name = 'shelter') {
-    get('main-menu').hidden = true;
-    get('home-screen').hidden = false;
-    document.body.dataset.screen = 'hideout';
-    selectTab(name, true);
+  function enter() {
+    closePanels();
+    get('main-menu').hidden=true;
+    get('home-screen').hidden=false;
+    document.body.dataset.screen='hideout';
+    window.ShelterLocation?.setActive(true);
+    get('shelter-canvas').focus();
   }
-  get('enter-hideout').addEventListener('click', () => enter());
-  get('menu-equipment').addEventListener('click', () => enter('equipment'));
-  get('back-menu').addEventListener('click', () => {
+  function openService(name) {
+    if(get('home-screen').hidden || !['equipment','storage'].includes(name))return;
+    const panel=get('panel-'+name);
+    if(!panel.open)panel.showModal();
+  }
+  for(const name of ['equipment','storage']) {
+    get('close-'+name).addEventListener('click',()=>get('panel-'+name).close());
+    get('panel-'+name).addEventListener('close',()=>{
+      if(!get('home-screen').hidden)get('shelter-canvas').focus();
+    });
+  }
+  get('enter-hideout').addEventListener('click',enter);
+  get('back-menu').addEventListener('click',()=>{
+    closePanels();
     window.ShelterLocation?.setActive(false);
-    get('home-screen').hidden = true;
-    get('main-menu').hidden = false;
-    document.body.dataset.screen = 'menu';
+    get('home-screen').hidden=true;
+    get('main-menu').hidden=false;
+    document.body.dataset.screen='menu';
     get('enter-hideout').focus();
   });
-  get('menu-controls').addEventListener('click', () => {
-    get('menu-help').hidden = !get('menu-help').hidden;
-    get('menu-controls').setAttribute('aria-expanded', String(!get('menu-help').hidden));
+  get('menu-controls').addEventListener('click',()=>{
+    get('menu-help').hidden=!get('menu-help').hidden;
+    get('menu-controls').setAttribute('aria-expanded',String(!get('menu-help').hidden));
   });
-  tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectTab(tab.dataset.tab));
-    tab.addEventListener('keydown', event => {
-      let next;
-      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-      if (event.key === 'Home') next = 0;
-      if (event.key === 'End') next = tabs.length - 1;
-      if (next === undefined) return;
-      event.preventDefault();
-      event.stopPropagation();
-      selectTab(tabs[next].dataset.tab, true);
-    });
-  });
-  get('start-run').addEventListener('click', () => {
+  get('start-run').addEventListener('click',()=>{
+    closePanels();
     window.ShelterLocation?.setActive(false);
-    document.body.dataset.screen = 'run';
-    get('main-menu').hidden = true;
+    document.body.dataset.screen='run';
+    get('main-menu').hidden=true;
   });
   function refresh(progression, items) {
     get('storage-salvage').textContent = String(progression.salvage);
@@ -70,5 +65,5 @@
     }
     if (document.body.dataset.screen === 'run' && get('run-screen').hidden) enter();
   }
-  window.HideoutShell = { refresh };
+  window.HideoutShell = { refresh, openService, enter };
 })();
