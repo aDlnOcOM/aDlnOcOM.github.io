@@ -10,13 +10,6 @@
       this.y = 0;
       this.safeRadius = 440;
       this.dockZone = { x: -275, y: 0, width: 300, height: 220 };
-      this.parts = [
-        { sprite: "station_dock", x: -275, y: 0, width: 300, height: 220 },
-        { sprite: "station_command", x: 0, y: 0, width: 105, height: 105 },
-        { sprite: "station_service", x: 165, y: 0, width: 135, height: 115 },
-        { sprite: "station_rtg", x: 0, y: -185, width: 74, height: 74 },
-        { sprite: "station_rtg", x: 0, y: 185, width: 74, height: 74 },
-      ];
     }
 
     isDocked(ship) {
@@ -39,23 +32,25 @@
       ctx.stroke();
       ctx.restore();
 
-      this.drawStructures(ctx, screenOrigin, images);
-      for (const part of this.parts) {
-        const pulse = part.sprite === "station_rtg" ? 1 + Math.sin(time * 3 + part.y) * 0.02 : 1;
-        Utils.drawImage(ctx, images[part.sprite], screenOrigin.x + part.x, screenOrigin.y + part.y, part.width * pulse, part.height * pulse);
+      ctx.save();
+      ctx.translate(screenOrigin.x, screenOrigin.y);
+      this.drawDock(ctx, images, time);
+      this.drawStructures(ctx, images);
+      this.drawHub(ctx, images, 0, 0, "core");
+      this.drawHub(ctx, images, 165, 0, "cargo");
+      for (const y of [-185, 185]) {
+        this.drawModule(ctx, images, "rtg", 0, y, 74);
+        // Steady geometry: only status lights pulse, never the connecting hull.
+        ctx.fillStyle = `rgba(115, 230, 255, ${0.65 + Math.sin(time * 2) * 0.2})`;
+        ctx.fillRect(-17, y + Math.sign(y) * 42, 34, 2);
       }
-
-      this.drawLabel(ctx, screenOrigin.x - 275, screenOrigin.y + 3, "ДОК СТАНЦИИ", "SAFE BERTH");
-      this.drawLabel(ctx, screenOrigin.x, screenOrigin.y + 3, "КОМАНДНЫЙ", "CONTROL");
-      this.drawLabel(ctx, screenOrigin.x + 165, screenOrigin.y + 3, "СЕРВИС", "MODULE BAY");
-
-      const beacon = 0.5 + Math.sin(time * 4) * 0.5;
-      ctx.fillStyle = `rgba(92, 232, 255, ${0.35 + beacon * 0.45})`;
-      ctx.fillRect(Math.round(screenOrigin.x - 3), Math.round(screenOrigin.y - 230), 6, 6);
-      ctx.fillRect(Math.round(screenOrigin.x - 3), Math.round(screenOrigin.y + 224), 6, 6);
+      this.drawLabel(ctx, -275, -29, "ДОК СТАНЦИИ", "СТЫКОВКА / РЕМОНТ");
+      this.drawLabel(ctx, 95, -88, "КОМАНДНЫЙ", "ЦЕНТР");
+      this.drawLabel(ctx, 165, 82, "СЕРВИС", "СНАБЖЕНИЕ");
+      ctx.restore();
     }
 
-    drawStructures(ctx, origin, images) {
+    drawStructures(ctx, images) {
       const connectors = [
         { x: -99, y: 0, length: 110, rotation: 0 },
         { x: 75, y: 0, length: 72, rotation: 0 },
@@ -66,8 +61,8 @@
         Utils.drawImage(
           ctx,
           images.station_beam,
-          origin.x + connector.x,
-          origin.y + connector.y,
+          connector.x,
+          connector.y,
           connector.length,
           28,
           connector.rotation,
@@ -75,15 +70,102 @@
       }
     }
 
+    drawModule(ctx, images, type, x, y, size = 30) {
+      const definition = VS.ModuleSystem.MODULES[type];
+      const image = images[`module_${type}`];
+      Utils.drawImage(ctx, images.module_frame, x, y, size, size);
+      if (!image) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((definition.spriteRotation || 0) * Math.PI / 2);
+      const crop = definition.spriteCrop;
+      if (crop) {
+        ctx.drawImage(image, crop.x, crop.y, crop.width, crop.height, -size / 2, -size / 2, size, size);
+      } else {
+        ctx.drawImage(image, -size / 2, -size / 2, size, size);
+      }
+      ctx.restore();
+    }
+
+    drawHub(ctx, images, x, y, type) {
+      ctx.save();
+      ctx.translate(x, y);
+      // The same armour cells and framed components as the player's ship.
+      ctx.fillStyle = "#111d2e";
+      ctx.fillRect(-55, -55, 110, 110);
+      for (const dx of [-40, -20, 0, 20, 40]) {
+        this.drawModule(ctx, images, "hull", dx, -45, 20);
+        this.drawModule(ctx, images, "hull", dx, 45, 20);
+      }
+      for (const dy of [-25, 0, 25]) {
+        this.drawModule(ctx, images, "hull", -45, dy, 20);
+        this.drawModule(ctx, images, "hull", 45, dy, 20);
+      }
+      this.drawModule(ctx, images, type, 0, 0, 70);
+      ctx.fillStyle = "#72dceb";
+      for (const dx of [-1, 1]) {
+        for (const dy of [-1, 1]) ctx.fillRect(dx * 44 - 5, dy * 44 - 1, 10, 2);
+      }
+      ctx.restore();
+    }
+
+    drawDock(ctx, images, time) {
+      ctx.fillStyle = "rgba(12, 27, 40, 0.5)";
+      ctx.fillRect(-425, -110, 300, 220);
+      // Three-sided gantry leaves the entire western approach open.
+      for (let x = -425; x <= -125; x += 30) {
+        this.drawModule(ctx, images, "hull", x, -125);
+        this.drawModule(ctx, images, "hull", x, 125);
+      }
+      for (let y = -95; y <= 115; y += 30) {
+        this.drawModule(ctx, images, "hull", -125, y);
+      }
+      for (const y of [-125, 125]) {
+        this.drawModule(ctx, images, "cargo", -425, y);
+        this.drawModule(ctx, images, "cargo", -125, y);
+        ctx.fillStyle = "#387b93";
+        ctx.fillRect(-408, y > 0 ? 108 : -110, 264, 2);
+      }
+      ctx.strokeStyle = "rgba(104, 180, 208, 0.23)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([10, 8]);
+      for (const y of [-74, 74]) {
+        ctx.beginPath();
+        ctx.moveTo(-420, y);
+        ctx.lineTo(-165, y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      for (let i = 0; i < 8; i++) {
+        const alpha = 0.25 + 0.55 * Math.pow((Math.sin(time * 2.5 - i * 0.7) + 1) / 2, 3);
+        ctx.fillStyle = `rgba(112, 222, 250, ${alpha})`;
+        for (const y of [-99, 97]) ctx.fillRect(-411 + i * 34, y, 12, 2);
+      }
+      ctx.strokeStyle = "#418caa";
+      for (const x of [-395, -360, -325]) {
+        ctx.beginPath();
+        ctx.moveTo(x - 5, 32);
+        ctx.lineTo(x + 2, 39);
+        ctx.lineTo(x - 5, 46);
+        ctx.stroke();
+      }
+    }
+
     drawLabel(ctx, x, y, title, subtitle) {
       ctx.save();
       ctx.textAlign = "center";
+      ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
+      const titleWidth = ctx.measureText(title).width;
+      ctx.font = "14px 'Segoe UI', Arial, sans-serif";
+      const width = Math.max(titleWidth, ctx.measureText(subtitle).width) + 16;
+      ctx.fillStyle = "rgba(4, 12, 20, 0.9)";
+      ctx.fillRect(x - width / 2, y - 17, width, 43);
       ctx.fillStyle = "#d9f7ff";
       ctx.font = "700 14px 'CyberPunk', 'Bahnschrift SemiCondensed', 'Arial Black', sans-serif";
       ctx.fillText(title, Math.round(x), Math.round(y));
-      ctx.fillStyle = "#4c8296";
+      ctx.fillStyle = "#82a7b6";
       ctx.font = "14px 'Segoe UI', Arial, sans-serif";
-      ctx.fillText(subtitle, Math.round(x), Math.round(y + 11));
+      ctx.fillText(subtitle, Math.round(x), Math.round(y + 21));
       ctx.restore();
     }
   }
