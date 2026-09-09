@@ -113,7 +113,7 @@
 
   function moduleMass(module) {
     const definition = MODULES[module.type];
-    return 1 + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50;
+    return (1 + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50) * (definition?.density || 1);
   }
 
   function calculateMassProperties(modules) {
@@ -429,7 +429,7 @@
   class Ship {
     constructor(save = {}) {
       save = save && typeof save === "object" ? save : {};
-      const savedModules = Array.isArray(save.modules) ? save.modules.filter((module) => module && Object.hasOwn(MODULES, module.type) && Number.isInteger(module.gx) && Number.isInteger(module.gy) && Math.abs(module.gx) <= 10 && Math.abs(module.gy) <= 10).slice(0, 64).map((module) => ({ type: module.type, gx: module.gx, gy: module.gy, rotation: Number.isFinite(module.rotation) ? ((Math.round(module.rotation) % 4) + 4) % 4 : 0 })) : [];
+      const savedModules = Array.isArray(save.modules) ? save.modules.filter((module) => module && Object.hasOwn(MODULES, module.type) && Number.isInteger(module.gx) && Number.isInteger(module.gy) && Math.abs(module.gx) <= 24 && Math.abs(module.gy) <= 24).slice(0, 256).map((module) => ({ type: module.type, gx: module.gx, gy: module.gy, rotation: Number.isFinite(module.rotation) ? ((Math.round(module.rotation) % 4) + 4) % 4 : 0, ...(typeof module.assembly === "string" && /^-?\d+,-?\d+$/.test(module.assembly) ? { assembly: module.assembly } : {}), ...(module.overclock ? { overclock: true } : {}) })) : [];
       const validLayout = savedModules.filter((m) => m.type === "core").length === 1 && new Set(savedModules.map((m) => `${m.gx},${m.gy}`)).size === savedModules.length;
       this.x = Number.isFinite(save.x) ? save.x : -175;
       this.y = Number.isFinite(save.y) ? save.y : 0;
@@ -460,6 +460,12 @@
       this.engineStates = new Map();
       this.activeDrills = new Set();
       this.aimWorld = { x: this.x + MODULE_SIZE * 4, y: this.y };
+      this.research = new Set(Array.isArray(save.research) ? save.research.filter((type) => MODULES[type]?.functional) : []);
+      this.heatView = false;
+      if (VS.Engineering) {
+        this.engineering = new VS.Engineering(this, save.engineering || {});
+        for (const [type, definition] of Object.entries(MODULES)) if (definition.glyph && !definition.internal && definition.unlock === 0) this.unlocked.add(type);
+      }
     }
 
     recalculateStats() {
@@ -467,6 +473,7 @@
       this.stats = calculateStats(this.modules, this.upgradeLevel);
       if (this.stats.maxHp > previousMax) this.hp += this.stats.maxHp - previousMax;
       this.hp = Math.min(this.hp, this.stats.maxHp);
+      this.engineering?.sync();
     }
 
     getMaxSpeed() {
@@ -474,7 +481,7 @@
     }
 
     canStabilize() {
-      return this.modules.some((module) => module.type === "computer") && this.stats.energyUse <= this.stats.energy;
+      return Boolean(this.modules.some((module) => module.type === "computer" && (!this.engineering || (this.engineering.online(module) && this.engineering.nodes.get(engineKey(module))?.powered))) && (this.engineering || this.stats.energyUse <= this.stats.energy));
     }
 
     stabilizationForces(massProperties, engines) {
@@ -531,6 +538,7 @@
     }
 
     update(dt, input, mouseWorld) {
+      this.engineering?.step(dt);
       this.aimWorld = { x: mouseWorld.x, y: mouseWorld.y };
       this.collisionCooldown = Math.max(0, this.collisionCooldown - dt);
 
@@ -599,7 +607,9 @@
         if (state.activation <= 0) continue;
 
         const forceAngle = baseAngle + state.gimbal;
-        const forceMagnitude = MODULES[engine.type].thrust * ENGINE_FORCE * state.activation;
+        const powerFactor = this.engineering ? this.engineering.continuous(engine, dt, MODULES[engine.type].energyUse * state.activation) : 1;
+        const forceMagnitude = MODULES[engine.type].thrust * ENGINE_FORCE * state.activation * powerFactor;
+        if (powerFactor <= 0) { state.throttle = 0; state.activation = 0; }
         const forceX = Math.cos(forceAngle) * forceMagnitude;
         const forceY = Math.sin(forceAngle) * forceMagnitude;
         localForceX += forceX;
@@ -607,7 +617,10 @@
         localTorque += radiusX * forceY - radiusY * forceX;
       }
 
-      if (this.modules.some((module) => module.type === "core")) {
+      const core = this.modules.find((module) => module.type === "core");
+      const coreActive = longitudinalInput || lateralInput || turnInput || (stabilization && (stabilization.fx || stabilization.fy || stabilization.torque));
+      const corePower = core && this.engineering ? Math.min(1, this.engineering.continuous(core, dt, coreActive ? 0.6 : 0)) : 1;
+      if (core) {
         const cosine = Math.cos(this.angle);
         const sine = Math.sin(this.angle);
         const localVelocityX = this.vx * cosine + this.vy * sine;
@@ -627,15 +640,15 @@
           0,
           1,
         );
-        localForceX += longitudinalInput * CORE_RCS_FORCE * longitudinalHeadroom;
-        localForceY += lateralInput * CORE_RCS_FORCE * lateralHeadroom;
-        localTorque += turnInput * CORE_GYRO_TORQUE * gyroHeadroom;
+        localForceX += longitudinalInput * CORE_RCS_FORCE * longitudinalHeadroom * corePower;
+        localForceY += lateralInput * CORE_RCS_FORCE * lateralHeadroom * corePower;
+        localTorque += turnInput * CORE_GYRO_TORQUE * gyroHeadroom * corePower;
       }
 
       if (stabilization) {
-        localForceX += stabilization.fx;
-        localForceY += stabilization.fy;
-        localTorque += stabilization.torque;
+        localForceX += stabilization.fx * corePower;
+        localForceY += stabilization.fy * corePower;
+        localTorque += stabilization.torque * corePower;
       }
 
       for (const key of this.engineStates.keys()) {
@@ -840,16 +853,18 @@
 
     addModule(type, gx, gy, rotation) {
       if (!MODULES[type] || !this.unlocked.has(type)) return { ok: false, reason: "Чертёж модуля ещё не разблокирован" };
+      if (MODULES[type].internal) return { ok: false, reason: "Секция устанавливается только в составе орудия" };
       if (MODULES[type].shipClass && MODULES[type].shipClass !== this.shipClass) return { ok: false, reason: "Модуль предназначен для другого класса корабля" };
-      if (this.modules.length >= 64 || !Number.isInteger(gx) || !Number.isInteger(gy) || Math.abs(gx) > 10 || Math.abs(gy) > 10) return { ok: false, reason: "Предел конструкции: 64 модуля, сетка 21×21" };
-      if (this.modules.some((module) => module.gx === gx && module.gy === gy)) return { ok: false, reason: "Ячейка уже занята" };
-      if (!isAdjacentToShip(this.modules, gx, gy)) return { ok: false, reason: "Нужна соседняя точка крепления" };
-      const conflict = getPlacementConflict(this.modules, { type, gx, gy, rotation });
+      const cells = ModuleSystem.assemblyCells({ type, gx, gy, rotation });
+      if (this.modules.length + cells.length > 256 || cells.some((m) => !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 24 || Math.abs(m.gy) > 24)) return { ok: false, reason: "Предел конструкции: 256 клеток, сетка 49×49" };
+      if (cells.some((cell) => this.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy))) return { ok: false, reason: "Часть сборки перекрывает занятые клетки" };
+      if (!cells.some((cell) => isAdjacentToShip(this.modules, cell.gx, cell.gy))) return { ok: false, reason: "Нужна соседняя точка крепления" };
+      const conflict = cells.map((cell) => getPlacementConflict(this.modules, cell)).find(Boolean);
       if (conflict) return { ok: false, reason: placementConflictReason(conflict) };
       if (this.credits < MODULES[type].cost) return { ok: false, reason: "Недостаточно кредитов" };
-      const candidate = [...this.modules, { type, gx, gy, rotation }];
+      const candidate = [...this.modules, ...cells];
       const stats = calculateStats(candidate, this.upgradeLevel);
-      if (stats.energyUse > stats.energy) return { ok: false, reason: "Недостаточно энергии — установите РИТЕГ" };
+      if (!this.engineering && stats.energyUse > stats.energy) return { ok: false, reason: "Недостаточно энергии — установите РИТЕГ" };
       this.modules = candidate;
       this.credits -= MODULES[type].cost;
       this.recalculateStats();
@@ -857,14 +872,18 @@
     }
 
     removeModule(gx, gy) {
-      const target = this.modules.find((module) => module.gx === gx && module.gy === gy);
+      let target = this.modules.find((module) => module.gx === gx && module.gy === gy);
       if (!target) return { ok: false, reason: "В этой ячейке нет модуля" };
       if (target.type === "core") return { ok: false, reason: "Командную капсулу нельзя демонтировать" };
-      const candidate = this.modules.filter((module) => module !== target);
+      if (target.assembly) target = this.modules.find((module) => module.assembly === target.assembly && MODULES[module.type].footprint) || target;
+      const removed = this.modules.filter((m) => target.assembly ? m.assembly === target.assembly : m === target);
+      if (this.engineering && removed.some((m) => this.engineering.temperature(m) > 120)) return { ok: false, reason: "Сначала охладите все секции ниже 120°" };
+      const candidate = this.modules.filter((module) => target.assembly ? module.assembly !== target.assembly : module !== target);
       if (!isConnected(candidate)) return { ok: false, reason: "Демонтаж разорвёт конструкцию" };
       const stats = calculateStats(candidate, this.upgradeLevel);
-      if (stats.energyUse > stats.energy) return { ok: false, reason: "После демонтажа не хватит энергии" };
+      if (!this.engineering && stats.energyUse > stats.energy) return { ok: false, reason: "После демонтажа не хватит энергии" };
       if (this.inventory.used > stats.cargo) return { ok: false, reason: "Сначала разгрузите трюм" };
+      if (this.engineering && this.engineering.stockUsed() > 80 + candidate.reduce((sum, m) => sum + (MODULES[m.type].ammoCapacity || 0), 0)) return { ok: false, reason: "Сначала освободите погреб боеприпасов" };
       this.modules = candidate;
       this.credits += Math.floor(MODULES[target.type].cost * 0.5);
       this.recalculateStats();
@@ -953,8 +972,8 @@
         ctx.save();
         ctx.strokeStyle = "rgba(92, 232, 255, 0.16)";
         ctx.setLineDash([2, 3]);
-        for (let x = -7; x <= 7; x += 1) {
-          for (let y = -6; y <= 6; y += 1) {
+        for (let x = -24; x <= 24; x += 1) {
+          for (let y = -24; y <= 24; y += 1) {
             ctx.strokeRect(x * MODULE_SIZE - MODULE_SIZE / 2, y * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);
           }
         }
@@ -973,7 +992,7 @@
           ctx.fillStyle = definition.accent;
           ctx.fillRect(module.gx * MODULE_SIZE - 9, module.gy * MODULE_SIZE + 11, 18, 2);
         }
-        if (definition.weapon) {
+        if (definition.weapon && !definition.footprint) {
           const centerX = module.gx * MODULE_SIZE;
           const centerY = module.gy * MODULE_SIZE;
           const forward = (module.rotation || 0) * Math.PI / 2;
@@ -982,10 +1001,18 @@
           ctx.save();
           ctx.translate(centerX, centerY); ctx.rotate(aim);
           ctx.fillStyle = "#070f1a"; ctx.fillRect(-7, -6, 20, 12);
-          ctx.fillStyle = "#667e93"; ctx.fillRect(2, -3, 17, 6);
-          ctx.fillStyle = definition.accent || "#8eeaff"; ctx.fillRect(17, -3, 2, 6);
+          if (definition.weapon.kind === "missile") {
+            for (let row = -1; row <= 1; row++) {
+              ctx.fillStyle = "#647689"; ctx.fillRect(-8, row * 7 - 2, 19, 4);
+              ctx.fillStyle = definition.weapon.emp ? "#ad95ff" : "#efb978"; ctx.fillRect(9, row * 7 - 2, 4, 4);
+            }
+          } else {
+            ctx.fillStyle = "#667e93"; ctx.fillRect(2, -3, 17, 6);
+            ctx.fillStyle = definition.weapon.kind === "ballistic" ? "#e6b882" : definition.accent || "#8eeaff"; ctx.fillRect(17, -3, 2, 6);
+          }
           ctx.restore();
         }
+        this.engineering?.drawModule(ctx, module, time);
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
           ctx.strokeRect(module.gx * MODULE_SIZE - 17, module.gy * MODULE_SIZE - 17, 34, 34);
@@ -993,6 +1020,7 @@
         if (!definition) continue;
       }
 
+      this.engineering?.drawAssemblies(ctx, time);
       if (buildMode && buildHover) {
         const definition = MODULES[buildHover.type];
         const image = images[`module_${buildHover.type}`];
@@ -1003,6 +1031,7 @@
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;
         ctx.strokeRect(buildHover.gx * MODULE_SIZE - MODULE_SIZE / 2, buildHover.gy * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);
+        for (const cell of ModuleSystem.assemblyCells(buildHover)) ctx.strokeRect(cell.gx * MODULE_SIZE - 15, cell.gy * MODULE_SIZE - 15, 30, 30);
       }
 
       ctx.restore();
@@ -1021,6 +1050,8 @@
         hp: this.hp,
         inertiaDampingEnabled: this.inertiaDampingEnabled,
         shipClass: this.shipClass,
+        research: [...this.research],
+        engineering: this.engineering?.serialize(),
       };
     }
   }

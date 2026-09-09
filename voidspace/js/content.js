@@ -41,19 +41,30 @@
   ];
   function validateBlueprint(raw) {
     if (!raw || typeof raw !== "object" || !Array.isArray(raw.modules)) throw new Error("Нужен JSON-чертёж с массивом modules");
-    if (raw.modules.length < 3 || raw.modules.length > 64) throw new Error("Чертёж должен содержать от 3 до 64 модулей");
+    if (raw.modules.length < 3 || raw.modules.length > 256) throw new Error("Чертёж должен содержать от 3 до 256 клеток");
     const modules = raw.modules.map((m) => {
-      if (!m || !Object.hasOwn(MODULES, m.type) || !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 10 || Math.abs(m.gy) > 10 || !Number.isInteger(m.rotation) || m.rotation < 0 || m.rotation > 3) throw new Error("Неверный тип, координаты или поворот модуля");
-      return cell(m.type, m.gx, m.gy, m.rotation);
+      if (!m || !Object.hasOwn(MODULES, m.type) || !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 24 || Math.abs(m.gy) > 24 || !Number.isInteger(m.rotation) || m.rotation < 0 || m.rotation > 3) throw new Error("Неверный тип, координаты или поворот модуля");
+      return { ...cell(m.type, m.gx, m.gy, m.rotation), ...(typeof m.assembly === "string" && /^-?\d+,-?\d+$/.test(m.assembly) ? { assembly: m.assembly } : {}), ...(m.overclock ? { overclock: true } : {}) };
     });
     if (modules.filter((m) => m.type === "core").length !== 1) throw new Error("Нужна ровно одна командная капсула");
     if (new Set(modules.map((m) => `${m.gx},${m.gy}`)).size !== modules.length) throw new Error("Модули перекрываются");
+    for (const module of modules) {
+      if (MODULES[module.type].footprint) {
+        const expected = VS.ModuleSystem.assemblyCells(module);
+        if (expected.some((cell) => !modules.some((m) => m.type === cell.type && m.gx === cell.gx && m.gy === cell.gy && m.rotation === cell.rotation && m.assembly === cell.assembly))) throw new Error("Крупное орудие должно содержать все секции");
+      }
+      if (module.type === "assembly_section" && !modules.some((m) => m.assembly === module.assembly && MODULES[m.type].footprint)) throw new Error("Секция не принадлежит крупному орудию");
+      if (module.assembly) {
+        const root = modules.find((m) => m.assembly === module.assembly && MODULES[m.type].footprint);
+        if (!root || !VS.ModuleSystem.assemblyCells(root).some((m) => m.gx === module.gx && m.gy === module.gy && m.type === module.type)) throw new Error("Лишняя секция за пределами орудия");
+      }
+    }
     if (!isConnected(modules)) throw new Error("Все модули должны быть соединены");
     if (modules.some((m) => getPlacementConflict(modules.filter((other) => other !== m), m))) throw new Error("Перекрыт выхлоп двигателя или рабочая зона инструмента");
     if (!modules.some((m) => MODULES[m.type].thrust)) throw new Error("Нужен хотя бы один двигатель");
     if (!modules.some((m) => MODULES[m.type].weapon)) throw new Error("Нужно хотя бы одно боевое орудие");
     const stats = VS.ModuleSystem.calculateStats(modules);
-    if (stats.energyUse > stats.energy) throw new Error("Недостаточно энергии");
+    if (!VS.Engineering && stats.energyUse > stats.energy) throw new Error("Недостаточно энергии");
     const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 40) : "Новый противник";
     const id = typeof raw.id === "string" && /^[a-z0-9_-]{1,48}$/.test(raw.id) ? raw.id : `custom-${Date.now()}`;
     return { version: 1, id, name: name || "Новый противник", behaviour: raw.behaviour === "artillery" ? "artillery" : "raider", tier: Math.max(1, Math.min(8, Math.round(Number(raw.tier) || 1))), reward: Math.max(10, Math.min(500, Math.round(Number(raw.reward) || 80))), modules };

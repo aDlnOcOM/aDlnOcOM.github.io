@@ -5,6 +5,7 @@
   const $ = (id) => document.getElementById(id);
   let modules = [{ type: "core", gx: 0, gy: 0, rotation: 0 }];
   let rotation = 0, erase = false, blueprintId = `custom-${Date.now()}`, images = {};
+  let zoom = 1;
   let templates = [];
   const canvas = $("blueprint-canvas");
   const ctx = canvas.getContext("2d");
@@ -31,15 +32,17 @@
     canvas.width = 680 * ratio; canvas.height = 680 * ratio;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.fillStyle = "#040b13"; ctx.fillRect(0, 0, 680, 680);
+    ctx.translate(340, 340); ctx.scale(zoom, zoom); ctx.translate(-340, -340);
     ctx.strokeStyle = "#142939"; ctx.lineWidth = 1;
-    for (let i = -10; i <= 11; i++) {
+    for (let i = -24; i <= 25; i++) {
       const pos = 340 + i * 30 - 15;
-      ctx.beginPath(); ctx.moveTo(pos, 25); ctx.lineTo(pos, 655); ctx.moveTo(25, pos); ctx.lineTo(655, pos); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pos, -395); ctx.lineTo(pos, 1075); ctx.moveTo(-395, pos); ctx.lineTo(1075, pos); ctx.stroke();
     }
     ctx.fillStyle = "#c886422d";
-    for (const m of modules) for (const cell of reservedCellsForModule(m)) if (Math.abs(cell.gx) <= 10 && Math.abs(cell.gy) <= 10) ctx.fillRect(340 + cell.gx * 30 - 14, 340 + cell.gy * 30 - 14, 28, 28);
+    for (const m of modules) for (const cell of reservedCellsForModule(m)) if (Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24) ctx.fillRect(340 + cell.gx * 30 - 14, 340 + cell.gy * 30 - 14, 28, 28);
     if (modules.length) {
       const ship = new VS.Ship({ modules }); ship.modules = modules; ship.x = 0; ship.y = 0; ship.aimWorld = { x: 500, y: 0 };
+      ship.engineering?.sync();
       ship.draw(ctx, { x: 0, y: 0 }, { width: 680, height: 680 }, images);
     }
     for (const m of modules) if (MODULES[m.type].thrust || MODULES[m.type].weapon) {
@@ -47,7 +50,7 @@
       ctx.strokeStyle = "#ffe5a2"; ctx.beginPath(); ctx.moveTo(6, -4); ctx.lineTo(11, 0); ctx.lineTo(6, 4); ctx.stroke(); ctx.restore();
     }
     const stats = VS.ModuleSystem.calculateStats(modules);
-    $("blueprint-stats").textContent = `${modules.length}/64 блоков  ·  Корпус ${stats.maxHp}  ·  Энергия ${stats.energyUse}/${stats.energy}  ·  Тяга ${stats.thrust.toFixed(1)}`;
+    $("blueprint-stats").textContent = `${modules.length}/256 клеток  ·  Корпус ${stats.maxHp}  ·  Энергия ${stats.energyUse}/${stats.energy}  ·  Тяга ${stats.thrust.toFixed(1)}`;
     try { VS.Content.validateBlueprint(rawBlueprint()); status("Чертёж корректен. Готов к экспорту и добавлению в игру."); }
     catch (error) { status(error.message, true); }
   }
@@ -56,16 +59,21 @@
   canvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     const bounds = canvas.getBoundingClientRect();
-    const gx = Math.round(((event.clientX - bounds.left) / bounds.width * 680 - 340) / 30);
-    const gy = Math.round(((event.clientY - bounds.top) / bounds.height * 680 - 340) / 30);
-    if (Math.abs(gx) > 10 || Math.abs(gy) > 10) return;
+    const gx = Math.round(((event.clientX - bounds.left) / bounds.width * 680 - 340) / (30 * zoom));
+    const gy = Math.round(((event.clientY - bounds.top) / bounds.height * 680 - 340) / (30 * zoom));
+    if (Math.abs(gx) > 24 || Math.abs(gy) > 24) return;
     const index = modules.findIndex((m) => m.gx === gx && m.gy === gy);
-    if (erase || event.button === 2) { if (index !== -1) modules.splice(index, 1); }
+    if (erase || event.button === 2) { if (index !== -1) { const chosen = modules[index]; modules = modules.filter((m) => chosen.assembly ? m.assembly !== chosen.assembly : m !== chosen); } }
     else if (index !== -1) { status("Клетка занята. Сначала удалите блок.", true); return; }
-    else if (modules.length < 64) modules.push({ type: $("module-type").value, gx, gy, rotation });
+    else {
+      const cells = VS.ModuleSystem.assemblyCells({ type: $("module-type").value, gx, gy, rotation });
+      if (modules.length + cells.length > 256 || cells.some((c) => Math.abs(c.gx) > 24 || Math.abs(c.gy) > 24 || modules.some((m) => c.gx === m.gx && c.gy === m.gy))) { status("Сборка выходит за границы или перекрывает блоки", true); return; }
+      modules.push(...cells);
+    }
     render();
   });
-  $("module-type").replaceChildren(...Object.entries(MODULES).map(([id, definition]) => { const option = document.createElement("option"); option.value = id; option.textContent = definition.name; return option; }));
+  $("module-type").replaceChildren(...Object.entries(MODULES).filter(([, d]) => !d.internal).map(([id, definition]) => { const option = document.createElement("option"); option.value = id; option.textContent = definition.name; return option; }));
+  $("editor-zoom").addEventListener("click", () => { zoom = zoom === 1 ? 0.44 : 1; render(); });
   $("module-type").value = "hull";
   $("module-type").addEventListener("change", () => { $("module-description").textContent = MODULES[$("module-type").value].description; });
   $("rotate").addEventListener("click", rotate);

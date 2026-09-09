@@ -144,6 +144,18 @@
     return `${gx},${gy}`;
   }
 
+  function assemblyCells(module) {
+    const footprint = MODULES[module.type]?.footprint;
+    if (!footprint) return [{ ...module }];
+    const [dx, dy] = moduleDirection(module);
+    const group = moduleKey(module.gx, module.gy);
+    const cells = [];
+    for (let x = 0; x < footprint.width; x++) for (let y = -Math.floor(footprint.height / 2); y <= Math.floor(footprint.height / 2); y++) {
+      cells.push({ type: x === 0 && y === 0 ? module.type : "assembly_section", gx: module.gx + dx * x - dy * y, gy: module.gy + dy * x + dx * y, rotation: module.rotation, assembly: group });
+    }
+    return cells;
+  }
+
   function isAdjacentToShip(modules, gx, gy) {
     return modules.some((module) => Math.abs(module.gx - gx) + Math.abs(module.gy - gy) === 1);
   }
@@ -232,6 +244,7 @@
   VS.ModuleSystem = {
     MODULE_SIZE,
     MODULES,
+    assemblyCells,
     moduleKey,
     moduleDirection,
     reservedCellsForModule,

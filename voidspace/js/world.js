@@ -42,18 +42,31 @@
       this.ship.angle = Math.atan2(-y, -x);
       this.scale = 1 + Math.min(7, difficulty - 1) * 0.12;
       this.ship.modules.forEach((m) => { m.combatHp = MODULES[m.type].hp * this.scale; });
+      if (this.ship.engineering) {
+        // Patrols leave their base with finite conventional ammunition, never free nuclear rounds.
+        const ammo = [...new Set(this.ship.modules.map((m) => MODULES[m.type].weapon?.ammo).filter((id) => id && id !== "nuclear_rocket"))];
+        const allowance = Math.floor(this.ship.engineering.stockCapacity() / Math.max(1, ammo.length));
+        for (const id of ammo) this.ship.engineering.stock[id] = Math.min(allowance, id === "swarm_rocket" ? 36 : 24);
+        this.ship.research = new Set(this.ship.modules.filter((m) => m.overclock).map((m) => m.type));
+        if (this.ship.modules.some((m) => m.type === "nuclear_launcher") && this.ship.modules.some((m) => m.type === "nuclear_factory")) {
+          this.ship.inventory.contents.platinum = 2; this.ship.inventory.contents.rareEarths = 2;
+          this.ship.engineering.stock.casing = 1; this.ship.engineering.stock.guidance = 1;
+        }
+      }
       this.cooldowns = new Map();
       this.dead = false; this.flash = 0; this.contactCooldown = 0;
       this.stationId = stationId;
       this.maxHp = this.ship.modules.reduce((sum, m) => sum + m.combatHp, 0);
     }
-    damage(module, amount, world) {
+    damage(module, amount, world, kind = "kinetic", penetration = 0) {
       if (this.dead || !this.ship.modules.includes(module)) return;
+      if (this.ship.engineering && kind !== "processed") amount = this.ship.engineering.armorDamage(module, this.ship.engineering.shieldDamage(amount, kind), kind, penetration);
       module.combatHp -= amount; this.flash = 0.12;
       if (module.combatHp > 0) return;
       const point = this.ship.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
       world.explode(point.x, point.y, "#ff986c", 12);
-      this.ship.modules = this.ship.modules.filter((m) => m !== module);
+      if (MODULES[module.type].reactor) this.ship.engineering?.events.push({ x: module.gx * 30, y: module.gy * 30, nuclear: true });
+      this.ship.modules = this.ship.modules.filter((m) => module.assembly ? m.assembly !== module.assembly : m !== module);
       if (module.type === "core") { this.destroy(world); return; }
       // Destroying a bridge detaches the modules it supported, including weapons.
       const connected = new Set();
@@ -66,6 +79,7 @@
       }
       this.ship.modules = this.ship.modules.filter((m) => connected.has(m));
       this.ship.stats = ModuleSystem.calculateStats(this.ship.modules);
+      this.ship.engineering?.sync();
     }
     destroy(world) {
       if (this.dead) return;
@@ -77,6 +91,8 @@
       world.game.notify(`${this.blueprint.name}: +${reward} ¤`);
     }
     update(dt, world) {
+      if (this.ship.engineering) this.ship.engineering.onDamage = (module, amount) => this.damage(module, amount, world, "processed");
+      if (this.ship.engineering?.stock.nuclear_core > 0) for (const m of this.ship.modules) if (m.type === "nuclear_factory") this.ship.engineering.nodes.get(`${m.gx},${m.gy}`).recipe = "nuclear_rocket";
       this.flash = Math.max(0, this.flash - dt);
       this.contactCooldown = Math.max(0, this.contactCooldown - dt);
       const target = world.game.ship;
@@ -106,8 +122,9 @@
             this.ship.vx *= 0.5; this.ship.vy *= 0.5;
           }
         }
-      } else this.ship.aimWorld = { x: target.x, y: target.y };
-      if (!protectedTarget && distance < 950) world.fireWeapons(this.ship, target, this.cooldowns, "enemy", dt, this.scale);
+      } else { this.ship.aimWorld = { x: target.x, y: target.y }; this.ship.engineering?.step(dt); }
+      const weaponRange = Math.max(950, ...this.ship.modules.map((m) => MODULES[m.type].weapon?.range || 0));
+      if (!protectedTarget && distance < weaponRange) world.fireWeapons(this.ship, target, this.cooldowns, "enemy", dt, this.scale);
       else world.tickCooldowns(this.cooldowns, dt);
       if (distance < 250 && !protectedTarget && this.contactCooldown <= 0) {
         for (const module of this.ship.modules) {
@@ -117,7 +134,9 @@
           target.x += contact.normalX * contact.penetration;
           target.y += contact.normalY * contact.penetration;
           target.vx += contact.normalX * 14; target.vy += contact.normalY * 14;
-          target.takeDamage(10); this.damage(module, 12, world);
+          if (target.engineering) target.engineering.damage(contact.module, 10);
+          else target.takeDamage(10);
+          this.damage(module, 12, world);
           this.contactCooldown = 0.6; break;
         }
       }
@@ -196,7 +215,7 @@
       this.hangar[old.shipClass] = old.serialize();
       const stored = this.hangar[id];
       const ship = new Ship({ ...(stored || {}), modules: copy(stored?.modules || Content.CLASSES[id].modules), shipClass: id,
-        credits: old.credits, unlocked: [...old.unlocked], x: old.x, y: old.y, inventory: {}, inertiaDampingEnabled: old.inertiaDampingEnabled });
+        credits: old.credits, unlocked: [...old.unlocked], research: [...old.research], x: old.x, y: old.y, inventory: {}, inertiaDampingEnabled: old.inertiaDampingEnabled });
       ship.x = old.x; ship.y = old.y;
       for (const module of ship.modules) ship.unlocked.add(module.type);
       this.game.ship = ship; this.cooldowns.clear();
@@ -204,6 +223,7 @@
     }
     tickCooldowns(cooldowns, dt) { for (const [key, value] of cooldowns) cooldowns.set(key, Math.max(0, value - dt)); }
     fireWeapons(ship, target, cooldowns, faction, dt, damageScale = 1) {
+      if (VS.WeaponSystem) return VS.WeaponSystem.fire(this, ship, target, cooldowns, faction, dt, damageScale);
       this.tickCooldowns(cooldowns, dt);
       if (ship.stats.energyUse > ship.stats.energy || this.bullets.length >= 160) return;
       for (const module of ship.modules) {
@@ -244,6 +264,7 @@
       return new Enemy({ name: station.name, behaviour: "artillery", reward: 400, modules }, station.x, station.y, 3, station.id);
     }
     update(dt, aim) {
+      this.weaponWarning = "";
       const ship = this.game.ship;
       this.farthest = Math.max(this.farthest, Math.hypot(ship.x, ship.y));
       if ((this.game.mouse.down || this.game.input.has("Space")) && !this.safeAt(ship)) this.fireWeapons(ship, aim, this.cooldowns, "player", dt);
@@ -262,7 +283,8 @@
       }
       for (const station of this.stations) if (station.hostile && !this.defeated.has(station.id) && Utils.distance(ship, station) < 1500 && !this.enemies.some((e) => e.stationId === station.id)) this.enemies.push(this.spawnOutpost(station));
       for (const enemy of this.enemies) if (!enemy.dead) enemy.update(dt, this);
-      for (const bullet of this.bullets) {
+      if (VS.WeaponSystem) VS.WeaponSystem.update(this, dt);
+      else for (const bullet of this.bullets) {
         const speed = Math.hypot(bullet.vx, bullet.vy);
         const length = Math.min(bullet.remaining, speed * dt);
         const direction = { x: bullet.vx / speed, y: bullet.vy / speed };
@@ -340,6 +362,7 @@
         ctx.fillStyle = effect.colour; ctx.beginPath(); ctx.arc(p.x, p.y, effect.size, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
+      VS.WeaponSystem?.draw(this, ctx);
       this.drawRadar(ctx, ship);
     }
     drawRadar(ctx, ship) {

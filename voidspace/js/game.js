@@ -76,7 +76,7 @@
         "hp-fill", "hp-value", "cargo-fill", "cargo-value", "credits", "distance", "target-card",
         "target-name", "target-fill", "target-yield", "dock-prompt", "toast", "mission", "mission-title",
         "mission-copy", "dock-panel", "dock-content", "inventory-panel", "inventory-content", "build-panel",
-        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle", "sector-status",
+        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle", "sector-status", "engineering-status",
       ];
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
@@ -122,6 +122,7 @@
       this.canvas.addEventListener("pointermove", (event) => this.updatePointer(event));
       this.canvas.addEventListener("pointerdown", (event) => {
         this.updatePointer(event);
+        if (this.buildMode && event.button === 1) { event.preventDefault(); return; }
         if (event.button === 0) this.mouse.down = true;
         if (this.buildMode) this.handleBuildClick(event.button === 2);
       });
@@ -147,6 +148,8 @@
       document.getElementById("exit-build").addEventListener("click", () => this.toggleBuild(false));
       document.getElementById("rotate-module").addEventListener("click", () => this.rotateBuildModule());
       document.getElementById("delete-module").addEventListener("click", () => this.toggleDeleteMode());
+      document.getElementById("overclock-module")?.addEventListener("click", () => this.toggleModuleOverclock());
+      document.getElementById("heat-view")?.addEventListener("click", () => { this.ship.heatView = !this.ship.heatView; document.getElementById("heat-view").setAttribute("aria-pressed", String(this.ship.heatView)); });
       document.getElementById("mission-toggle").addEventListener("click", () => this.dom.mission.classList.toggle("collapsed"));
 
       document.querySelectorAll(".close-panel").forEach((button) => {
@@ -164,15 +167,24 @@
 
     updatePointer(event) {
       const rect = this.canvas.getBoundingClientRect();
+      const previous = { x: this.mouse.x, y: this.mouse.y };
       this.mouse.x = ((event.clientX - rect.left) / rect.width) * this.viewport.width;
       this.mouse.y = ((event.clientY - rect.top) / rect.height) * this.viewport.height;
+      if (this.buildMode && event.type === "pointermove" && (event.buttons & 4)) {
+        this.camera.x -= this.mouse.x - previous.x; this.camera.y -= this.mouse.y - previous.y;
+      }
       if (this.buildMode) this.updateBuildHover();
     }
 
     onKeyDown(event) {
       if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
-      if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX"].includes(event.code)) return;
+      if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX", "KeyO"].includes(event.code)) return;
+      if (this.buildMode && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+        this.camera.x += event.code === "ArrowRight" ? 30 : event.code === "ArrowLeft" ? -30 : 0;
+        this.camera.y += event.code === "ArrowDown" ? 30 : event.code === "ArrowUp" ? -30 : 0;
+        this.updateBuildHover(); return;
+      }
       this.input.add(event.code);
 
       if (!this.started || event.code === "Space" || this.ship.hp <= 0) return;
@@ -187,6 +199,7 @@
       if (event.code === "KeyF" && this.expedition.dockAt(this.ship) && !this.buildMode && !this.paused) this.openDock();
       if (event.code === "KeyR" && this.buildMode) this.rotateBuildModule();
       if (event.code === "KeyX" && this.buildMode) this.toggleDeleteMode();
+      if (event.code === "KeyO" && this.buildMode) this.toggleModuleOverclock();
     }
 
     loop(timestamp) {
@@ -235,11 +248,14 @@
     stationSafety(dt) {
       if (!this.expedition.safeAt(this.ship)) return;
       if (this.ship.hp < this.ship.stats.maxHp) this.ship.hp = Math.min(this.ship.stats.maxHp, this.ship.hp + dt * 1.5);
+      this.ship.engineering?.repair(dt * 1.5);
     }
 
     fireMiningLaser(dt, mouseWorld) {
-      if (this.ship.stats.energyUse > this.ship.stats.energy) return;
+      if (!this.ship.engineering && this.ship.stats.energyUse > this.ship.stats.energy) return;
       for (const mount of this.ship.getLaserMounts(mouseWorld)) {
+        const miningPower = LASER_MINING_POWER * (this.ship.engineering ? this.ship.engineering.miningFactor(mount.module, dt) : 1);
+        if (miningPower <= 0) continue;
         const { origin, angle: aimAngle } = mount;
         const maxDistance = MODULES.laser.range;
         const requestedDistance = Math.min(maxDistance, Math.hypot(mouseWorld.x - origin.x, mouseWorld.y - origin.y));
@@ -268,7 +284,7 @@
         if (enemyHit) {
           const end = { x: origin.x + direction.x * enemyHit.distance, y: origin.y + direction.y * enemyHit.distance };
           this.laserBeams.push({ origin, end });
-          enemyHit.enemy.damage(enemyHit.module, LASER_MINING_POWER * dt, this.expedition);
+          enemyHit.enemy.damage(enemyHit.module, miningPower * dt, this.expedition, "energy");
           continue;
         }
         const beamEnd = target
@@ -276,14 +292,14 @@
           : endpoint;
         this.laserBeams.push({ origin, end: beamEnd });
         if (!target) continue;
-        target.damage(LASER_MINING_POWER * dt, beamEnd.x, beamEnd.y, this);
+        target.damage(miningPower * dt, beamEnd.x, beamEnd.y, this);
         if (!target.dead && !this.target) this.target = target;
       }
     }
 
     mineWithDrills(dt) {
       this.ship.activeDrills.clear();
-      if (this.ship.stats.energyUse > this.ship.stats.energy) return;
+      if (!this.ship.engineering && this.ship.stats.energyUse > this.ship.stats.energy) return;
       for (const drill of this.ship.getDrillTips()) {
         let target = null;
         let nearestDistance = Infinity;
@@ -295,8 +311,10 @@
           nearestDistance = distance;
         }
         if (!target) continue;
+        const miningPower = DRILL_MINING_POWER * (this.ship.engineering ? this.ship.engineering.miningFactor(drill.module, dt) : 1);
+        if (miningPower <= 0) continue;
         this.ship.activeDrills.add(drill.key);
-        target.damage(DRILL_MINING_POWER * dt, drill.x, drill.y, this);
+        target.damage(miningPower * dt, drill.x, drill.y, this);
         if (!target.dead && !this.target) this.target = target;
       }
     }
@@ -325,7 +343,8 @@
       const asteroidImpulse = (10 + impactSpeed * 0.08) / COLLISION_KNOCKBACK_DIVISOR;
       asteroid.vx -= collision.normalX * asteroidImpulse;
       asteroid.vy -= collision.normalY * asteroidImpulse;
-      this.ship.takeDamage(8 + asteroid.size * 5);
+      if (this.ship.engineering) { if (this.ship.collisionCooldown <= 0) { this.ship.engineering.damage(collision.module, 8 + asteroid.size * 5, "kinetic"); this.ship.collisionCooldown = 0.45; } }
+      else this.ship.takeDamage(8 + asteroid.size * 5);
       for (let index = 0; index < 5; index += 1) {
         this.particles.push(new Entities.Particle(
           collision.contactX,
@@ -509,11 +528,18 @@
       const local = this.ship.worldToLocal(world.x, world.y);
       const gx = Math.round(local.x / MODULE_SIZE);
       const gy = Math.round(local.y / MODULE_SIZE);
-      const occupied = this.ship.modules.some((module) => module.gx === gx && module.gy === gy);
       const candidate = { type: this.buildSelected, gx, gy, rotation: this.buildRotation };
-      const conflict = getPlacementConflict(this.ship.modules, candidate);
-      const valid = this.deleteMode ? occupied : !occupied && isAdjacentToShip(this.ship.modules, gx, gy) && !conflict;
+      const cells = ModuleSystem.assemblyCells(candidate);
+      const occupied = cells.some((cell) => this.ship.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy));
+      const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell));
+      const valid = this.deleteMode ? occupied : !occupied && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
       this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
+      this.inspectedModule = this.ship.modules.find((m) => m.gx === gx && m.gy === gy) || null;
+      if (this.inspectedModule?.assembly) this.inspectedModule = this.ship.modules.find((m) => m.assembly === this.inspectedModule.assembly && MODULES[m.type].footprint) || this.inspectedModule;
+      if (this.inspectedModule && this.ship.engineering) {
+        const m = this.inspectedModule, node = this.ship.engineering.nodes.get(`${m.gx},${m.gy}`), def = MODULES[m.type];
+        this.dom["build-hint"].textContent = `${def.name} · ${Math.round(node?.temperature || 20)}° · плотность ${def.density}, прочность ${def.strength}${def.weapon ? " · " + VS.EngineeringData.consumption(def) : ""} · O: разгон ${m.overclock ? "ВКЛ" : "ВЫКЛ"}${def.reactor ? " · " + this.ship.engineering.reactorStatus(m) : ""}`;
+      }
     }
 
     handleBuildClick(forceDelete) {
@@ -534,6 +560,15 @@
       this.updateBuildHover();
     }
 
+    toggleModuleOverclock() {
+      const module = this.inspectedModule;
+      if (!module || !this.ship.modules.includes(module) || !MODULES[module.type].overclockable) { this.notify("Наведите указатель на модуль с поддержкой разгона", true); return; }
+      if (!this.ship.research.has(module.type)) { this.notify("Сначала исследуйте разгон этого типа на станции", true); return; }
+      module.overclock = !module.overclock;
+      this.notify(`Разгон ${MODULES[module.type].name}: ${module.overclock ? "включён" : "выключен"}`);
+      this.save();
+    }
+
     toggleDeleteMode() {
       this.deleteMode = !this.deleteMode;
       document.getElementById("delete-module").classList.toggle("active", this.deleteMode);
@@ -545,12 +580,12 @@
 
     renderBuildPalette() {
       this.dom["build-modules"].innerHTML = Object.entries(MODULES)
-        .filter(([type, definition]) => type !== "core" && (!definition.shipClass || definition.shipClass === this.ship.shipClass))
+        .filter(([type, definition]) => type !== "core" && !definition.internal && (!definition.shipClass || definition.shipClass === this.ship.shipClass))
         .map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
             <span class="module-sprite"><img src="assets/modules/frame.png" alt="">${moduleArtMarkup(definition)}</span>
-            <span><b>${definition.name}</b><small>${definition.energyUse ? `−${definition.energyUse} энергии` : definition.energy ? `+${definition.energy} энергии` : definition.description}</small></span>
+            <span><b>${definition.name}</b><small>${VS.EngineeringData ? VS.EngineeringData.consumption(definition) : definition.description}</small></span>
             <strong>${definition.cost} ¤</strong>
           </button>`;
         }).join("");
@@ -578,6 +613,7 @@
       if (this.activeDockTab === "shop") this.renderShopTab(container);
       if (this.activeDockTab === "service") this.renderServiceTab(container);
       if (this.activeDockTab === "hangar") this.renderHangarTab(container);
+      if (this.activeDockTab === "engineering") this.renderEngineeringTab(container);
     }
 
     renderSellTab(container) {
@@ -592,7 +628,7 @@
 
     renderShopTab(container) {
       container.innerHTML = `<div class="terminal-summary"><p>Покупка чертежа открывает модуль навсегда.<br>Установка выполняется в режиме строительства.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
-        <div class="shop-grid">${Object.entries(MODULES).filter(([type, definition]) => !definition.shipClass && !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
+        <div class="shop-grid">${Object.entries(MODULES).filter(([type, definition]) => !definition.internal && !definition.shipClass && !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<div class="shop-card"><span class="module-sprite"><img src="assets/modules/frame.png" alt="">${moduleArtMarkup(definition)}</span><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
         }).join("")}</div>`;
@@ -602,7 +638,7 @@
     }
 
     renderServiceTab(container) {
-      const missing = Math.ceil(this.ship.stats.maxHp - this.ship.hp);
+      const missing = Math.ceil(Math.max(this.ship.stats.maxHp - this.ship.hp, this.ship.engineering?.missingIntegrity() || 0));
       const repairCost = Math.ceil(missing * 0.25);
       const upgradeCost = 90 + this.ship.upgradeLevel * 65;
       container.innerHTML = `<div class="terminal-summary"><p>Сервисный модуль станции готов к работе.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
@@ -614,6 +650,7 @@
         if (this.ship.credits < repairCost) return;
         this.ship.credits -= repairCost;
         this.ship.hp = this.ship.stats.maxHp;
+        this.ship.engineering?.repair();
         this.notify("Ремонт завершён");
         this.renderServiceTab(container);
         this.updateHud();
@@ -643,6 +680,30 @@
         if (changed) this.notify("Ангар обновлён");
         this.renderHangarTab(container); this.renderBuildPalette(); this.updateHud();
       }));
+    }
+
+    renderEngineeringTab(container) {
+      const engineering = this.ship.engineering;
+      if (!engineering) return;
+      const { STOCK, RECIPES } = VS.EngineeringData;
+      const stats = engineering.summary();
+      container.innerHTML = `<div class="terminal-summary"><p>Температура ${Math.round(stats.temperature)}° · генерация ${stats.generation.toFixed(1)}/с<br>Заряд ${Math.floor(stats.stored)}/${Math.floor(stats.capacity)} · сети ${stats.grids}<br>Боеприпасы и компоненты ${engineering.stockUsed()}/${engineering.stockCapacity()}</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
+        <h3>СНАБЖЕНИЕ / БОЕПРИПАСЫ</h3><div class="supply-grid">${Object.entries(STOCK).map(([id, item]) => `<div class="supply-item"><b>${item.name}</b><span>${engineering.stock[id]} шт.</span>${item.price ? `<button class="action-button" data-supply="${id}" ${this.ship.credits < item.price * 5 || engineering.stockUsed() + 5 > engineering.stockCapacity() ? "disabled" : ""}>+5 · ${item.price * 5} ¤</button>` : "<small>Только сборка</small>"}</div>`).join("")}</div>
+        <h3>ПРОИЗВОДСТВО</h3><p>Сырьё из трюма списывается при запуске партии. Активная партия завершится по прежнему рецепту.</p>
+        ${this.ship.modules.filter((m) => MODULES[m.type].factory).map((m) => { const node = engineering.nodes.get(`${m.gx},${m.gy}`); return `<label class="factory-row">${MODULES[m.type].name} [${m.gx}, ${m.gy}] <select data-factory="${m.gx},${m.gy}">${Object.entries(RECIPES).filter(([, r]) => r.factory === MODULES[m.type].factory).map(([id, recipe]) => `<option value="${id}" ${node.recipe === id ? "selected" : ""}>${STOCK[id].name} ×${recipe.output} · ${recipe.time} с · ${Object.entries(recipe.ore || {}).map(([ore, count]) => `${ORES[ore].name} ×${count}`).concat(Object.entries(recipe.stock || {}).map(([part, count]) => `${STOCK[part].name} ×${count}`)).join(", ")}</option>`).join("")}</select><small>${node.job ? `В работе: ${STOCK[node.job.recipe].name} · ${Math.floor(node.job.progress)} с` : "Ожидание сырья, энергии или места"}</small></label>`; }).join("") || "<p>Установите завод боеприпасов, ракетный или ядерный сборщик.</p>"}
+        <h3>ИССЛЕДОВАНИЯ РАЗГОНА</h3><p>Каждый тип исследуется отдельно. После исследования: B, наведите на модуль, O. Тяга, добыча, генерация или скорость производства ×1,6; для батарей — ёмкость, для насоса — теплопередача. Оружие: урон и темп ×1,6. Расход энергии ×1,3; тепловыделение ×3,4. Нужен отвод тепла!</p>
+        <div class="research-grid">${Object.entries(MODULES).filter(([type, def]) => def.overclockable && !def.internal && this.ship.unlocked.has(type)).map(([type, def]) => `<div class="service-card"><div><b>${def.name}</b><small>${def.description}</small></div><button class="action-button" data-research="${type}" ${this.ship.research.has(type) || this.ship.credits < def.researchCost ? "disabled" : ""}>${this.ship.research.has(type) ? "ИЗУЧЕНО" : def.researchCost + " ¤"}</button></div>`).join("")}</div>`;
+      container.querySelectorAll("[data-supply]").forEach((button) => button.addEventListener("click", () => {
+        const id = button.dataset.supply, price = STOCK[id].price * 5;
+        if (this.ship.credits < price || engineering.stockUsed() + 5 > engineering.stockCapacity()) return;
+        this.ship.credits -= price; engineering.stock[id] += 5; this.renderEngineeringTab(container); this.updateHud(); this.save();
+      }));
+      container.querySelectorAll("[data-research]").forEach((button) => button.addEventListener("click", () => {
+        const type = button.dataset.research, def = MODULES[type];
+        if (this.ship.research.has(type) || this.ship.credits < def.researchCost) return;
+        this.ship.credits -= def.researchCost; this.ship.research.add(type); this.renderEngineeringTab(container); this.updateHud(); this.save();
+      }));
+      container.querySelectorAll("[data-factory]").forEach((select) => select.addEventListener("change", () => { engineering.nodes.get(select.dataset.factory).recipe = select.value; this.save(); }));
     }
 
     sellAll() {
@@ -712,6 +773,7 @@
       this.ship.angularVelocity = 0;
       this.expedition.bullets = [];
       this.ship.hp = this.ship.stats.maxHp;
+      if (VS.Engineering) this.ship.engineering = new VS.Engineering(this.ship, { stock: this.ship.engineering?.stock });
       this.ship.inventory.clear();
       this.camera.x = this.ship.x;
       this.camera.y = this.ship.y;
@@ -722,6 +784,10 @@
     }
 
     updateHud() {
+      if (this.ship.engineering && this.dom["engineering-status"]) {
+        const stats = this.ship.engineering.summary();
+        this.dom["engineering-status"].textContent = `Тепло ${Math.round(stats.temperature)}° · Энергия ${Math.floor(stats.stored)}/${Math.floor(stats.capacity)} (+${stats.generation.toFixed(0)}/с) · Запас ${this.ship.engineering.stockUsed()}\n${this.expedition.weaponWarning || this.ship.engineering.warning}`;
+      }
       const stabilizationButton = this.dom["inertia-toggle"];
       this.dom["sector-status"].textContent = `${this.expedition.biome().name} · Угроза ${this.expedition.biome().danger ? this.expedition.difficulty() : 0}/8 · ${VS.Content.CLASSES[this.ship.shipClass].name}`;
       const available = this.ship.canStabilize();
