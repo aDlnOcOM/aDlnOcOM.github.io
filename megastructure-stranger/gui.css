@@ -1,0 +1,272 @@
+/* Presentation layer. Canvas coordinates and gameplay dimensions stay unchanged. */
+:root {
+  color-scheme: dark;
+  --ink:#e1e6dc; --muted:#a0b0aa; --void:#0a0e10; --panel:#141c1f;
+  --panel-strong:#1c282a; --line:#344448; --cyan:#9ec7b5; --acid:#ced7a0;
+  --danger:#ed9a88; --amber:#d7b782; --shadow:#0006;
+  --ui-mono:ui-monospace,Consolas,monospace;
+}
+body { min-width:0; background:#0a0e10; font-size:14px; line-height:1.5; }
+body, input, select, button { font-family:'Segoe UI',sans-serif; }
+button, input, select, summary { -webkit-tap-highlight-color:transparent; }
+button { border-radius:3px; }
+button:not(:disabled), summary { cursor:pointer; }
+button:disabled { cursor:not-allowed; opacity:.62; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible, canvas:focus-visible {
+  outline:2px solid #dfebc1; outline-offset:3px;
+}
+input, select { min-width:0; accent-color:var(--cyan); }
+input[type=search], select { min-height:42px; padding:10px 12px; color:var(--ink); background:#0d1518; border:1px solid #53665f; border-radius:3px; }
+input::placeholder { color:#91a29b; }
+kbd { display:inline-block; min-width:23px; padding:1px 5px; border:1px solid #53655f; border-bottom-width:2px; border-radius:3px; color:#d4dfce; background:#202c2d; font:11px/1.6 var(--ui-mono); text-align:center; }
+.build-watermark { display:none; }
+.app-shell,body[data-screen=run] .app-shell { width:100%; min-width:0; max-width:1480px; padding:20px 28px; }
+body[data-screen=menu] .app-shell { max-width:none; padding:0; }
+body:not([data-screen=run]) .masthead { display:none; }
+.masthead { padding:0 0 14px; margin-bottom:0; border-color:var(--line); }
+.wordmark { display:flex; align-items:center; gap:6px; font:12px var(--ui-mono); letter-spacing:.04em; line-height:1.2; }
+.wordmark span:nth-child(2),.wordmark b { margin:0; font-size:12px; }
+.masthead-meta { font-size:10px; letter-spacing:.02em; }
+.status-dot { background:#b7cb9c; box-shadow:0 0 7px #b7cb9c35; }
+.eyebrow { color:var(--muted); font:10px/1.6 var(--ui-mono); letter-spacing:.13em; text-transform:uppercase; }
+.quiet-button,.loading-actions button { min-height:40px; border:1px solid #52645f; background:#182326; color:#cad6ca; padding:10px 14px; font-size:12px; }
+.quiet-button:hover:not(:disabled),.loading-actions button:hover { color:#eff4dd; background:#2a3b38; border-color:#9bb79e; }
+.primary-button,.deploy-button { background:var(--acid); color:#18221d; border:1px solid var(--acid); box-shadow:none; min-height:44px; font-size:12px; font-weight:700; }
+.primary-button:hover:not(:disabled),.deploy-button:hover { background:#e0e7bd; color:#111b17; border-color:#e0e7bd; }
+.section-note { max-width:100ch; font-size:12px; line-height:1.65; color:var(--muted); margin:14px 0; }
+.panel-heading { align-items:center; gap:12px; flex-wrap:wrap; }
+.panel-heading h2 { font:600 23px/1.2 'Segoe UI',sans-serif; text-transform:none; letter-spacing:-.02em; }
+.panel-heading>.quiet-button:first-of-type { margin-left:auto; }
+.terminal-state { border:1px solid #46574d; background:#202c25; padding:6px 9px; color:#bfcbb5; font-size:10px; }
+/* Menu: a quiet access terminal next to an oversized maintenance facade. */
+.main-menu { grid-template-columns:minmax(360px,.8fr) minmax(0,1.2fr); min-height:100svh; }
+.menu-console { justify-content:center; padding:clamp(28px,5vw,84px); border-color:#364443; background:linear-gradient(135deg,#1a2324,#0c1215 72%); }
+.menu-console:before { content:'MS / 0041'; position:absolute; top:24px; left:clamp(28px,5vw,84px); color:#718680; font:11px var(--ui-mono); letter-spacing:.15em; }
+.menu-console>.eyebrow { color:#9bb3a8; margin:40px 0 0; line-height:1.8; }
+.menu-console h1 { margin:30px 0 0; font-size:clamp(48px,5.5vw,84px); line-height:1.03; letter-spacing:.015em; }
+.menu-console h1 span { color:#a4b5b0; }
+.menu-console h1 em { color:#d2dab2; font-size:.7em; letter-spacing:.13em; margin-top:16px; }
+.menu-tagline { margin:26px 0 34px; font-size:14px; color:#acbcb5; }
+.menu-actions { gap:10px; }
+.menu-actions button { min-height:60px; padding:16px 18px; gap:16px; font-size:14px; border-color:#40534e; background:#131e22; }
+.menu-actions button:first-child { background:#cbd5ac; color:#15231e; border:1px solid #cbd5ac; }
+.menu-actions button:first-child small,.menu-actions button:first-child span { color:#3f5441; }
+.menu-actions button:first-child:hover { background:#e0e7c4; }
+.menu-actions small { color:#a5b9ac; }
+.menu-actions span { color:#c6d2af; }
+.menu-footer { margin:34px 0 0; padding-top:20px; color:#9aada3; font-size:10px; }
+.main-menu .mega-wall { display:block; min-height:600px; background-image:linear-gradient(90deg,#09111377,transparent 50%,#0b111555),url('assets/wall.svg'); background-size:auto,450px 450px; }
+.mega-wall::after { height:3px; top:20%; background:#d7c39b; box-shadow:0 0 30px #d7c39b45; }
+.wall-door { left:28%; width:56%; top:29%; height:48%; border-width:18px; border-color:#303e3f; }
+.wall-door span { color:#b6b9a1; opacity:.55; }
+.wall-caption { color:#a6b4a9; font-size:11px; bottom:6%; }
+.control-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0 0; padding:18px; border:1px solid #384d45; background:#101c20; }
+.control-grid>div { min-width:0; }
+.control-grid dt { margin:0 0 4px; }
+.control-grid dd { margin:0; color:#b2c2b8; font:11px/1.5 var(--ui-mono); }
+/* The shelter stays a playable location, without navigation shortcuts to stations. */
+.home-screen { padding:0; }
+.hideout-header { min-height:82px; gap:22px; align-items:center; border-bottom:1px solid #40504b; }
+.hideout-brand { min-width:70px; padding:12px 16px 12px 0; border-right:1px solid #3c4c45; font-size:28px; }
+.hideout-brand span { color:#a6b6a9; }
+.hideout-location-title { margin:0; color:var(--ink); }
+.hideout-location-title small { display:block; font:10px var(--ui-mono); letter-spacing:.12em; color:#9cad9f; }
+.hideout-location-title strong { display:block; font:600 23px/1.5 'Segoe UI',sans-serif; }
+.deploy-button { margin:12px 0 12px auto; gap:22px; }
+.hideout-strip { padding:13px 0; color:#a2b4a6; font-size:10px; align-items:center; }
+.hideout-panel { min-height:0; margin-top:0; }
+.campaign-status { padding:10px 14px; margin:0 0 12px; border-left:2px solid #809879; background:#17231f; color:#b8c8ac; font-size:11px; }
+.shelter-playfield { max-width:1152px; margin:auto; border-color:#4a6156; background:#0b1315; box-shadow:0 16px 45px #0004; }
+#shelter-canvas { display:block; width:100%; height:auto; max-height:none; }
+.shelter-controls { gap:14px; padding:12px 16px; background:#162120; border-top:1px solid #394c40; }
+#shelter-prompt { color:#bdcdbb; font-size:12px; }
+/* One consistent window frame for every native dialog. */
+:is(.shelter-service,.field-inventory,.workshop-dialog,#shelter-console) {
+  width:min(1200px,calc(100vw - 40px)); max-width:calc(100vw - 40px); max-height:calc(100dvh - 40px);
+  margin:auto; padding:22px; background:#111a1d; color:var(--ink); border:1px solid #60776b;
+  border-top:3px solid #aaba92; border-radius:5px; box-shadow:0 30px 100px #000b;
+  overflow:auto; scrollbar-color:#61756a #14201e; scrollbar-gutter:stable;
+}
+#panel-equipment { padding:22px; background:#111a1d; border-color:#60776b; }
+:is(.shelter-service,.field-inventory,.workshop-dialog,#shelter-console)::backdrop,.gear-window::backdrop { background:#02090de6; backdrop-filter:blur(5px); }
+:is(.shelter-service,.workshop-dialog,#shelter-console)>.panel-heading,.field-inventory>header {
+  position:sticky; top:-22px; z-index:5; margin:-22px -22px 22px; padding:18px 22px;
+  background:#1b292a; border-bottom:1px solid #4d6258; align-items:center;
+}
+.field-inventory>header h2 { font-size:23px; margin:0; }
+.storage-resource { margin:12px 0 24px; padding:18px; gap:18px; background:#1c2923; border-color:#53614a; }
+.storage-resource>span { font-size:40px; }
+.storage-resource strong { color:#d5ddb6; font-size:32px; }
+.storage-resource p { color:#acbcb0; margin:3px 0; }
+.storage-toolbar { display:flex; align-items:end; flex-wrap:wrap; gap:14px; padding:14px; margin:14px 0 18px; background:#1c2729; border:1px solid #40564d; border-radius:3px; }
+.search-field { display:grid; gap:6px; flex:1 1 220px; color:#b7c4b6; font-size:11px; }
+.search-field input { width:100%; }
+.check-field { display:flex; align-items:center; gap:8px; min-height:42px; color:#bdcbbd; font-size:12px; }
+.check-field input { width:16px; height:16px; margin:0; }
+.storage-toolbar output { margin-left:auto; padding:12px 0; font:11px var(--ui-mono); color:#cbd8b5; }
+.storage-items { grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr)); gap:12px; }
+.storage-items article { background:#192529; border:1px solid #3c5249; padding:18px; border-radius:4px; box-shadow:none; }
+.storage-items .resource-card { display:grid; grid-template-columns:minmax(0,1fr) 76px; align-content:start; gap:8px; padding:16px; min-height:0; }
+.resource-card>.resource-icon { position:static; grid-column:2; grid-row:1 / 4; width:76px; height:76px; align-self:center; background:radial-gradient(ellipse,#52624c45,transparent 72%); }
+.resource-card h4 { margin:0; font-size:14px; line-height:1.4; color:#e0e5d2; }
+.resource-card strong { margin:0; font-size:27px; color:#d4dfb7; font-variant-numeric:tabular-nums; }
+.resource-card small { font-size:9px; color:#b3c6b0; }
+.resource-card details { grid-column:1 / -1; border-top:1px solid #3a5146; padding-top:8px; color:#a6b9ad; }
+.resource-card summary { font-size:11px; padding:3px 0; }
+.resource-card details p { font-size:11px; line-height:1.65; color:#adbdad; margin:8px 0 0; }
+.empty-state { padding:26px; color:#c2cbb7; background:#1b2624; border:1px dashed #61745e; text-align:center; }
+/* Inventory uses the existing slot geometry with clearer equipment silhouettes. */
+.inventory-layout { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:24px; }
+.inventory-layout>section { min-width:0; }
+.inventory-layout h3 { font-size:12px; letter-spacing:.08em; color:#c4d2b5; }
+#panel-equipment .loadout-list,.field-slots { gap:8px; padding:16px 0; }
+#panel-equipment .loadout-item,.field-slot { min-height:106px; padding:10px; border:1px solid #516347; background:#202b25e6; border-radius:4px; }
+#panel-equipment .loadout-item:hover { background:#2e4031; border-color:#a8bd89; }
+.loadout-icon { background:#304238; color:#d1ddbd; border:1px solid #657e5b; width:40px; height:40px; }
+.loadout-item small,.field-slot small { color:#b2c1a7; font-size:10px; }
+.loadout-item strong,.field-slot strong { color:#dce5ca; font-size:12px; }
+.inventory-container { padding:12px; border:1px solid #485b4b; background:#17201b; overflow-x:auto; border-radius:3px; }
+.inventory-container h4 { color:#c0ccb3; font-size:11px; }
+.tactical-grid { background-color:#232c22; }
+.tactical-item { border-radius:2px; }
+.tactical-item small { font-size:9px; color:#e1e1cc; }
+.item-inspector { border:1px solid #4d624d; background:#1c2920; color:#bcc9b1; border-radius:3px; }
+.resource-cost { border-color:#4b6151; background:#17231d; color:#d2dbbf; border-radius:3px; }
+/* Research and crafting: readable cards, separate filters and persistent hierarchy. */
+.workshop-tabs { padding:0 0 12px; border-bottom:1px solid #455c4e; gap:8px; }
+.workshop-tabs button { min-width:130px; }
+.workshop-tabs button[aria-pressed=true] { background:#c4d0a7; border-color:#c4d0a7; color:#17251b; font-weight:650; }
+.workshop-filters { padding:12px; background:#1b2a28; border:1px solid #415b4b; border-radius:3px; }
+.workshop-filters input { flex:1 1 180px; }
+.workshop-filters select { flex:0 1 230px; }
+.workshop-list { grid-template-columns:repeat(auto-fill,minmax(min(100%,285px),1fr)); gap:14px; }
+.workshop-list article { display:flex; flex-direction:column; align-items:stretch; padding:18px; background:#1a282a; border:1px solid #425b50; border-radius:4px; min-width:0; }
+.workshop-list article>img { width:76px; height:76px; margin:0 0 8px; background:radial-gradient(ellipse,#586c4d45,transparent 70%); }
+.workshop-list h3 { margin:4px 0 10px; font-size:16px; line-height:1.35; color:#e0e7ce; }
+.workshop-list article>p { color:#b0c2b2; font:12px/1.7 'Segoe UI',sans-serif; margin:0 0 14px; }
+.workshop-list article>button:last-child { margin-top:auto; }
+.workshop-list article>button { margin-bottom:0; }
+.workshop-list>.empty-state { grid-column:1 / -1; }
+.workshop-list article[data-status=done] { border-top:3px solid #a5bc83; }
+.workshop-list article[data-status=available] { border-top:3px solid #9fc4b2; }
+.workshop-dialog [data-feedback]:empty { display:none; }
+.workshop-dialog [data-feedback]:not(:empty),.workshop-dialog [data-timer] { padding:12px; background:#273529; border:1px solid #718561; color:#d7e1b6; }
+.gear-window { border-color:#607968; background:#10191e; border-radius:4px; }
+.gear-header { padding:16px 20px; background:#1a282c; gap:20px; border-color:#42584d; }
+.gear-header h2 { font:600 21px 'Segoe UI',sans-serif; letter-spacing:0; text-transform:none; }
+.gear-slot small { font-size:10px; }
+.gear-slot strong { font-size:12px; }
+.gear-caption { padding:18px 22px 10px; }
+.gear-caption h3 { font-size:21px; }
+.gear-details { background:#18262a; padding:20px; }
+.gear-details h3 { font-size:20px; }
+.gear-details dt,.gear-warning { color:#b5c7bc; font-size:12px; }
+.gear-node small { font-size:10px; }
+.gear-node em { font-size:11px; }
+.gear-node.locked { color:#a8b7b4; }
+.gear-node.excluded { color:#c3a4aa; }
+/* Compact tactical HUD: health and ammo first, route stays secondary. */
+.run-screen { grid-template-columns:200px minmax(0,1fr); gap:18px; padding-top:18px; }
+.run-sidebar { gap:10px; }
+.run-card { background:#142022; border-color:#3c5049; padding:14px; border-radius:3px; box-shadow:none; }
+.run-card h2 { margin:6px 0 14px; font:600 24px/1.2 'Segoe UI',sans-serif; }
+.run-card h2 span { font:30px var(--ui-mono); }
+.floor-route { gap:5px; }
+.route-node { height:auto; min-height:30px; padding:5px 8px; font-size:10px; line-height:1.3; text-align:center; overflow-wrap:anywhere; background:#1b2a2d; border-color:#405951; color:#b0c0b7; border-radius:2px; }
+.route-node:not(:last-child)::after { top:100%; height:5px; background:#526e5b; }
+.route-node.current { color:#e0edc3; border-color:#b0c990; background:#324735; box-shadow:none; }
+.route-node.cleared { color:#b6c4a3; border-color:#4c664c; }
+.route-node.boss { color:#f0b59e; border-color:#a46d59; }
+.signal-card { flex:0 1 auto; }
+.signal-card p:last-child { color:#bfcabd; font-size:12px; line-height:1.65; }
+#abort-run { color:#dfb59c; border-color:#78594d; margin-top:0; }
+#abort-run:hover { color:#ffe0c1; border-color:#c78c6b; background:#3a2924; }
+#field-inventory { background:#24362c; color:#d0ddbc; border-color:#6f865a; }
+.combat-hud { grid-template-columns:minmax(170px,1fr) minmax(155px,1fr) auto; gap:18px; padding:15px 18px; margin:0 0 12px; background:#192529; border:1px solid #486054; border-radius:3px; align-items:center; }
+.hud-label { font-size:11px; letter-spacing:.02em; }
+.meter { height:6px; background:#33413e; border-radius:1px; }
+.meter i { background:#d5a095; }
+.armor-meter i { background:#a1bbaa; }
+.weapon-hud { padding-left:18px; border-left:1px solid #5b715d; }
+.weapon-hud>span { font-size:11px; color:#d4ddb5; }
+.weapon-hud strong { display:block; font:34px/1.1 var(--ui-mono); font-variant-numeric:tabular-nums; }
+.weapon-hud em { font-size:10px; color:#b1bfb0; line-height:1.5; margin-top:4px; }
+.combat-readout { gap:10px; font-size:10px; text-align:right; }
+.combat-readout b { display:block; font-size:13px; margin-top:2px; color:#d3dfaf; }
+.canvas-frame { border-color:#4a6455; box-shadow:0 10px 30px #0004; border-radius:3px; }
+.control-note { position:static; padding:10px 12px; border-top:1px solid #344c3b; background:#15211c; color:#adbdab; font-size:10px; line-height:1.6; letter-spacing:0; }
+.overlay-card { background:#172525; border-color:#abbf8e; box-shadow:0 20px 50px #0008; border-radius:4px; }
+.overlay-card h2 { font:600 28px/1.2 'Segoe UI',sans-serif; }
+.overlay-card p { color:#c2d1bd; }
+.loading-console { background:#142023; border-color:#657b66; border-top-color:#c5d0a6; border-radius:4px; }
+.loading-console h1 { font:600 38px/1.2 'Segoe UI',sans-serif; letter-spacing:-.03em; text-transform:none; }
+@media(min-width:1500px) { body[data-screen=hideout] .app-shell { padding-top:28px; } }
+@media(max-width:1100px) {
+  .app-shell,body[data-screen=run] .app-shell { padding:16px; }
+  .run-screen { grid-template-columns:170px minmax(0,1fr); gap:12px; }
+  .combat-hud { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; padding:12px; }
+  .combat-readout { grid-column:1 / -1; flex-direction:row; justify-content:space-between; text-align:left; padding-top:8px; border-top:1px solid #42564a; }
+  .combat-readout b { display:inline; margin-left:6px; }
+  .menu-console { padding:36px; }
+  .gear-layout { grid-template-columns:140px minmax(0,1fr) 215px; }
+}
+@media(max-width:800px) {
+  .run-screen { display:flex; flex-direction:column; }
+  .run-sidebar { display:grid; grid-template-columns:1fr 1fr; }
+  .floor-card { grid-column:1 / -1; }
+  .floor-route { flex-direction:row; overflow-x:auto; justify-content:flex-start; padding-bottom:6px; }
+  .route-node { flex:0 0 145px; width:145px; min-height:40px; }
+  .route-node:not(:last-child)::after { display:none; }
+  .signal-card { grid-column:1 / -1; }
+  .floor-card h2 { display:inline-block; margin:0 0 10px; }
+  .main-menu { grid-template-columns:minmax(0,1fr) minmax(0,.75fr); }
+  .menu-console { padding:28px; }
+  .menu-console h1 { font-size:48px; }
+  .wall-door { left:18%; width:68%; padding:18px; }
+  .wall-spine { left:4%; }
+  .wall-caption { left:12%; right:12%; font-size:9px; }
+  .inventory-layout { grid-template-columns:minmax(0,1fr); }
+  .equipment-body { border-right:0; border-bottom:1px solid #405741; padding:0 0 14px; }
+  .gear-layout { grid-template-columns:105px minmax(0,1fr); grid-template-rows:minmax(180px,1fr) auto; }
+  .gear-details { grid-column:1 / -1; max-height:210px; border-top:1px solid #41564e; }
+  .gear-slot>span { display:none; }
+  .gear-caption { flex-wrap:wrap; padding:12px; }
+}
+@media(max-width:580px) {
+  .main-menu { display:block; }
+  .main-menu .mega-wall { display:none; }
+  .menu-console { min-height:100svh; background:linear-gradient(135deg,#192527ee,#0c161aee),url('assets/wall.svg') center/260px; }
+  .menu-console h1 { font-size:clamp(40px,11vw,62px); }
+  .app-shell,body[data-screen=run] .app-shell { padding:10px; }
+  .masthead-meta { display:none; }
+  .hideout-header { gap:12px; flex-wrap:wrap; padding-bottom:8px; }
+  .hideout-location-title { flex:1; }
+  .hideout-location-title strong { font-size:20px; }
+  .hideout-location-title small { font-size:9px; }
+  .deploy-button { margin:0 0 0 auto; min-height:40px; padding:10px 14px; }
+  .hideout-strip>span:last-child { display:none; }
+  .shelter-controls { align-items:stretch; }
+  .shelter-controls button { width:100%; }
+  :is(.shelter-service,.field-inventory,.workshop-dialog,#shelter-console) { width:calc(100vw - 16px); max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); padding:16px; }
+  #panel-equipment { padding:16px; }
+  :is(.shelter-service,.workshop-dialog,#shelter-console)>.panel-heading,.field-inventory>header { top:-16px; margin:-16px -16px 16px; padding:14px 16px; flex-wrap:wrap; gap:10px; }
+  .panel-heading h2,.field-inventory>header h2 { font-size:20px; }
+  .terminal-state { display:none; }
+  .storage-toolbar { padding:10px; gap:8px; }
+  .workshop-tabs button { flex:1 1 100px; min-width:0; }
+  .workshop-filters input,.workshop-filters select { flex:1 1 100%; width:100%; }
+  .gear-header { padding:12px; gap:10px; flex-wrap:wrap; }
+  .gear-header h2 { font-size:17px; }
+  .gear-wallet { font-size:10px; }
+  .gear-wallet strong { font-size:19px; }
+  .gear-layout { grid-template-columns:88px minmax(0,1fr); }
+  .gear-slot { padding:9px 4px; }
+  .gear-slot strong { font-size:11px; }
+  .gear-legend { display:none; }
+  .room-overlay { padding:16px; }
+  .overlay-card { padding:22px; }
+  .overlay-actions { flex-wrap:wrap; }
+}
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+}

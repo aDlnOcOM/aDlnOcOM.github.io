@@ -57,7 +57,7 @@ test('warehouse renders every resource with stock and acquisition hints', () => 
   assert.equal(root.children.length,41);
   assert.equal(root.children[3].children[1].textContent,'8');
   assert.equal(root.children[4].children[1].textContent,'35');
-  assert.match(root.children[0].children[3].textContent,/Ящики:.*Разбор/);
+  assert.match(root.children[0].children[3].children[1].textContent,/Ящики:.*Разбор/);
 });
 
 test('game extraction persists once, death uses retention, failed saves can retry safely', () => {

@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="equipment.css">
   <link rel="stylesheet" href="hideout.css">
   <link rel="stylesheet" href="inventory.css">
+  <link rel="stylesheet" href="gui.css">
 </head>
 <body data-screen="menu" class="assets-loading">
   <section id="asset-loading" class="asset-loading" aria-labelledby="loading-title" aria-busy="true">
@@ -67,7 +68,16 @@
           <button id="enter-hideout" type="button"><small>01</small> Войти в убежище <span>↗</span></button>
           <button id="menu-controls" type="button" aria-expanded="false" aria-controls="menu-help"><small>02</small> Управление <span>+</span></button>
         </nav>
-        <p id="menu-help" class="menu-help" hidden>WASD / стрелки — движение · мышь — прицел · ЛКМ — огонь · Q — нож · R — перезарядка · 1/2 — оружие · E — шлюз · F — фонарь.</p>
+        <dl id="menu-help" class="menu-help control-grid" hidden>
+          <div><dt><kbd>WASD</kbd></dt><dd>Передвижение</dd></div>
+          <div><dt><kbd>ЛКМ</kbd></dt><dd>Огонь · мышь — прицел</dd></div>
+          <div><dt><kbd>Ctrl</kbd></dt><dd>Рывок</dd></div>
+          <div><dt><kbd>R</kbd> / <kbd>Q</kbd></dt><dd>Перезарядка / ближний удар</dd></div>
+          <div><dt><kbd>1</kbd> / <kbd>2</kbd></dt><dd>Смена оружия</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd>Взаимодействие</dd></div>
+          <div><dt><kbd>F</kbd></dt><dd>Фонарь</dd></div>
+          <div><dt><kbd>I</kbd></dt><dd>Инвентарь</dd></div>
+        </dl>
         <p class="menu-footer"><i></i> ЛОКАЛЬНЫЙ КОНТУР АКТИВЕН <span>EARLY BUILD</span></p>
       </div>
       <div class="mega-wall" aria-hidden="true"><div class="wall-spine"></div><div class="wall-door"><span>41</span><small>MAINTENANCE ACCESS<br>UNREGISTERED SECTOR</small></div><div class="wall-pipe"></div><span class="wall-caption">МЕГАСТРУКТУРА / ВНЕШНЯЯ ОБОЛОЧКА<br>ОБИТАТЕЛЬ НЕ ОБНАРУЖЕН</span></div>
@@ -76,10 +86,10 @@
     <section id="home-screen" class="home-screen" hidden aria-label="Hideout">
       <header class="hideout-header">
         <button id="back-menu" class="hideout-brand" type="button" aria-label="Вернуться в главное меню">MS<span>← МЕНЮ</span></button>
-        <p class="hideout-location-title">УБЕЖИЩЕ 41 / ЛИЧНЫЙ КОНТУР</p>
+        <div class="hideout-location-title"><small>ЛИЧНЫЙ КОНТУР / ВНЕ СЕТИ</small><strong>Убежище 41</strong></div>
         <button id="start-run" class="deploy-button" type="button">Забег <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4H4v16h6M8 12h12m-5-5 5 5-5 5"/></svg></button>
       </header>
-      <div class="hideout-strip"><span><i class="status-dot"></i> УБЕЖИЩЕ 41 / СЛЕПАЯ ЗОНА</span><span>СВЯЗЬ С СИСТЕМОЙ: РАЗОРВАНА</span></div>
+      <div class="hideout-strip"><span><i class="status-dot"></i> БЕЗОПАСНАЯ ЗОНА</span><span>Подойдите к объекту и нажмите <kbd>E</kbd></span></div>
       <section id="panel-shelter" class="hideout-panel shelter-layout" aria-label="Убежище">
       <p id="campaign-status" class="campaign-status" role="status"></p>
       <section class="shelter-playfield" aria-label="Интерактивная локация убежища">
@@ -115,18 +125,24 @@
             <p class="eyebrow">перед выходом / инвентаризация</p>
             <h2 id="loadout-title">Экипировка</h2>
           </div>
-          <button id="open-equipment" class="quiet-button" type="button">Открыть экипировку ↗</button>
-          <button id="open-workshop" class="quiet-button" type="button">Исследования / производство / предметы</button>
+          <button id="open-equipment" class="quiet-button" type="button">Деревья развития ↗</button>
+          <button id="open-workshop" class="quiet-button" type="button">Терминал производства ↗</button>
           <button id="close-equipment" class="quiet-button" type="button">Закрыть · Esc</button>
         </div>
         <div class="inventory-layout"><section class="equipment-body"><h3>На персонаже</h3><div id="loadout-list" class="loadout-list"></div></section><section><h3>Инвентарь</h3><p class="section-note">Зарядная станция Hideout · запасы восстановлены</p><div id="supply-grid" class="supply-grid"></div></section></div>
         <p class="section-note">Выбор предметов, ремонт и производство — в терминале исследований. Нажмите слот для дерева развития: каждое улучшение требует изготовленного модуля. Магазины и коробки совместимы по платформе и типу боеприпаса. В убежище боезапас пополняется; износ снаряжения не восстанавливается автоматически.</p>
       </dialog>
       <dialog id="panel-storage" class="shelter-service storage-panel" aria-label="Склад убежища">
-        <button id="close-storage" class="quiet-button" type="button">Закрыть · Esc</button>
-        <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">ЛОКАЛЬНЫЙ РЕЗЕРВ / УЧЁТ ИМУЩЕСТВА</p><h2>Склад</h2></div><span class="terminal-state">СОХРАНЕНО В УБЕЖИЩЕ</span><button id="close-storage" class="quiet-button" type="button">Закрыть · Esc</button></div>
         <div class="storage-resource"><span>▤</span><div><small>МЕТАЛЛОЛОМ</small><strong id="storage-salvage">0</strong><p>Общий запас для имплантов, модификаций и оснащения убежища.</p></div></div>
-        <h3>Материалы</h3><p class="section-note">Добывайте материалы в ящиках профильных этажей и при разборе поверженной охраны. При возвращении они поступают на склад; при гибели сохраняется только часть. Исследуйте образцы и используйте материалы в производстве. Лом — общий запас, не отдельная копия валюты.</p><div id="storage-materials" class="storage-items"></div>
+        <h3>Материалы</h3><p class="section-note">Добыча из ящиков и поверженной охраны. Используется для исследований и производства.</p>
+        <div class="storage-toolbar">
+          <label class="search-field">Поиск материалов<input id="storage-search" type="search" placeholder="Название ресурса…" autocomplete="off" aria-controls="storage-materials"></label>
+          <label class="check-field"><input id="storage-owned" type="checkbox" aria-controls="storage-materials"> Только в наличии</label>
+          <output id="storage-result-count" role="status" aria-live="polite"></output>
+        </div>
+        <p id="storage-empty" class="empty-state" hidden>Ничего не найдено. Измените запрос или отключите фильтр наличия.</p>
+        <div id="storage-materials" class="storage-items"></div>
         <h3>Закреплённое снаряжение</h3><div id="storage-items" class="storage-items"></div>
         <p class="section-note">Здесь отображается надетый комплект. Найденные и изготовленные предметы, ремонт и бронеплиты доступны в терминале исследований: вкладка «Предметы».</p>
       </dialog>
@@ -135,7 +151,7 @@
     <section id="run-screen" class="run-screen" hidden aria-label="Забег по мегаструктуре">
       <aside class="run-sidebar">
         <div class="run-card floor-card">
-          <p class="eyebrow">маршрут сканера</p>
+          <p class="eyebrow">ТЕКУЩАЯ ЭКСПЕДИЦИЯ</p>
           <h2>Этаж <span id="floor-number">01</span></h2>
           <div id="floor-route" class="floor-route" aria-label="Карта комнат текущего этажа"></div>
         </div>
@@ -143,8 +159,8 @@
           <p class="eyebrow">системное сообщение</p>
           <p id="signal-text">Шумоподавление включено. Путь до следующей комнаты свободен.</p>
         </div>
-        <button id="abort-run" class="quiet-button" type="button">Вернуться в убежище</button>
         <button id="field-inventory" class="quiet-button" type="button">Инвентарь · I</button>
+        <button id="abort-run" class="quiet-button" type="button">Вернуться в убежище</button>
       </aside>
 
       <section class="combat-section">
@@ -194,6 +210,7 @@
   <script src="loot-containers.js"></script>
   <script src="player-dash.js"></script>
   <script src="script.js"></script>
+  <script src="gui.js"></script>
   <script src="asset-loading.js"></script>
 </body>
 </html>

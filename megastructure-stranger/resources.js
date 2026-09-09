@@ -85,6 +85,15 @@
     }
     return list;
   }
+  function filter(container,query='',onlyOwned=false) {
+    const term=query.trim().toLocaleLowerCase('ru');let shown=0;
+    for(const card of container.children){
+      const match=String(card.dataset?.resourceName||'').toLocaleLowerCase('ru').includes(term)
+        &&(!onlyOwned||Number(card.dataset?.amount)>0);
+      card.hidden=!match;if(match)shown++;
+    }
+    return {shown,total:container.children.length};
+  }
   function render(container, saved, salvage) {
     if (!container) return;
     container.replaceChildren();
@@ -92,13 +101,17 @@
     for (const item of catalog) {
       const card = document.createElement('article');
       card.className = 'resource-card';
+      if(!card.dataset)card.dataset={};
+      card.dataset.resourceName=item.name;card.dataset.amount=String(amounts[item.id]||0);
       const title = document.createElement('h4'); title.textContent = item.name;
       const count = document.createElement('strong'); count.textContent = String(amounts[item.id] || 0);
       const source = document.createElement('p');
       source.textContent = 'Ящики: ' + item.sectors.map(id => districts[id]).join(', ') + (item.enemies.length ? '. Разбор поверженных: ' + item.enemies.map(id => enemies[id]).join(', ') : '') + '.';
+      const details=document.createElement('details'),hint=document.createElement('summary');hint.textContent='Где найти';details.append(hint,source);
       const rarity = document.createElement('small'); rarity.textContent = item.weight <= 1 ? 'ОЧЕНЬ РЕДКИЙ' : item.weight <= 3 ? 'РЕДКИЙ' : 'ОБЫЧНЫЙ';
-      card.append(title, count, rarity, source, icon(item.id)); container.appendChild(card);
+      card.append(title, count, rarity, details, icon(item.id)); container.appendChild(card);
     }
+    window.GameUI?.refreshStorage();
   }
-  window.Resources = { catalog, normalize, roll, add, summary, total, render, icon, costIcons };
+  window.Resources = { catalog, normalize, roll, add, summary, total, render, icon, costIcons, filter };
 })();

@@ -12,6 +12,11 @@ test('terminal builds table and exposes populated inventory and paginated crafti
   scope.window.WorkshopUI.show({get:()=>p,action:(name,...args)=>scope.window.Workshop[name](p,...args)});
   const dialog=body.children[0];assert.equal(dialog.open,true);
   assert.equal(flatten(dialog).filter(el=>el.tag==='img'&&el.src?.includes('assets/resources/')).length,41);
+  const researchSearch=flatten(dialog).find(el=>el.attributes['aria-label']==='Поиск исследований');
+  researchSearch.value='СТАЛЬ';researchSearch.oninput();
+  assert.equal(flatten(dialog).filter(el=>el.tag==='article'&&!el.hidden).length,4);
+  assert.ok(flatten(dialog).includes(researchSearch),'typing must not replace the focused input');
+  researchSearch.value='';researchSearch.oninput();
   const click=text=>{const button=flatten(dialog).find(el=>el.tag==='button'&&el.textContent===text);assert.ok(button,text);button.onclick();};
   click('Собрать исследовательский стол');assert.equal(p.workshop.table,1);
   click('Предметы');assert.ok(flatten(dialog).some(el=>el.textContent==='ПП Охраны'));
