@@ -23,10 +23,10 @@
       dialog.append(detail,button('Улучшить стол',()=>act('upgradeTable'),Boolean(offer.reason)));
     }
     const list=document.createElement('div');list.className='workshop-list';dialog.appendChild(list);
-    function card(name,detail){const el=document.createElement('article'),title=document.createElement('h3'),text=document.createElement('p');title.textContent=name;text.textContent=detail;el.append(title,text);list.appendChild(el);return el;}
+    function card(name,detail,resourceId){const el=document.createElement('article'),title=document.createElement('h3'),text=document.createElement('p');title.textContent=name;text.textContent=detail;if(resourceId)el.appendChild(window.Resources.icon(resourceId,72));el.append(title,text);list.appendChild(el);return el;}
     if(tab==='research'){
       const job=p.workshop.job;if(job){const progress=document.createElement('p');progress.dataset.timer='';progress.textContent=`Исследуется ${resourceName(job.id)} · осталось ${Math.max(0,Math.ceil((job.ends-Date.now())/1000))} с`;dialog.insertBefore(progress,list);}
-      for(const r of window.Resources.catalog){const offer=W.researchQuote(p,r.id),done=p.workshop.research[r.id];const el=card(r.name,`${done?'ИССЛЕДОВАНО':'Образцы: '+costs(offer.cost)+' · '+offer.seconds+' с'} · В наличии: ${r.id==='salvage'?p.salvage:p.resources?.[r.id]||0} · Стол ≥ ${offer.level} · Предшественники: ${offer.requires.map(resourceName).join(', ')||'нет'}${!done&&offer.reason?' · '+offer.reason:''}`);el.appendChild(button(done?'Изучено':'Пожертвовать образцы и исследовать',()=>act('research',r.id),done||Boolean(offer.reason)||Boolean(job)||!W.canPay(p,offer.cost)));}
+      for(const r of window.Resources.catalog){const offer=W.researchQuote(p,r.id),done=p.workshop.research[r.id];const el=card(r.name,`${done?'ИССЛЕДОВАНО':'Образцы: '+costs(offer.cost)+' · '+offer.seconds+' с'} · В наличии: ${r.id==='salvage'?p.salvage:p.resources?.[r.id]||0} · Стол ≥ ${offer.level} · Предшественники: ${offer.requires.map(resourceName).join(', ')||'нет'}${!done&&offer.reason?' · '+offer.reason:''}`,r.id);el.appendChild(button(done?'Изучено':'Пожертвовать образцы и исследовать',()=>act('research',r.id),done||Boolean(offer.reason)||Boolean(job)||!W.canPay(p,offer.cost)));}
       return;
     }
     const filters=document.createElement('div');filters.className='workshop-nav';dialog.insertBefore(filters,list);
@@ -38,12 +38,12 @@
     page=Math.min(page,Math.max(0,Math.ceil(filtered.length/24)-1));
     for(const entry of filtered.slice(page*24,page*24+24)){
       const def=tab==='craft'?entry:W.definition(entry);
-      const art=document.createElement('img');art.alt='';art.width=72;art.height=72;art.loading='lazy';
-      art.src='assets/'+(def.kind==='ranged'?'weapons/'+def.family:def.kind==='melee'?'weapons/'+def.id:def.kind==='armor'||def.kind==='plate'?'props/equipment':def.kind==='bag'?'props/storage':'props/research')+'.svg';
+      const art=document.createElement('img');art.alt='';art.width=72;art.height=72;art.loading='lazy';art.onerror=()=>{art.hidden=true;};
+      art.src='assets/'+(def.kind==='resource'?'resources/'+def.id:def.kind==='ranged'?'weapons/'+def.family:def.kind==='melee'?'weapons/'+def.id:def.kind==='armor'||def.kind==='plate'?'props/equipment':def.kind==='bag'?'props/storage':'props/research')+'.svg';
       let details=def.kind==='ranged'?`${def.family} · ${def.type} · ${def.caliber} · магазин ${def.magazine} · урон ${def.damage.toFixed(1)}`:def.kind==='melee'?`Урон ${def.damage} · радиус ${def.range} · пауза ${def.delay} с`:def.kind==='plate'?`Защита ${def.protection} · ${def.material}`:def.carrier?`НАЙТИ В ЗАБЕГЕ · ${def.plateSlots} слота · класс ≤ ${def.maxClass}`:def.kind==='bag'?`Перенос предметов: ${def.capacity} · удержание ${(def.retention*100).toFixed(0)}%`:def.kind==='armor'?`Броня ${def.armor.toFixed(1)}`:'';
       if(tab==='craft'){
-        const offer=W.craftQuote(p,def.id,quality);const el=card(def.name,details+' · '+costs(offer.cost)+(def.station?' · '+stationNames[def.station]:'')+' · '+(offer.reason||'Доступно'));
-        el.insertBefore(art,el.firstChild);el.appendChild(button(def.lootOnly?'Только добыча':'Изготовить',()=>act('craft',def.id,quality),Boolean(offer.reason)));
+        const offer=W.craftQuote(p,def.id,quality);const el=card(def.name,details+(def.station?' · '+stationNames[def.station]:'')+' · '+(offer.reason||'Доступно'));
+        el.insertBefore(art,el.firstChild);el.appendChild(window.Resources.costIcons(offer.cost));el.appendChild(button(def.lootOnly?'Только добыча':'Изготовить',()=>act('craft',def.id,quality),Boolean(offer.reason)));
       }else{
         const isEquipped=Object.values(p.workshop.equipped).includes(entry.uid),mounted=p.workshop.items.some(item=>item.plates.includes(entry.uid));
         const el=card(def.name,details+` · ${A.qualities[entry.quality]} · Прочность ${entry.condition.toFixed(1)}/${entry.ceiling.toFixed(1)} · Возраст ${entry.age} забегов`+(isEquipped?' · НАДЕТО':'')+(mounted?' · В ЖИЛЕТЕ':''));

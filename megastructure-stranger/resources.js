@@ -43,7 +43,7 @@
     ['grip','Заготовка рукояти',5,'industrial,slums',''],
     ['buckle','Пряжка',6,'residential,slums','enforcer'],
     ['ceramicPowder','Керамический порошок',4,'industrial,medical','']
-  ].map(([id,name,weight,sectors,enemies]) => Object.freeze({id,name,weight,sectors: sectors.split(','),enemies: enemies.split(',').filter(Boolean)}));
+  ].map(([id,name,weight,sectors,enemies]) => Object.freeze({id,name,icon:'assets/resources/'+id+'.svg',weight,sectors: sectors.split(','),enemies: enemies.split(',').filter(Boolean)}));
   const districts = { residential:'Жилые', industrial:'Производственные', slums:'Трущобы', market:'Торговые', robotics:'Роботизированные', elite:'Элитные', medical:'Медицинские', hydroponics:'Гидропоника', archive:'Архив', utilities:'Коммунальные' };
   const enemies = { watcher:'наблюдатели', drone:'сборщики', turret:'турели', burstTurret:'очередные турели', enforcer:'штурмовики', marksman:'стрелки', warden:'Смотритель', breaker:'Таран' };
   function normalize(saved) {
@@ -69,6 +69,22 @@
   }
   function summary(loot) { return catalog.filter(item => loot?.[item.id] > 0).map(item => `${item.name} +${loot[item.id]}`).join(', '); }
   function total(loot) { return Object.values(normalize(loot)).reduce((sum, count) => sum + count, 0); }
+  function icon(id,size=64) {
+    const resource=catalog.find(item=>item.id===id);if(!resource)return null;
+    const image=document.createElement('img');image.className='resource-icon';
+    image.src=resource.icon;image.alt='';image.width=size;image.height=size;
+    image.decoding='async';image.onerror=()=>{image.hidden=true;};return image;
+  }
+  function costIcons(cost) {
+    const list=document.createElement('div');list.className='resource-costs';
+    for(const [id,amount] of Object.entries(cost||{})) {
+      const resource=catalog.find(item=>item.id===id),chip=document.createElement('span');chip.className='resource-cost';
+      const image=icon(id,28);if(image)chip.appendChild(image);
+      const label=document.createElement('span');label.textContent=`${resource?.name||id} ×${amount}`;
+      chip.appendChild(label);list.appendChild(chip);
+    }
+    return list;
+  }
   function render(container, saved, salvage) {
     if (!container) return;
     container.replaceChildren();
@@ -81,8 +97,8 @@
       const source = document.createElement('p');
       source.textContent = 'Ящики: ' + item.sectors.map(id => districts[id]).join(', ') + (item.enemies.length ? '. Разбор поверженных: ' + item.enemies.map(id => enemies[id]).join(', ') : '') + '.';
       const rarity = document.createElement('small'); rarity.textContent = item.weight <= 1 ? 'ОЧЕНЬ РЕДКИЙ' : item.weight <= 3 ? 'РЕДКИЙ' : 'ОБЫЧНЫЙ';
-      card.append(title, count, rarity, source); container.appendChild(card);
+      card.append(title, count, rarity, source, icon(item.id)); container.appendChild(card);
     }
   }
-  window.Resources = { catalog, normalize, roll, add, summary, total, render };
+  window.Resources = { catalog, normalize, roll, add, summary, total, render, icon, costIcons };
 })();

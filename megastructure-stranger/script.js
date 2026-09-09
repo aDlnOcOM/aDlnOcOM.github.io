@@ -323,7 +323,7 @@
       window.PowerInventory.startRefill(state.powerInventory, id);
       state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
       updateRunUi();
-    }, () => { state.inventoryOpen = false; state.active = state.runActive; });
+    }, () => { state.inventoryOpen = false; state.active = state.runActive; }, { ...state.runResources, salvage: state.runSalvage });
   }
 
   function renderImplants() {

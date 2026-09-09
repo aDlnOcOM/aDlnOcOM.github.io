@@ -11,9 +11,17 @@ test('terminal builds table and exposes populated inventory and paginated crafti
   const p={salvage:0,resources:{},equipment:{},hideout:{}};scope.window.Workshop.init(p);
   scope.window.WorkshopUI.show({get:()=>p,action:(name,...args)=>scope.window.Workshop[name](p,...args)});
   const dialog=body.children[0];assert.equal(dialog.open,true);
+  assert.equal(flatten(dialog).filter(el=>el.tag==='img'&&el.src?.includes('assets/resources/')).length,41);
   const click=text=>{const button=flatten(dialog).find(el=>el.tag==='button'&&el.textContent===text);assert.ok(button,text);button.onclick();};
   click('Собрать исследовательский стол');assert.equal(p.workshop.table,1);
   click('Предметы');assert.ok(flatten(dialog).some(el=>el.textContent==='ПП Охраны'));
   click('Производство');assert.ok(flatten(dialog).filter(el=>el.tag==='article').length<=24);
   assert.ok(flatten(dialog).some(el=>String(el.textContent).includes('100 позиций')));
+  const categories=flatten(dialog).find(el=>el.tag==='select'&&el.attributes['aria-label']==='Категория');
+  categories.value='resource';categories.onchange();
+  const articles=flatten(dialog).filter(el=>el.tag==='article');assert.equal(articles.length,16);
+  for(const article of articles){
+    assert.match(article.children.find(el=>el.tag==='img').src,/assets\/resources\//);
+    assert.ok(flatten(article).some(el=>el.className==='resource-cost'));
+  }
 });

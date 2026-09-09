@@ -3,8 +3,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 function load(files,scope={window:{}}){vm.createContext(scope);for(const file of files)vm.runInContext(fs.readFileSync(`${__dirname}/${file}`,'utf8'),scope);return scope;}
-test('all 59 vector assets and the generated PNG exist, with no external SVG dependencies',()=>{
-  const {window:{GameAssets:A}}=load(['game-assets.js']);assert.equal(A.paths.length,59);
+test('all 100 vector assets and the generated PNG exist, with no external SVG dependencies',()=>{
+  const {window:{GameAssets:A}}=load(['resources.js','game-assets.js']);assert.equal(A.paths.length,100);
   for(const path of A.paths){const content=fs.readFileSync(`${__dirname}/assets/${path}.svg`,'utf8');assert.match(content,/<svg /);assert.doesNotMatch(content,/<script|<foreignObject|href=/);}
   assert.equal(fs.readFileSync(`${__dirname}/assets/maintenance-floor.png`).subarray(1,4).toString(),'PNG');
 });

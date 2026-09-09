@@ -4,7 +4,8 @@
   const props=['generator','battery','solder','mill','forming','research','storage','equipment','implants','bed','plants','server'];
   const districts=['residential','industrial','slums','market','robotics','elite','medical','hydroponics','archive','utilities'];
   const weapons=['pistol','smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'];
-  const paths=[...actors.map(id=>'actors/'+id),...props.map(id=>'props/'+id),'props/sensor',...districts.map(id=>'floors/'+id),...weapons.map(id=>'weapons/'+id),...Array.from({length:15},(_,i)=>'weapons/melee-'+i),'wall','door'];
+  const resources=(window.Resources?.catalog||[]).map(item=>'resources/'+item.id);
+  const paths=[...actors.map(id=>'actors/'+id),...props.map(id=>'props/'+id),'props/sensor',...districts.map(id=>'floors/'+id),...weapons.map(id=>'weapons/'+id),...Array.from({length:15},(_,i)=>'weapons/melee-'+i),'wall','door',...resources];
   const images=new Map(),failures=[],records=new Map(),listeners=new Set();
   function progress(){
     const entries=[...records.values()];

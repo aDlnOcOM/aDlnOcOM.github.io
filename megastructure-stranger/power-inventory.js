@@ -134,12 +134,20 @@
       details.append(progress, cancel);
     }
   }
-  function show(stock, items, onRefill, onClose) {
+  function show(stock, items, onRefill, onClose, resources) {
     const dialog = document.createElement('dialog'); dialog.className = 'field-inventory';
     dialog.setAttribute('aria-label', 'Экипировка и запасы энергии');
     const opener = document.activeElement;
     dialog.innerHTML = '<header><div><p class="eyebrow">ПОЛЕВОЙ КОМПЛЕКТ / ПАУЗА</p><h2>Экипировка и инвентарь</h2></div><button class="quiet-button" data-close>Закрыть ×</button></header><div class="inventory-layout"><section><h3>Экипировка</h3><div class="field-slots"></div></section><section><h3>Запасы энергии</h3><div class="supply-grid"></div><p class="section-note">R — сменить магазин; если более заряженных нет — пополнить из Мк I. 1 выстрел = 1 ед. энергии.</p></section></div>';
     const slots = dialog.querySelector('.field-slots');
+    if(resources&&window.Resources){
+      const section=document.createElement('section');section.className='field-resources';
+      const title=document.createElement('h3');title.textContent='Материалы этого забега';section.appendChild(title);
+      const found=Object.fromEntries(Object.entries(resources).filter(([,amount])=>amount>0));
+      if(Object.keys(found).length)section.appendChild(window.Resources.costIcons(found));
+      else{const empty=document.createElement('p');empty.textContent='Материалы пока не найдены.';section.appendChild(empty);}
+      dialog.appendChild(section);
+    }
     items.forEach(item => { const slot = document.createElement('div'); slot.className = 'field-slot'; slot.dataset.gear = item.id;
       slot.innerHTML = `<small>${item.slot}</small><strong>${item.name}</strong>`; slots.appendChild(slot); });
     const draw = () => render(dialog.querySelector('.supply-grid'), stock, id => { onRefill(id); draw(); });
