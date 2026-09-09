@@ -529,7 +529,7 @@
       const cells = ModuleSystem.assemblyCells(candidate);
       const occupied = cells.some((cell) => this.ship.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy));
       const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell)) || VS.Physics.placementBlocked(this.ship, cells, this.expedition);
-      const valid = this.deleteMode ? occupied : !occupied && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
+      const valid = this.deleteMode ? occupied : !occupied && this.ship.modules.length + cells.length <= 256 && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy, cell)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
       this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
       this.inspectedModule = this.ship.modules.find((m) => m.gx === gx && m.gy === gy) || null;
       if (this.inspectedModule?.assembly) this.inspectedModule = this.ship.modules.find((m) => m.assembly === this.inspectedModule.assembly && MODULES[m.type].footprint) || this.inspectedModule;

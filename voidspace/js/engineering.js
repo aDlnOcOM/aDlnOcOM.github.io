@@ -35,7 +35,7 @@
     stockUsed() { return Object.values(this.stock).reduce((sum, n) => sum + n, 0); }
     takeStock(id, amount) { if (!Object.hasOwn(STOCK, id) || this.stock[id] < amount) return false; this.stock[id] -= amount; return true; }
     sync() {
-      const signature = this.ship.upgradeLevel + ":" + this.ship.modules.map((m) => `${key(m)}:${m.type}`).join(";");
+      const signature = this.ship.upgradeLevel + ":" + this.ship.modules.map((m) => `${key(m)}:${m.type}:${m.rotation || 0}`).join(";");
       if (signature === this.signature) return;
       this.signature = signature;
       this.byCell = new Map(this.ship.modules.map((m) => [key(m), m]));
@@ -64,7 +64,7 @@
       for (const m of this.ship.modules) for (const other of this.neighbours(m)) if (key(m) < key(other)) this.edges.push([m, other]);
     }
     neighbours(m) {
-      return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => this.byCell.get(moduleKey(m.gx + dx, m.gy + dy))).filter(Boolean);
+      return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => this.byCell.get(moduleKey(m.gx + dx, m.gy + dy))).filter(n => n && VS.ModuleSystem.modulesTouch(m, n));
     }
     components(accept) {
       const seen = new Set(), groups = [];
@@ -292,7 +292,12 @@
       const def = MODULES[m.type], state = this.nodes.get(key(m));
       if (!state) return;
       const x = m.gx * 30, y = m.gy * 30;
-      ctx.save(); ctx.translate(x, y);
+      ctx.save();
+      if (def.polygon) {
+        const points = VS.ModuleSystem.localPolygon(m);
+        ctx.beginPath(); points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
+      }
+      ctx.translate(x, y);
       if (!textured && def.glyph && def.glyph !== "weapon") {
         if (!["section", "armor"].includes(def.glyph)) { ctx.fillStyle = "#0b1925db"; ctx.fillRect(-10, -10, 20, 20); }
         ctx.strokeStyle = "#6f91a8"; ctx.lineWidth = 1.5;
@@ -334,7 +339,7 @@
     }
     drawAssemblies(ctx, time) {
       for (const m of this.ship.modules) {
-        const def = MODULES[m.type]; if (!def.footprint) continue;
+        const def = MODULES[m.type]; if (!def.footprint || !def.weapon) continue;
         ctx.save(); ctx.translate(m.gx * 30, m.gy * 30); ctx.rotate((m.rotation || 0) * Math.PI / 2);
         ctx.strokeStyle = def.accent; ctx.fillStyle = "#142334"; ctx.lineWidth = 2;
         if (m.type === "tesla_coil") {

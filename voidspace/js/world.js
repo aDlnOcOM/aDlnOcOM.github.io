@@ -22,18 +22,8 @@
     let nearest = null;
     for (const module of ship.modules) {
       if (ship.engineering?.nodes.get(`${module.gx},${module.gy}`)?.integrity <= 0) continue;
-      let entry = 0, exit = length;
-      for (const [axis, centre] of [["x", module.gx * MODULE_SIZE], ["y", module.gy * MODULE_SIZE]]) {
-        const half = (axis === "x" ? module.hitWidth || 30 : module.hitHeight || 30) / 2;
-        if (Math.abs(vector[axis]) < 1e-8) {
-          if (local[axis] < centre - half || local[axis] > centre + half) { exit = -1; break; }
-        } else {
-          const a = (centre - half - local[axis]) / vector[axis];
-          const b = (centre + half - local[axis]) / vector[axis];
-          entry = Math.max(entry, Math.min(a, b)); exit = Math.min(exit, Math.max(a, b));
-        }
-      }
-      if (entry <= exit && (!nearest || entry < nearest.distance)) nearest = { module, distance: entry };
+      const entry = ModuleSystem.rayPolygon(local, vector, length, ModuleSystem.localPolygon(module));
+      if (entry !== null && (!nearest || entry < nearest.distance)) nearest = { module, distance: entry };
     }
     return nearest;
   }

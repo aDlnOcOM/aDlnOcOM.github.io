@@ -112,7 +112,7 @@
 
   function moduleMass(module) {
     const definition = MODULES[module.type];
-    return (1 + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50) * (definition?.density || 1);
+    return ((definition?.materialArea ?? 1) + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50) * (definition?.density || 1);
   }
 
   function calculateMassProperties(modules) {
@@ -769,12 +769,12 @@
 
     addModule(type, gx, gy, rotation) {
       if (!MODULES[type] || !this.unlocked.has(type)) return { ok: false, reason: "Чертёж модуля ещё не разблокирован" };
-      if (MODULES[type].internal) return { ok: false, reason: "Секция устанавливается только в составе орудия" };
+      if (MODULES[type].internal) return { ok: false, reason: "Секция устанавливается только в составе модуля" };
       if (MODULES[type].shipClass && MODULES[type].shipClass !== this.shipClass) return { ok: false, reason: "Модуль предназначен для другого класса корабля" };
       const cells = ModuleSystem.assemblyCells({ type, gx, gy, rotation });
       if (this.modules.length + cells.length > 256 || cells.some((m) => !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 24 || Math.abs(m.gy) > 24)) return { ok: false, reason: "Предел конструкции: 256 клеток, сетка 49×49" };
       if (cells.some((cell) => this.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy))) return { ok: false, reason: "Часть сборки перекрывает занятые клетки" };
-      if (!cells.some((cell) => isAdjacentToShip(this.modules, cell.gx, cell.gy))) return { ok: false, reason: "Нужна соседняя точка крепления" };
+      if (!cells.some((cell) => isAdjacentToShip(this.modules, cell.gx, cell.gy, cell))) return { ok: false, reason: "Нужна соседняя грань крепления (не остриё)" };
       const conflict = cells.map((cell) => getPlacementConflict(this.modules, cell)).find(Boolean);
       if (conflict) return { ok: false, reason: placementConflictReason(conflict) };
       if (this.credits < MODULES[type].cost) return { ok: false, reason: "Недостаточно кредитов" };
@@ -941,17 +941,19 @@
 
       if (!VS.Visuals?.drawAssemblies(ctx, images, this.engineering, time)) this.engineering?.drawAssemblies(ctx, time);
       if (buildMode && buildHover) {
-        const definition = MODULES[buildHover.type];
-        const image = images[`module_${buildHover.type}`];
-        const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
-        const visual = VS.Visuals?.drawCell(ctx, images, buildHover, time, aimLocal, 0.52);
-        if (!visual) Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        const animated = visual || drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52, false);
-        if (!animated) drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
-        ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(buildHover.gx * MODULE_SIZE - MODULE_SIZE / 2, buildHover.gy * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);
-        for (const cell of ModuleSystem.assemblyCells(buildHover)) ctx.strokeRect(cell.gx * MODULE_SIZE - 15, cell.gy * MODULE_SIZE - 15, 30, 30);
+        const cells = ModuleSystem.assemblyCells(buildHover);
+        for (const cell of cells) {
+          const definition = MODULES[cell.type], image = images[`module_${cell.type}`];
+          const visual = VS.Visuals?.drawCell(ctx, images, cell, time, aimLocal, 0.52);
+          if (!visual) drawModuleSprite(ctx, image, definition, cell.gx * MODULE_SIZE, cell.gy * MODULE_SIZE, (cell.rotation + (definition.spriteRotation || 0)) * Math.PI / 2, 0.52);
+        }
+        ctx.save(); ctx.globalAlpha *= 0.52;
+        VS.Visuals?.drawAssemblies(ctx, images, { ship: { modules: cells }, available: () => 0, heatAvailable: () => 0 }, time);
+        ctx.restore();
+        ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63"; ctx.lineWidth = 1;
+        for (const cell of cells) {
+          ctx.beginPath(); ModuleSystem.localPolygon(cell).forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.stroke();
+        }
       }
 
       ctx.restore();

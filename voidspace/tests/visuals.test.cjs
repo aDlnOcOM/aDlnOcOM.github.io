@@ -16,7 +16,7 @@ const { Visuals, Content, ModuleSystem } = VS;
 test('every module has either a distinct body or its own weapon overlay', () => {
   for (const [type, def] of Object.entries(ModuleSystem.MODULES)) {
     assert.equal(def.visualType, type);
-    assert.ok(Visuals.BODY_TYPES.includes(type) || Visuals.TURRET_TYPES.includes(type), type);
+    assert.ok(Visuals.BODY_TYPES.includes(type) || Visuals.TURRET_TYPES.includes(type) || (def.armorPanel && def.polygon.length >= 3 && Visuals.BODY_TYPES.includes(def.visualBase)), type);
     if (def.weapon || type === 'laser') assert.ok(Visuals.TURRET_TYPES.includes(type), `Missing turret: ${type}`);
   }
   assert.equal(new Set(Visuals.BODY_TYPES).size, 36);

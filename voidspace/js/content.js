@@ -51,12 +51,12 @@
     for (const module of modules) {
       if (MODULES[module.type].footprint) {
         const expected = VS.ModuleSystem.assemblyCells(module);
-        if (expected.some((cell) => !modules.some((m) => m.type === cell.type && m.gx === cell.gx && m.gy === cell.gy && m.rotation === cell.rotation && m.assembly === cell.assembly))) throw new Error("Крупное орудие должно содержать все секции");
+        if (expected.some((cell) => !modules.some((m) => m.type === cell.type && m.gx === cell.gx && m.gy === cell.gy && m.rotation === cell.rotation && m.assembly === cell.assembly))) throw new Error("Составной модуль должен содержать все секции");
       }
-      if (module.type === "assembly_section" && !modules.some((m) => m.assembly === module.assembly && MODULES[m.type].footprint)) throw new Error("Секция не принадлежит крупному орудию");
+      if (MODULES[module.type].internal && !modules.some((m) => m.assembly === module.assembly && MODULES[m.type].footprint)) throw new Error("Секция не принадлежит составному модулю");
       if (module.assembly) {
         const root = modules.find((m) => m.assembly === module.assembly && MODULES[m.type].footprint);
-        if (!root || !VS.ModuleSystem.assemblyCells(root).some((m) => m.gx === module.gx && m.gy === module.gy && m.type === module.type)) throw new Error("Лишняя секция за пределами орудия");
+        if (!root || !VS.ModuleSystem.assemblyCells(root).some((m) => m.gx === module.gx && m.gy === module.gy && m.type === module.type && m.rotation === module.rotation)) throw new Error("Лишняя секция за пределами составного модуля");
       }
     }
     if (!isConnected(modules)) throw new Error("Все модули должны быть соединены");

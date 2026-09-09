@@ -35,9 +35,7 @@
     const result = [];
     for (const module of modules) {
       if (!liveModule(body, module)) continue;
-      const x = module.gx * MODULE_SIZE, y = module.gy * MODULE_SIZE;
-      const w = (module.hitWidth || MODULE_SIZE) / 2, h = (module.hitHeight || MODULE_SIZE) / 2;
-      result.push(polygon([[-w, -h], [w, -h], [w, h], [-w, h]].map(([dx, dy]) => body.localToWorld(x + dx, y + dy)), module));
+      result.push(polygon(VS.ModuleSystem.localPolygon(module).map(p => body.localToWorld(p.x, p.y)), module));
       if (module.type === "drill") result.push(drillShape(body, module));
     }
     return result;
@@ -180,7 +178,7 @@
     let mass = 0, inertia = 0;
     if (body.modules) for (const module of body.modules) {
       const def = MODULES[module.type];
-      const weight = (1 + def.hp / 100 + (def.cargo || 0) / 40 + (def.energy || 0) / 50) * (def.density || 1) / 3;
+      const weight = ((def.materialArea ?? 1) + def.hp / 100 + (def.cargo || 0) / 40 + (def.energy || 0) / 50) * (def.density || 1) / 3;
       mass += weight; inertia += weight * ((module.gx * 30) ** 2 + (module.gy * 30) ** 2 + 150);
     }
     else mass = Math.max(4, (body.collisionRadius ?? body.radius) ** 2 / 90);

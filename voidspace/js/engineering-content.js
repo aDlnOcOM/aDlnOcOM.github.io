@@ -39,6 +39,28 @@
   gun("heavy_cannon", "Тяжёлая баллистическая пушка", { kind: "ballistic", ammo: "heavy_ammo", recoil: 240, damage: 160, penetration: 0.35, cooldown: 2, speed: 1100, range: 1400, description: "1 тяжёлый патрон · огромная отдача и момент вращения" }, { cost: 330, unlock: 220 });
   gun("tesla_coil", "Катушка Тесла · 3×3", { kind: "tesla", energy: 65, heat: 75, damage: 45, emp: 4, cooldown: 2.5, range: 420, arc: Math.PI * 2, description: "Энергия 65 · цепная дуга · особенно опасна энергетическим кораблям" }, { cost: 550, unlock: 400, footprint: { width: 3, height: 3 }, heatCapacity: 25, glyph: "tesla" });
   gun("thermo_resonator", "Терморезонансное орудие · 3×16", { kind: "thermal", heatCost: 12000, damage: 700, radius: 100, cooldown: 12, speed: 650, range: 1800, description: "Расход 12 000 ед. тепла из связанного контура; сектор 15°", arc: Math.PI / 12 }, { cost: 2200, unlock: 1200, footprint: { width: 16, height: 3 }, heatCapacity: 100, conductivity: 12, loop: true, glyph: "resonator", accent: "#ffa767" });
+  // Each occupied cell carries its own clipped polygon. The complete wedge rotates as one assembly.
+  for (const [width, height] of [[1, 1], [2, 1], [1, 2], [3, 1], [1, 3]]) {
+    const id = `corner_armor_${width}x${height}`, yStart = -Math.floor(height / 2);
+    const left = -15, top = yStart * 30 - 15, right = width * 30 - 15, bottom = top + height * 30;
+    const triangle = [{ x: left, y: top }, { x: right, y: bottom }, { x: left, y: bottom }], layout = [];
+    for (let x = 0; x < width; x++) for (let row = 0; row < height; row++) {
+      const y = row + yStart, cx = x * 30, cy = y * 30;
+      const square = [{ x: cx - 15, y: cy - 15 }, { x: cx + 15, y: cy - 15 }, { x: cx + 15, y: cy + 15 }, { x: cx - 15, y: cy + 15 }];
+      const polygon = VS.ModuleSystem.clipPolygon(triangle, square).map(p => ({ x: p.x - cx, y: p.y - cy }));
+      const area = VS.ModuleSystem.polygonArea(polygon) / 900;
+      if (area < 1e-8) continue;
+      const root = x === 0 && y === 0, type = root ? id : `${id}_section_${x}_${row}`;
+      block(type, "hull", { name: root ? `Угловая броня · ${width}×${height}` : "Секция угловой брони", short: `ARM ${width}×${height}`,
+        description: `Катеты ${width}×${height} кл. · ${width * height * 60} прочности всего · R: поворот. Крепление по граням, не по острию`,
+        cost: root ? Math.ceil(55 * width * height / 2) : 0, hp: Math.round(120 * area), unlock: 0, internal: !root,
+        polygon, materialArea: area, armorPanel: true, visualBase: "tungsten_armor", glyph: "armor", density: 1.4, strength: 45,
+        heatCapacity: 12 * area, panelWidth: width, panelHeight: height, partX: x, partY: row,
+        ...(root ? { footprint: { width, height }, assemblyHp: width * height * 60 } : {}) });
+      layout.push({ x, y, type });
+    }
+    MODULES[id].layout = layout;
+  }
   for (const [id, def] of Object.entries(MODULES)) {
     def.heatCapacity ??= 4 + (def.hp || 0) / 30;
     def.conductivity ??= 0.04;

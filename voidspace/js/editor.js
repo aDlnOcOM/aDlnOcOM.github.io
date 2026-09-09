@@ -6,6 +6,7 @@
   let modules = [{ type: "core", gx: 0, gy: 0, rotation: 0 }];
   let rotation = 0, erase = false, blueprintId = `custom-${Date.now()}`, images = {};
   let zoom = 1;
+  let hover = null;
   let templates = [];
   const canvas = $("blueprint-canvas");
   const ctx = canvas.getContext("2d");
@@ -43,7 +44,13 @@
     if (modules.length) {
       const ship = new VS.Ship({ modules }); ship.modules = modules; ship.x = 0; ship.y = 0; ship.aimWorld = { x: 500, y: 0 };
       ship.engineering?.sync();
-      ship.draw(ctx, { x: 0, y: 0 }, { width: 680, height: 680 }, images);
+      let buildHover = null;
+      if (hover && !erase && MODULES[$("module-type").value]) {
+        buildHover = { type: $("module-type").value, ...hover, rotation };
+        const cells = VS.ModuleSystem.assemblyCells(buildHover);
+        buildHover.valid = modules.length + cells.length <= 256 && cells.every(c => Math.abs(c.gx) <= 24 && Math.abs(c.gy) <= 24 && !modules.some(m => c.gx === m.gx && c.gy === m.gy));
+      }
+      ship.draw(ctx, { x: 0, y: 0 }, { width: 680, height: 680 }, images, Boolean(buildHover), buildHover);
     }
     for (const m of modules) if (MODULES[m.type].thrust || MODULES[m.type].weapon) {
       ctx.save(); ctx.translate(340 + m.gx * 30, 340 + m.gy * 30); ctx.rotate(m.rotation * Math.PI / 2);
@@ -54,7 +61,15 @@
     try { VS.Content.validateBlueprint(rawBlueprint()); status("Чертёж корректен. Готов к экспорту и добавлению в игру."); }
     catch (error) { status(error.message, true); }
   }
-  function rotate() { rotation = (rotation + 1) % 4; $("rotate").textContent = `ПОВОРОТ · ${rotation * 90}°`; }
+  function rotate() { rotation = (rotation + 1) % 4; $("rotate").textContent = `ПОВОРОТ · ${rotation * 90}°`; render(); }
+  canvas.addEventListener("pointermove", (event) => {
+    const bounds = canvas.getBoundingClientRect();
+    const gx = Math.round(((event.clientX - bounds.left) / bounds.width * 680 - 340) / (30 * zoom));
+    const gy = Math.round(((event.clientY - bounds.top) / bounds.height * 680 - 340) / (30 * zoom));
+    if (hover?.gx === gx && hover?.gy === gy) return;
+    hover = { gx, gy }; render();
+  });
+  canvas.addEventListener("pointerleave", () => { hover = null; render(); });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   canvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
@@ -80,9 +95,9 @@
     const def = MODULES[$("module-type").value];
     if (!def) return;
     $("module-description").textContent = def.description;
-    $("editor-module-preview").innerHTML = `<span class="module-sprite">${VS.Visuals.iconMarkup(def)}</span><div><b>${def.name}</b><small>${VS.Visuals.CATEGORIES[VS.Visuals.category(def.visualType)]} · ${def.hp} прочности</small></div>`;
+    $("editor-module-preview").innerHTML = `<span class="module-sprite">${VS.Visuals.iconMarkup(def)}</span><div><b>${def.name}</b><small>${VS.Visuals.CATEGORIES[VS.Visuals.category(def.visualType)]} · ${def.assemblyHp || def.hp} прочности${def.footprint ? ` · ${def.footprint.width}×${def.footprint.height} кл.` : ""}</small></div>`;
   }
-  $("module-type").addEventListener("change", previewModule);
+  $("module-type").addEventListener("change", () => { previewModule(); render(); });
   $("editor-module-search").addEventListener("input", () => {
     const chosen = $("module-type").value;
     const options = Object.entries(MODULES).filter(([type, def]) => !def.internal && VS.Visuals.matches(type, "all", $("editor-module-search").value));

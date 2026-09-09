@@ -129,7 +129,7 @@
     for (let i = 0; i < 16; i++) images.visualExhaust[Math.floor(i / 8)].push(trim(gridCell(exhaust, i, 4, 4), true).image);
     images.visualDrill = images.module_drill;
     for (const [type, def] of Object.entries(MODULES)) {
-      images[`module_${type}`] = images.visualBodies[type] || images.visualBodies[def.footprint ? "assembly_section" : "weapon_mount"];
+      images[`module_${type}`] = images.visualBodies[type] || images.visualBodies[def.visualBase] || images.visualBodies[def.footprint ? "assembly_section" : "weapon_mount"];
     }
     prepared = images; icons.clear();
     return images;
@@ -154,10 +154,30 @@
     ctx.translate(x, y); ctx.rotate(rotation); ctx.drawImage(image, -size / 2, -height / 2, size, height); ctx.restore(); return true;
   }
   function drawCell(ctx, images, module, time = 0, aim = null, alpha = 1, ship = null) {
-    if (!images.visualBodies) return false;
     const def = MODULES[module.type], body = images[`module_${module.type}`];
+    if (!images.visualBodies && !def.armorPanel) return false;
     const x = module.gx * 30, y = module.gy * 30, angle = (module.rotation || 0) * Math.PI / 2;
     ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle);
+    if (def.armorPanel) {
+      const points = def.polygon;
+      ctx.beginPath(); points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
+      ctx.fillStyle = "#23364c"; ctx.fillRect(-15, -15, 30, 30);
+      if (body) ctx.drawImage(body, -15, -15, 30, 30);
+      ctx.fillStyle = "#16294055"; ctx.fillRect(-15, -15, 30, 30);
+      // Only the three exterior edges get a bevel; section joints remain flush.
+      ctx.beginPath();
+      const edgeFlags = p => {
+        const px = p.x + def.partX * 30 + 15, py = p.y + def.partY * 30 + 15;
+        return [Math.abs(px) < 0.01, Math.abs(py - def.panelHeight * 30) < 0.01, Math.abs(py * def.panelWidth - px * def.panelHeight) < 0.01];
+      };
+      points.forEach((p, i) => {
+        const q = points[(i + 1) % points.length], a = edgeFlags(p), b = edgeFlags(q);
+        if (a.some((edge, index) => edge && b[index])) { ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
+      });
+      ctx.lineJoin = "round"; ctx.strokeStyle = "#07101b"; ctx.lineWidth = 4; ctx.stroke();
+      ctx.strokeStyle = "#aabecb"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore(); return true;
+    }
     ctx.drawImage(body, -15, -15, 30, 30); ctx.restore();
     const state = ship?.engineering?.nodes.get(`${module.gx},${module.gy}`);
     if (images.visualRotors[module.type] && (state?.powered || (def.turbine && state?.temperature > 60))) {
@@ -200,7 +220,7 @@
   function drawAssemblies(ctx, images, engineering, time) {
     if (!images?.visualTurrets || !engineering) return false;
     for (const module of engineering.ship.modules) {
-      const def = MODULES[module.type]; if (!def.footprint) continue;
+      const def = MODULES[module.type]; if (!def.footprint || !def.weapon) continue;
       ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2);
       if (module.type === "tesla_coil") {
         const art = images.visualTurrets.tesla_coil.image;
@@ -251,15 +271,20 @@
       const canvas = surface(96, 96), ctx = canvas.getContext("2d");
       let left = -15, right = type === "drill" ? 19 : 15, top = -15, bottom = 15;
       const head = prepared.visualTurrets[type];
-      if (head) {
+      const modules = VS.ModuleSystem.assemblyCells({ type, gx: 0, gy: 0, rotation: 0 });
+      if (definition.footprint) {
+        const points = modules.flatMap(m => VS.ModuleSystem.localPolygon(m));
+        left = Math.min(...points.map(p => p.x)); right = Math.max(...points.map(p => p.x)) + (definition.weapon?.kind === "thermal" ? 8 : 0);
+        top = Math.min(...points.map(p => p.y)); bottom = Math.max(...points.map(p => p.y));
+      } else if (head) {
         const scale = 23 / Math.max(1, head.image.width - head.pivotX);
         left = Math.min(left, -head.pivotX * scale); right = Math.max(right, 23);
         top = Math.min(top, -head.pivotY * scale); bottom = Math.max(bottom, (head.image.height - head.pivotY) * scale);
       }
       const scale = Math.min(84 / (right - left), 84 / (bottom - top));
       ctx.translate(48, 48); ctx.scale(scale, scale); ctx.translate(-(left + right) / 2, -(top + bottom) / 2);
-      drawCell(ctx, prepared, { type, gx: 0, gy: 0, rotation: 0 });
-      if (definition.footprint) turret(ctx, prepared, type, 0, 0);
+      for (const module of modules) drawCell(ctx, prepared, module);
+      if (definition.footprint) drawAssemblies(ctx, prepared, { ship: { modules }, available: () => 0, heatAvailable: () => 0 }, 0);
       icons.set(type, canvas.toDataURL());
     }
     return `<span class="module-art"><img src="${icons.get(type)}" alt="" decoding="async"></span>`;

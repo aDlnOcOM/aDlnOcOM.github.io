@@ -61,6 +61,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     ['Бой', () => { game.ship.x = 1900; game.ship.y = 800; game.ship.angle = 0; game.expedition.enemies = [new VS.Combat.Enemy(VS.Content.ENEMIES[0], 2150, 800, 1)]; }],
     ['Форпост', () => { const station = game.expedition.stations.find(s => s.hostile); game.ship.x = station.x - 400; game.ship.y = station.y; }],
     ['Инженерный стенд', engineeringRig],
+    ['Угловая броня', () => {
+      const cell = (type, gx, gy, rotation = 0) => ({ type, gx, gy, rotation });
+      const modules = Array.from({ length: 13 }, (_, i) => cell(i === 6 ? 'core' : 'hull', i - 6, 0));
+      for (const [width, height, gx] of [[1, 1, -6], [2, 1, -4], [1, 2, -1], [3, 1, 1], [1, 3, 5]]) {
+        modules.push(...VS.ModuleSystem.assemblyCells(cell(`corner_armor_${width}x${height}`, gx, -1 - (height - 1 - Math.floor(height / 2)))));
+      }
+      game.input.clear(); game.ship = new VS.Ship({ x: 1100, y: 0, modules, credits: 20000 });
+      game.expedition.enemies = []; game.asteroids = []; game.expedition.spawnTimer = 999;
+      game.renderBuildPalette(); game.paused = false; game.toggleBuild(true);
+    }],
     ['Терминал', () => game.openDock()],
     ['Строить', () => game.toggleBuild(!game.buildMode)],
     ['Граница биома', () => { game.ship.x = 1370; game.ship.y = 0; game.ship.vx = 35; game.ship.inertiaDampingEnabled = false; game.expedition.enemies = []; game.paused = false; }],
