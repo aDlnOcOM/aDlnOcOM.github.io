@@ -9,6 +9,7 @@
     }
   }
   function enter() {
+    if(window.AssetBoot && !window.AssetBoot.ready)return;
     closePanels();
     get('main-menu').hidden=true;
     get('home-screen').hidden=false;
@@ -41,6 +42,7 @@
     get('menu-controls').setAttribute('aria-expanded',String(!get('menu-help').hidden));
   });
   get('start-run').addEventListener('click',()=>{
+    if(window.AssetBoot && !window.AssetBoot.ready)return;
     closePanels();
     window.ShelterLocation?.setActive(false);
     document.body.dataset.screen='run';

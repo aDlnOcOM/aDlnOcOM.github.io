@@ -10,7 +10,23 @@
   <link rel="stylesheet" href="hideout.css">
   <link rel="stylesheet" href="inventory.css">
 </head>
-<body data-screen="menu">
+<body data-screen="menu" class="assets-loading">
+  <section id="asset-loading" class="asset-loading" aria-labelledby="loading-title" aria-busy="true">
+    <div class="loading-console">
+      <p class="eyebrow">МЕГАСТРУКТУРА / ПОДКЛЮЧЕНИЕ К КОНТУРУ 41</p>
+      <h1 id="loading-title">Загрузка</h1>
+      <p id="loading-status" role="status" aria-live="polite">Подготовка ассетов…</p>
+      <progress id="loading-progress" max="100" value="0" aria-label="Загрузка ассетов"></progress>
+      <p id="loading-count" class="loading-count">0%</p>
+      <p class="loading-note">Подготавливаем локации, персонажей, оружие и оборудование убежища.</p>
+      <details id="loading-errors" hidden><summary>Не удалось загрузить</summary><ul id="loading-error-list"></ul></details>
+      <div class="loading-actions">
+        <button id="loading-retry" type="button" hidden>Повторить загрузку</button>
+        <button id="loading-continue" type="button" hidden>Продолжить с упрощённой графикой</button>
+      </div>
+      <noscript>Для загрузки и запуска игры необходимо включить JavaScript.</noscript>
+    </div>
+  </section>
   <div class="build-watermark" aria-hidden="true">
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
@@ -31,7 +47,7 @@
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
     <span>IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD · IN-DEV \ EARLY BUILD</span>
   </div>
-  <main class="app-shell">
+  <main id="game-shell" class="app-shell" inert aria-hidden="true">
     <header class="masthead">
       <a class="wordmark" href="#top" aria-label="Megastructure Stranger, главная">
         <span>MEGA</span><span>STRUCTURE</span><b>STRANGER</b>
@@ -178,5 +194,6 @@
   <script src="loot-containers.js"></script>
   <script src="player-dash.js"></script>
   <script src="script.js"></script>
+  <script src="asset-loading.js"></script>
 </body>
 </html>

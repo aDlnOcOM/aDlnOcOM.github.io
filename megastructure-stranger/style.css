@@ -33,6 +33,32 @@ body {
 
 button { font: inherit; }
 
+body.assets-loading { overflow: hidden; }
+.asset-loading {
+  position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center;
+  padding: 24px; overflow: auto;
+  background: repeating-linear-gradient(90deg, transparent 0 95px, #18302a55 96px),
+    radial-gradient(ellipse at 65% 30%, #223631, #080e12 70%);
+}
+.asset-loading[hidden] { display: none; }
+.loading-console {
+  width: min(560px, 100%); padding: clamp(20px, 5vw, 42px);
+  background: #0b151aee; border: 1px solid #364d4d; border-top: 3px solid var(--cyan);
+  box-shadow: 0 24px 100px #0009;
+}
+.loading-console h1 { margin: 22px 0 12px; font-size: clamp(32px, 5vw, 48px); text-transform: uppercase; }
+.loading-console progress { display: block; width: 100%; height: 10px; margin-top: 26px; appearance: none; border: 0; background: #223137; accent-color: var(--cyan); }
+.loading-console progress::-webkit-progress-bar { background: #223137; }
+.loading-console progress::-webkit-progress-value { background: var(--cyan); }
+.loading-console progress::-moz-progress-bar { background: var(--cyan); }
+.loading-count { color: var(--cyan); font: 13px Consolas, monospace; }
+.loading-note, .loading-console details { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.loading-console ul { max-height: 120px; overflow: auto; padding-left: 20px; overflow-wrap: anywhere; }
+.loading-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.loading-actions button { padding: 12px 15px; border: 1px solid #4b7471; background: #173130; color: var(--ink); cursor: pointer; }
+.loading-actions button[hidden] { display: none; }
+.loading-console noscript { display: block; margin-top: 20px; color: var(--amber); }
+
 button:focus-visible {
   outline: 3px solid var(--cyan);
   outline-offset: 3px;

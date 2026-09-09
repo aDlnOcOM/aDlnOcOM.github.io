@@ -1093,6 +1093,7 @@
   }
 
   function beginRun() {
+    if (window.AssetBoot && !window.AssetBoot.ready) return;
     if (state.runActive && window.Workshop) window.Workshop.age(progression);
     state.runItems = [];
     state.floor = window.Campaign ? window.Campaign.start(progression) : 1;
