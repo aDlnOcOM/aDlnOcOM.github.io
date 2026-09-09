@@ -474,6 +474,7 @@
       if (this.stats.maxHp > previousMax) this.hp += this.stats.maxHp - previousMax;
       this.hp = Math.min(this.hp, this.stats.maxHp);
       this.engineering?.sync();
+      this.engineering?.updateHull();
     }
 
     getMaxSpeed() {
@@ -983,6 +984,7 @@
       for (const module of this.modules) {
         const definition = MODULES[module.type];
         const image = images[`module_${module.type}`];
+        if (this.engineering?.nodes.get(engineKey(module))?.integrity <= 0) continue;
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
         Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
         const toolActive = module.type !== "drill" || this.activeDrills.has(engineKey(module));

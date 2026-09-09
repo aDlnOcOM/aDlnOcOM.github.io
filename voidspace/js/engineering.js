@@ -15,6 +15,15 @@
       this.generation = 0; this.demand = 0; this.lastDemand = 0; this.warning = "";
       this.events = []; this.accumulator = 0;
       this.sync();
+      if (!save?.nodes && this.ship.hp < this.ship.stats.maxHp) {
+        const fraction = clamp(this.ship.hp / Math.max(1, this.ship.stats.maxHp), 0, 1);
+        for (const node of this.nodes.values()) node.integrity *= fraction;
+      }
+      if (this.ship.hp <= 0) {
+        const core = this.ship.modules.find((m) => m.type === "core");
+        if (core) this.nodes.get(key(core)).integrity = 0;
+      }
+      this.updateHull();
     }
     boost(m) { return m.overclock && this.ship.research?.has(m.type) && MODULES[m.type].overclockable ? 1.6 : 1; }
     heatMultiplier(m) { return this.boost(m) > 1 ? 3.4 : 1; }
@@ -26,15 +35,21 @@
     stockUsed() { return Object.values(this.stock).reduce((sum, n) => sum + n, 0); }
     takeStock(id, amount) { if (!Object.hasOwn(STOCK, id) || this.stock[id] < amount) return false; this.stock[id] -= amount; return true; }
     sync() {
-      const signature = this.ship.modules.map((m) => `${key(m)}:${m.type}`).join(";");
+      const signature = this.ship.upgradeLevel + ":" + this.ship.modules.map((m) => `${key(m)}:${m.type}`).join(";");
       if (signature === this.signature) return;
       this.signature = signature;
       this.byCell = new Map(this.ship.modules.map((m) => [key(m), m]));
       for (const m of this.ship.modules) {
-        if (this.nodes.get(key(m))?.type === m.type) continue;
+        const existing = this.nodes.get(key(m));
+        if (existing?.type === m.type) {
+          const maximum = this.maxIntegrity(m);
+          if (existing.integrity > 0) existing.integrity = Math.min(maximum, existing.integrity + Math.max(0, maximum - (existing.maxIntegrity || maximum)));
+          existing.maxIntegrity = maximum;
+          continue;
+        }
         const saved = this.savedNodes[key(m)];
         const state = saved?.type === m.type ? saved : {};
-        this.nodes.set(key(m), { type: m.type, temperature: clamp(number(state.temperature, 20), 20, 1500), charge: clamp(number(state.charge, m.type === "core" ? 6 : 0), 0, this.electricCapacity(m)), integrity: clamp(number(state.integrity, this.maxIntegrity(m)), 0, this.maxIntegrity(m)), emp: clamp(number(state.emp), 0, 15), running: Boolean(state.running), decay: clamp(number(state.decay), 0, 1), powered: false,
+        this.nodes.set(key(m), { type: m.type, maxIntegrity: this.maxIntegrity(m), temperature: clamp(number(state.temperature, 20), 20, 1500), charge: clamp(number(state.charge, m.type === "core" ? 6 : 0), 0, this.electricCapacity(m)), integrity: clamp(number(state.integrity, this.maxIntegrity(m)), 0, this.maxIntegrity(m)), emp: clamp(number(state.emp), 0, 15), running: Boolean(state.running), decay: clamp(number(state.decay), 0, 1), powered: false,
           recipe: RECIPES[state.recipe]?.factory === MODULES[m.type].factory ? state.recipe : Object.keys(RECIPES).find((id) => RECIPES[id].factory === MODULES[m.type].factory),
           job: state.job && RECIPES[state.job.recipe]?.factory === MODULES[m.type].factory ? { recipe: state.job.recipe, progress: clamp(number(state.job.progress), 0, RECIPES[state.job.recipe].time) } : null });
       }
@@ -147,21 +162,36 @@
     }
     damage(m, raw, kind = "kinetic", penetration = 0) {
       if (!this.ship.modules.includes(m)) return;
+      if (this.nodes.get(key(m))?.integrity <= 0) return;
       const amount = this.armorDamage(m, this.shieldDamage(raw, kind), kind, penetration);
       if (this.onDamage) { this.onDamage(m, amount); return; }
       const state = this.nodes.get(key(m)); if (!state) return;
-      state.integrity -= amount; this.ship.hp = Math.max(0, this.ship.hp - amount);
+      state.integrity = Math.max(0, state.integrity - amount);
       if (state.integrity <= 0) this.destroy(m);
+      else this.updateHull();
+    }
+    updateHull() {
+      const core = this.ship.modules.find((m) => m.type === "core");
+      this.ship.hp = core && this.nodes.get(key(core))?.integrity > 0
+        ? Math.min(this.ship.stats.maxHp, this.ship.modules.reduce((sum, m) => sum + Math.max(0, this.nodes.get(key(m))?.integrity || 0), 0)) : 0;
     }
     destroy(m) {
       if (!this.ship.modules.includes(m)) return;
-      const event = { x: m.gx * 30, y: m.gy * 30, nuclear: Boolean(MODULES[m.type].reactor) };
+      const event = { x: m.gx * 30, y: m.gy * 30, type: m.type, rotation: m.rotation, nuclear: Boolean(MODULES[m.type].reactor) };
       this.events.push(event);
-      if (m.type === "core") { this.ship.hp = 0; this.nodes.get(key(m)).integrity = 0; return; }
-      this.ship.modules = this.ship.modules.filter((n) => m.assembly ? n.assembly !== m.assembly : n !== m);
+      if (m.type === "core") {
+        for (const n of this.ship.modules) if (n !== m) this.events.push({ x: n.gx * 30, y: n.gy * 30, type: n.type, rotation: n.rotation, detached: true });
+        this.ship.modules = [m]; // Invisible recovery anchor, not a surviving physical capsule.
+        this.ship.stats = VS.ModuleSystem.calculateStats(this.ship.modules, this.ship.upgradeLevel);
+        this.ship.hp = 0; this.nodes.get(key(m)).integrity = 0; this.sync(); return;
+      }
+      const remaining = this.ship.modules.filter((n) => m.assembly ? n.assembly !== m.assembly : n !== m);
+      const connected = VS.ModuleSystem.connectedToCore(remaining);
+      for (const n of this.ship.modules) if (n !== m && !connected.has(n)) this.events.push({ x: n.gx * 30, y: n.gy * 30, type: n.type, rotation: n.rotation, detached: true });
+      this.ship.modules = remaining.filter((n) => connected.has(n));
       this.ship.stats = VS.ModuleSystem.calculateStats(this.ship.modules, this.ship.upgradeLevel);
-      this.ship.hp = Math.min(this.ship.hp, this.ship.stats.maxHp);
       this.sync();
+      this.updateHull();
     }
     applyEmp(seconds, energyOnly = false) {
       for (const m of this.ship.modules) {
@@ -250,10 +280,13 @@
     }
     missingIntegrity() { return this.ship.modules.reduce((sum, m) => sum + Math.max(0, this.maxIntegrity(m) - this.nodes.get(key(m)).integrity), 0); }
     repair(budget = Infinity) {
+      const core = this.ship.modules.find((m) => m.type === "core");
+      if (!core || this.nodes.get(key(core))?.integrity <= 0) return;
       for (const m of this.ship.modules) {
         const n = this.nodes.get(key(m)), amount = Math.min(budget, Math.max(0, this.maxIntegrity(m) - n.integrity));
         n.integrity += amount; budget -= amount;
       }
+      this.updateHull();
     }
     drawModule(ctx, m, time) {
       const def = MODULES[m.type], state = this.nodes.get(key(m));
@@ -284,6 +317,11 @@
       }
       if (m.overclock) { ctx.fillStyle = "#ffc777"; ctx.fillRect(-12, -13, 7, 2); }
       if (state.emp > 0) { ctx.strokeStyle = "#aa90ff"; ctx.strokeRect(-13, -13, 26, 26); }
+      const integrity = state.integrity / this.maxIntegrity(m);
+      if (integrity < 0.95) {
+        ctx.fillStyle = `rgba(17,6,3,${(1 - integrity) * 0.45})`; ctx.fillRect(-14, -14, 28, 28);
+        ctx.strokeStyle = "#c57f56"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-7, -9); ctx.lineTo(2, 0); ctx.lineTo(-3, 8); ctx.stroke();
+      }
       if (this.ship.heatView || state.temperature > 220) {
         ctx.fillStyle = state.temperature > 220 ? `rgba(255,78,36,${clamp((state.temperature - 180) / 650, 0.1, 0.65)})` : "rgba(65,170,235,0.18)";
         ctx.fillRect(-14, -14, 28, 28);

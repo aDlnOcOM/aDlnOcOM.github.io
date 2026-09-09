@@ -144,6 +144,23 @@
     return `${gx},${gy}`;
   }
 
+  function connectedToCore(modules) {
+    const connected = new Set();
+    const queue = modules.filter((m) => m.type === "core");
+    const touches = (a, b) => {
+      const overlapX = ((a.hitWidth || MODULE_SIZE) + (b.hitWidth || MODULE_SIZE)) / 2 - Math.abs(a.gx - b.gx) * MODULE_SIZE;
+      const overlapY = ((a.hitHeight || MODULE_SIZE) + (b.hitHeight || MODULE_SIZE)) / 2 - Math.abs(a.gy - b.gy) * MODULE_SIZE;
+      return (overlapX > 0.01 && overlapY >= -0.01) || (overlapY > 0.01 && overlapX >= -0.01);
+    };
+    while (queue.length) {
+      const current = queue.pop();
+      if (connected.has(current)) continue;
+      connected.add(current);
+      queue.push(...modules.filter((m) => !connected.has(m) && touches(current, m)));
+    }
+    return connected;
+  }
+
   function assemblyCells(module) {
     const footprint = MODULES[module.type]?.footprint;
     if (!footprint) return [{ ...module }];
@@ -244,6 +261,7 @@
   VS.ModuleSystem = {
     MODULE_SIZE,
     MODULES,
+    connectedToCore,
     assemblyCells,
     moduleKey,
     moduleDirection,

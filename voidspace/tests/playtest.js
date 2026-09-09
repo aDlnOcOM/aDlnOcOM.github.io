@@ -29,6 +29,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     ['Инженерный стенд', engineeringRig],
     ['Терминал', () => game.openDock()],
     ['Строить', () => game.toggleBuild(!game.buildMode)],
+    ['Стенд разрушения', () => {
+      game.ship = new VS.Ship({ x: -250, modules: [{ type: 'core', gx: 0, gy: 0, rotation: 0 }, { type: 'beam', gx: 1, gy: 0, rotation: 0 }, { type: 'cargo', gx: 2, gy: 0, rotation: 0 }, { type: 'thruster', gx: 3, gy: 0, rotation: 2 }], credits: 4000 });
+      game.station.restore(); game.renderBuildPalette();
+    }],
+    ['Отделить хвост', () => { const beam = game.ship.modules.find(m => m.type === 'beam'); if (beam) game.ship.engineering.damage(beam, 10000); }],
+    ['Отделить док', () => { const beam = game.station.modules.find(m => m.id === 'connector-0'); if (beam) game.station.damage(beam, 10000, game.expedition); }],
   ]) { const button = document.createElement('button'); button.textContent = name; button.onclick = () => { action(); game.ship.hp = game.ship.stats.maxHp; game.camera.x = game.ship.x; game.camera.y = game.ship.y; game.updateHud(); }; tools.append(button); }
   document.body.append(tools);
 });

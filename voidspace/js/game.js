@@ -246,6 +246,7 @@
     }
 
     stationSafety(dt) {
+      if (this.ship.hp <= 0) return;
       if (!this.expedition.safeAt(this.ship)) return;
       if (this.ship.hp < this.ship.stats.maxHp) this.ship.hp = Math.min(this.ship.stats.maxHp, this.ship.hp + dt * 1.5);
       this.ship.engineering?.repair(dt * 1.5);
@@ -280,11 +281,13 @@
           target = asteroid;
           nearest = hitDistance;
         }
-        const enemyHit = this.expedition && !this.expedition.safeAt(this.ship) ? this.expedition.traceEnemy(origin, direction, nearest) : null;
+        const structureHit = this.expedition && !this.expedition.safeAt(this.ship)
+          ? (VS.WeaponSystem ? VS.WeaponSystem.hit(this.expedition, origin, direction, nearest, "player") : this.expedition.traceEnemy(origin, direction, nearest)) : null;
+        const enemyHit = structureHit?.module ? structureHit : null;
         if (enemyHit) {
           const end = { x: origin.x + direction.x * enemyHit.distance, y: origin.y + direction.y * enemyHit.distance };
           this.laserBeams.push({ origin, end });
-          enemyHit.enemy.damage(enemyHit.module, miningPower * dt, this.expedition, "energy");
+          (enemyHit.station || enemyHit.enemy).damage(enemyHit.module, miningPower * dt, this.expedition, "energy");
           continue;
         }
         const beamEnd = target
@@ -478,7 +481,9 @@
     }
 
     drawStationIndicator() {
-      const station = this.expedition.friendlyStations().reduce((best, next) => Utils.distance(next, this.ship) < Utils.distance(best, this.ship) ? next : best);
+      const operational = this.expedition.friendlyStations().filter((s) => s.dockOnline);
+      if (!operational.length) return;
+      const station = operational.reduce((best, next) => Utils.distance(next, this.ship) < Utils.distance(best, this.ship) ? next : best);
       const angle = Math.atan2(station.y - this.ship.y, station.x - this.ship.x);
       const x = this.viewport.width / 2 + Math.cos(angle) * Math.min(this.viewport.width * 0.39, 360);
       const y = this.viewport.height / 2 + Math.sin(angle) * Math.min(this.viewport.height * 0.36, 190);
@@ -766,8 +771,9 @@
     }
 
     respawn() {
-      this.ship.x = -175;
-      this.ship.y = 0;
+      const rescue = this.expedition.friendlyStations().filter((s) => s.dockOnline).sort((a, b) => Utils.distance(a, this.ship) - Utils.distance(b, this.ship))[0];
+      this.ship.x = rescue ? rescue.x - 175 : -175;
+      this.ship.y = rescue ? rescue.y : 0;
       this.ship.vx = 0;
       this.ship.vy = 0;
       this.ship.angularVelocity = 0;

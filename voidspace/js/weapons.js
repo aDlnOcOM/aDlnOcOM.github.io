@@ -6,8 +6,9 @@
   function targets(world, faction) { return faction === "player" ? world.enemies.filter((e) => !e.dead).map((enemy) => ({ ship: enemy.ship, enemy })) : [{ ship: world.game.ship }]; }
   function hit(world, origin, direction, length, faction) {
     let nearest = null;
-    for (const target of targets(world, faction)) {
-      if (faction === "enemy" && world.safeAt(target.ship)) continue;
+    for (const target of [...targets(world, faction), ...(world.stationTargets?.() || [])]) {
+      if (!target.station && faction === "enemy" && world.safeAt(target.ship)) continue;
+      if (target.station && VS.Combat.rayCircle(origin, direction, length, { x: target.ship.x, y: target.ship.y, radius: 500 }) === null) continue;
       const contact = VS.Combat.rayModules(target.ship, origin, direction, length);
       if (contact && (!nearest || contact.distance < nearest.distance)) nearest = { ...contact, ...target };
     }
@@ -20,7 +21,8 @@
   }
   function damageTarget(world, target, amount, weapon) {
     const kind = ["beam", "plasma", "tesla"].includes(weapon.kind) ? "energy" : "kinetic";
-    if (target.enemy) target.enemy.damage(target.module, amount, world, kind, weapon.penetration || 0);
+    if (target.station) target.station.damage(target.module, amount, world, kind, weapon.penetration || 0);
+    else if (target.enemy) target.enemy.damage(target.module, amount, world, kind, weapon.penetration || 0);
     else target.ship.engineering ? target.ship.engineering.damage(target.module, amount, kind, weapon.penetration || 0) : target.ship.takeDamage(amount);
     if (weapon.emp) target.ship.engineering?.applyEmp(weapon.emp, weapon.kind === "tesla");
   }
@@ -28,8 +30,9 @@
     const weapon = bullet.weapon || { kind: "plasma" };
     if (weapon.radius) {
       // Explosions include the shooter's ship. Friendly fields protect ships inside them.
-      for (const target of [{ ship: world.game.ship }, ...world.enemies.filter((e) => !e.dead).map((enemy) => ({ ship: enemy.ship, enemy }))]) {
-        if (world.safeAt(target.ship)) continue;
+      for (const target of [{ ship: world.game.ship }, ...world.enemies.filter((e) => !e.dead).map((enemy) => ({ ship: enemy.ship, enemy })), ...(world.stationTargets?.() || [])]) {
+        if (!target.station && world.safeAt(target.ship)) continue;
+        if (target.station && VS.Utils.distance(bullet, target.ship) > weapon.radius + 500) continue;
         for (const module of [...target.ship.modules]) {
           const position = target.ship.localToWorld(module.gx * 30, module.gy * 30);
           const distance = VS.Utils.distance(bullet, position);
@@ -130,8 +133,9 @@
       if (!engineering) continue;
       for (const event of engineering.events.splice(0)) {
         const point = ship.localToWorld(event.x, event.y);
+        if (event.type) world.spawnModuleDebris?.(ship, { type: event.type, gx: event.x / 30, gy: event.y / 30, rotation: event.rotation });
         if (event.nuclear) detonate(world, { ...point, damage: 300, faction: "player", colour: "#ffb86d", weapon: { kind: "thermal", radius: 160 } });
-        else world.explode(point.x, point.y, "#ffab67", 12);
+        else if (!event.detached) world.explode(point.x, point.y, "#ffab67", 12);
       }
     }
     world.weaponBeams = (world.weaponBeams || []).filter((beam) => { beam.life -= dt; return beam.life > 0; });
@@ -154,5 +158,5 @@
     }
     ctx.restore();
   }
-  VS.WeaponSystem = { fire, update, draw, detonate };
+  VS.WeaponSystem = { fire, update, draw, detonate, hit };
 })();

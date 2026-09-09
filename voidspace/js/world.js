@@ -20,13 +20,15 @@
     const vector = { x: direction.x * cosine + direction.y * sine, y: -direction.x * sine + direction.y * cosine };
     let nearest = null;
     for (const module of ship.modules) {
+      if (ship.engineering?.nodes.get(`${module.gx},${module.gy}`)?.integrity <= 0) continue;
       let entry = 0, exit = length;
       for (const [axis, centre] of [["x", module.gx * MODULE_SIZE], ["y", module.gy * MODULE_SIZE]]) {
+        const half = (axis === "x" ? module.hitWidth || 30 : module.hitHeight || 30) / 2;
         if (Math.abs(vector[axis]) < 1e-8) {
-          if (local[axis] < centre - 15 || local[axis] > centre + 15) { exit = -1; break; }
+          if (local[axis] < centre - half || local[axis] > centre + half) { exit = -1; break; }
         } else {
-          const a = (centre - 15 - local[axis]) / vector[axis];
-          const b = (centre + 15 - local[axis]) / vector[axis];
+          const a = (centre - half - local[axis]) / vector[axis];
+          const b = (centre + half - local[axis]) / vector[axis];
           entry = Math.max(entry, Math.min(a, b)); exit = Math.min(exit, Math.max(a, b));
         }
       }
@@ -62,21 +64,18 @@
       if (this.dead || !this.ship.modules.includes(module)) return;
       if (this.ship.engineering && kind !== "processed") amount = this.ship.engineering.armorDamage(module, this.ship.engineering.shieldDamage(amount, kind), kind, penetration);
       module.combatHp -= amount; this.flash = 0.12;
+      const node = this.ship.engineering?.nodes.get(`${module.gx},${module.gy}`);
+      if (node) node.integrity = Math.max(0, module.combatHp / this.scale);
       if (module.combatHp > 0) return;
       const point = this.ship.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
       world.explode(point.x, point.y, "#ff986c", 12);
       if (MODULES[module.type].reactor) this.ship.engineering?.events.push({ x: module.gx * 30, y: module.gy * 30, nuclear: true });
-      this.ship.modules = this.ship.modules.filter((m) => module.assembly ? m.assembly !== module.assembly : m !== module);
-      if (module.type === "core") { this.destroy(world); return; }
+      const previous = this.ship.modules;
+      this.ship.modules = previous.filter((m) => module.assembly ? m.assembly !== module.assembly : m !== module);
+      if (module.type === "core") { for (const part of previous) world.spawnModuleDebris?.(this.ship, part); this.destroy(world); return; }
       // Destroying a bridge detaches the modules it supported, including weapons.
-      const connected = new Set();
-      const queue = this.ship.modules.filter((m) => m.type === "core");
-      while (queue.length) {
-        const current = queue.pop();
-        if (connected.has(current)) continue;
-        connected.add(current);
-        queue.push(...this.ship.modules.filter((m) => !connected.has(m) && Math.abs(m.gx - current.gx) + Math.abs(m.gy - current.gy) === 1));
-      }
+      const connected = ModuleSystem.connectedToCore(this.ship.modules);
+      for (const m of previous) if (!connected.has(m)) world.spawnModuleDebris?.(this.ship, m);
       this.ship.modules = this.ship.modules.filter((m) => connected.has(m));
       this.ship.stats = ModuleSystem.calculateStats(this.ship.modules);
       this.ship.engineering?.sync();
@@ -114,6 +113,7 @@
         this.ship.update(dt, controls, target);
         // Patrols never enter a friendly safety field.
         for (const station of world.friendlyStations()) {
+          if (!station.powered) continue;
           const d = Utils.distance(this.ship, station);
           if (d < station.safeRadius + 90) {
             const a = Math.atan2(this.ship.y - station.y, this.ship.x - station.x);
@@ -154,6 +154,9 @@
       for (const id of Object.keys(Content.CLASSES)) if (save.hangar && Object.hasOwn(save.hangar, id) && save.hangar[id]?.modules) this.hangar[id] = new Ship(save.hangar[id]).serialize();
       this.defeated = new Set(Array.isArray(save.defeated) ? save.defeated.filter((id) => typeof id === "string") : []);
       this.enemies = []; this.bullets = []; this.effects = []; this.cooldowns = new Map();
+      this.debris = [];
+      this.outpostStates = save.outposts && typeof save.outposts === "object" ? save.outposts : {};
+      game.station.restore?.(save.stationDamage?.home);
       this.spawnTimer = 8;
       this.reloadTemplates();
       this.stations = [];
@@ -161,7 +164,7 @@
         const hostile = i % 2 === 1;
         const radius = [2100, 3300, 4200, 5700, 6500][i];
         const angle = this.seed * 0.17 + i * 2.4;
-        const station = new Station();
+        const station = new Station(save.stationDamage?.[`station-${i}`]);
         station.x = Math.round(Math.cos(angle) * radius); station.y = Math.round(Math.sin(angle) * radius);
         station.id = `station-${i}`; station.hostile = hostile;
         station.name = hostile ? `Форпост ${i + 1}` : `Перевалочная ${i + 1}`;
@@ -172,7 +175,8 @@
         : this.nextContract();
       for (const [type, definition] of Object.entries(MODULES)) if (definition.shipClass && this.licenses.has(definition.shipClass)) game.ship.unlocked.add(type);
     }
-    friendlyStations() { return [this.game.station, ...this.stations.filter((s) => !s.hostile)]; }
+    friendlyStations() { return [this.game.station, ...this.stations.filter((s) => !s.hostile)].filter((s) => !s.dead); }
+    stationTargets() { return this.friendlyStations().map((station) => ({ ship: station, station })); }
     reloadTemplates() {
       let custom = [];
       try { custom = Content.customEnemies(window.localStorage); } catch { /* Storage may be blocked. */ }
@@ -258,10 +262,25 @@
       }
       if (this.effects.length > 350) this.effects.splice(0, this.effects.length - 350);
     }
+    spawnModuleDebris(ship, module) {
+      const point = ship.localToWorld(module.gx * 30, module.gy * 30);
+      const direction = Math.atan2(point.y - ship.y, point.x - ship.x) + (Math.random() - 0.5);
+      this.debris.push({ ...point, type: module.type, width: module.hitWidth || 30, height: module.hitHeight || 30,
+        vx: (ship.vx || 0) + Math.cos(direction) * 28, vy: (ship.vy || 0) + Math.sin(direction) * 28,
+        angle: (ship.angle || 0) + (module.rotation || 0) * Math.PI / 2, spin: Math.random() - 0.5, life: 4.5 });
+      if (this.debris.length > 160) this.debris.shift();
+    }
     spawnOutpost(station) {
       const modules = [];
       for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++) modules.push({ type: x === 0 && y === 0 ? "core" : Math.abs(x) === 2 && Math.abs(y) === 2 ? "hauler_gun" : x === 0 ? "rtg" : "corvette_armor", gx: x, gy: y, rotation: 0 });
-      return new Enemy({ name: station.name, behaviour: "artillery", reward: 400, modules }, station.x, station.y, 3, station.id);
+      const saved = this.outpostStates[station.id];
+      const enemy = new Enemy({ name: station.name, behaviour: "artillery", reward: 400, modules: saved?.ship?.modules || modules }, station.x, station.y, 3, station.id);
+      if (saved?.ship) {
+        enemy.ship = new Ship({ ...saved.ship, x: station.x, y: station.y });
+        for (const m of enemy.ship.modules) m.combatHp = Utils.clamp(finite(saved.health?.[`${m.gx},${m.gy}`], MODULES[m.type].hp * enemy.scale), 0.01, MODULES[m.type].hp * enemy.scale);
+        enemy.maxHp = enemy.ship.modules.reduce((sum, m) => sum + MODULES[m.type].hp * enemy.scale, 0);
+      }
+      return enemy;
     }
     update(dt, aim) {
       this.weaponWarning = "";
@@ -309,6 +328,8 @@
       this.enemies = this.enemies.filter((enemy) => !enemy.dead && (enemy.stationId || Utils.distance(enemy.ship, ship) < 2200));
       for (const effect of this.effects) { effect.life -= dt; effect.x += effect.vx * dt; effect.y += effect.vy * dt; }
       this.effects = this.effects.filter((e) => e.life > 0);
+      for (const piece of this.debris) { piece.life -= dt; piece.x += piece.vx * dt; piece.y += piece.vy * dt; piece.angle += piece.spin * dt; }
+      this.debris = this.debris.filter((piece) => piece.life > 0);
     }
     drawBackground(ctx, time) {
       const { camera, viewport } = this.game;
@@ -326,6 +347,13 @@
     }
     draw(ctx, time) {
       const { camera, viewport, images, ship } = this.game;
+      for (const piece of this.debris) {
+        const p = Utils.worldToScreen(piece, camera, viewport.width, viewport.height);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(piece.angle); ctx.scale(1, piece.height / piece.width);
+        ctx.globalAlpha = Math.min(0.85, piece.life / 1.5);
+        this.game.station.drawModule(ctx, images, piece.type, 0, 0, piece.width);
+        ctx.fillStyle = "rgba(13,8,4,0.35)"; ctx.fillRect(-piece.width / 2, -piece.width / 2, piece.width, piece.width); ctx.restore();
+      }
       for (const station of this.stations) {
         if (Utils.distance(camera, station) > 1100) continue;
         if (!station.hostile) station.draw(ctx, camera, viewport, images, time);
@@ -383,7 +411,10 @@
       ctx.restore();
     }
     serialize() {
-      return { seed: this.seed, kills: this.kills, contracts: this.contracts, farthest: this.farthest, licenses: [...this.licenses], hangar: this.hangar, defeated: [...this.defeated], contract: this.contract };
+      const outposts = { ...this.outpostStates };
+      for (const enemy of this.enemies) if (enemy.stationId && !enemy.dead) outposts[enemy.stationId] = { ship: enemy.ship.serialize(), health: Object.fromEntries(enemy.ship.modules.map((m) => [`${m.gx},${m.gy}`, m.combatHp])) };
+      return { seed: this.seed, kills: this.kills, contracts: this.contracts, farthest: this.farthest, licenses: [...this.licenses], hangar: this.hangar, defeated: [...this.defeated], contract: this.contract,
+        stationDamage: Object.fromEntries([this.game.station, ...this.stations.filter((s) => !s.hostile)].map((s) => [s.id, s.serialize()])), outposts };
     }
   }
   VS.Expedition = Expedition;

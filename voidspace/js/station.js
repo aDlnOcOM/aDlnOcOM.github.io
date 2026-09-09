@@ -5,27 +5,84 @@
   const { Utils } = VS;
 
   class Station {
-    constructor() {
+    constructor(save = {}) {
       this.x = 0;
       this.y = 0;
+      this.angle = 0;
+      this.id = "home";
       this.safeRadius = 440;
       this.dockZone = { x: -275, y: 0, width: 300, height: 220 };
+      this.modules = [];
+      const add = (id, type, x, y, width, height = width, role = "hull") => {
+        const maxHp = role === "command" ? 600 : type === "beam" ? 150 : type === "rtg" ? 260 : type === "cargo" ? 280 : 100;
+        this.modules.push({ id, type, gx: x / 30, gy: y / 30, hitWidth: width, hitHeight: height, rotation: 0, role, maxHp, integrity: maxHp });
+      };
+      for (const [index, connector] of this.getConnectors().entries()) {
+        add(`connector-${index}`, "beam", connector.x, connector.y, connector.rotation ? 22 : connector.length, connector.rotation ? connector.length : 22, "connector");
+      }
+      for (const [x, type, id] of [[0, "core", "command"], [165, "cargo", "service"]]) {
+        add(id, type, x, 0, 70, 70, id);
+        for (const dx of [-40, -20, 0, 20, 40]) for (const dy of [-45, 45]) add(`${id}:${dx}:${dy}`, "hull", x + dx, dy, 20);
+        for (const dx of [-45, 45]) for (const dy of [-25, 0, 25]) add(`${id}:${dx}:${dy}`, "hull", x + dx, dy, 20);
+      }
+      for (const y of [-185, 185]) add(`rtg:${y}`, "rtg", 0, y, 74);
+      for (let x = -425; x <= -125; x += 30) for (const y of [-125, 125]) add(`dock:${x}:${y}`, x === -425 || x === -125 ? "cargo" : "hull", x, y, 30, 30, "dock");
+      for (let y = -95; y <= 115; y += 30) add(`dock:-125:${y}`, "hull", -125, y, 30, 30, "dock");
+      this.template = this.modules.map((m) => ({ ...m }));
+      this.restore(save);
+    }
+
+    restore(save = {}) {
+      const health = save?.health;
+      this.modules = this.template.map((m) => ({ ...m, integrity: Number.isFinite(health?.[m.id]) ? Utils.clamp(health[m.id], 0, m.maxHp) : m.maxHp })).filter((m) => m.integrity > 0);
+      const connected = VS.ModuleSystem.connectedToCore(this.modules);
+      this.modules = this.modules.filter((m) => connected.has(m));
+    }
+
+    localToWorld(x, y) { return { x: this.x + x, y: this.y + y }; }
+    worldToLocal(x, y) { return { x: x - this.x, y: y - this.y }; }
+    has(id) { return this.modules.some((m) => m.id === id); }
+    get dead() { return !this.has("command"); }
+    get hp() { return this.modules.reduce((sum, m) => sum + m.integrity, 0); }
+    get powered() { return !this.dead && this.modules.some((m) => m.type === "rtg"); }
+    get dockOnline() { return this.powered && this.has("service") && this.has("connector-0") && this.modules.some((m) => m.role === "dock"); }
+
+    damage(module, amount, world, kind = "kinetic", penetration = 0) {
+      if (!this.modules.includes(module) || !Number.isFinite(amount) || amount <= 0) return;
+      const def = VS.ModuleSystem.MODULES[module.type];
+      const strength = (def.strength || 0) * (1 - Utils.clamp(penetration, 0, 1)) * (kind === "energy" ? 0.35 : 1);
+      module.integrity = Math.max(0, module.integrity - amount * 100 / (100 + strength * (def.density || 1)));
+      if (module.integrity > 0) return;
+      const previous = this.modules;
+      const remaining = previous.filter((m) => m !== module);
+      const connected = VS.ModuleSystem.connectedToCore(remaining);
+      this.modules = remaining.filter((m) => connected.has(m));
+      for (const part of previous) if (!connected.has(part)) world?.spawnModuleDebris?.(this, part);
+      const point = this.localToWorld(module.gx * 30, module.gy * 30);
+      world?.explode(point.x, point.y, "#ffa478", 12);
+      world?.game.notify(this.dead ? "Командный узел станции уничтожен" : "Секция станции разрушена");
+    }
+
+    serialize() {
+      return { health: Object.fromEntries(this.template.map((m) => [m.id, this.modules.find((part) => part.id === m.id)?.integrity || 0])) };
     }
 
     isDocked(ship) {
+      if (!this.dockOnline) return false;
       const halfWidth = this.dockZone.width / 2;
       const halfHeight = this.dockZone.height / 2;
       return ship.x - this.x > this.dockZone.x - halfWidth && ship.x - this.x < this.dockZone.x + halfWidth && ship.y - this.y > -halfHeight && ship.y - this.y < halfHeight;
     }
 
     isSafe(ship) {
-      return Math.hypot(ship.x - this.x, ship.y - this.y) < this.safeRadius;
+      return this.powered && Math.hypot(ship.x - this.x, ship.y - this.y) < this.safeRadius;
     }
 
     draw(ctx, camera, viewport, images, time) {
+      if (this.dead) return;
       const screenOrigin = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       ctx.save();
-      ctx.strokeStyle = "rgba(52, 180, 211, 0.18)";
+      ctx.strokeStyle = this.powered ? "rgba(52, 180, 211, 0.18)" : "rgba(0,0,0,0)";
       ctx.setLineDash([4, 8]);
       ctx.beginPath();
       ctx.arc(screenOrigin.x, screenOrigin.y, this.safeRadius, 0, Math.PI * 2);
@@ -35,14 +92,17 @@
       ctx.save();
       ctx.translate(screenOrigin.x, screenOrigin.y);
       this.drawStructures(ctx);
-      this.drawDock(ctx, images, time);
-      this.drawHub(ctx, images, 0, 0, "core");
-      this.drawHub(ctx, images, 165, 0, "cargo");
-      for (const y of [-185, 185]) {
-        this.drawModule(ctx, images, "rtg", 0, y, 74);
-        // Steady geometry: only status lights pulse, never the connecting hull.
-        ctx.fillStyle = `rgba(115, 230, 255, ${0.65 + Math.sin(time * 2) * 0.2})`;
-        ctx.fillRect(-17, y + Math.sign(y) * 42, 34, 2);
+      if (this.dockOnline) this.drawDock(ctx, images, time);
+      for (const module of this.modules) {
+        if (module.role === "connector") continue;
+        const x = module.gx * 30, y = module.gy * 30;
+        if (module.role === "command") { ctx.save(); ctx.translate(x, y); this.drawCommandCapsule(ctx, images); ctx.restore(); }
+        else this.drawModule(ctx, images, module.type, x, y, module.hitWidth);
+        if (module.integrity < module.maxHp) {
+          ctx.fillStyle = `rgba(15,5,2,${0.2 + (1 - module.integrity / module.maxHp) * 0.5})`;
+          ctx.fillRect(x - module.hitWidth / 2, y - module.hitHeight / 2, module.hitWidth, module.hitHeight);
+          ctx.strokeStyle = "#c5845a"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 6, y - 8); ctx.lineTo(x + 2, y); ctx.lineTo(x - 3, y + 7); ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -58,7 +118,8 @@
     }
 
     drawStructures(ctx) {
-      for (const connector of this.getConnectors()) {
+      for (const [index, connector] of this.getConnectors().entries()) {
+        if (!this.has(`connector-${index}`)) continue;
         ctx.save();
         ctx.translate(connector.x, connector.y);
         ctx.rotate(connector.rotation);
@@ -114,43 +175,10 @@
       ctx.restore();
     }
 
-    drawHub(ctx, images, x, y, type) {
-      ctx.save();
-      ctx.translate(x, y);
-      // The same armour cells and framed components as the player's ship.
-      ctx.fillStyle = "#111d2e";
-      ctx.fillRect(-55, -55, 110, 110);
-      for (const dx of [-40, -20, 0, 20, 40]) {
-        this.drawModule(ctx, images, "hull", dx, -45, 20);
-        this.drawModule(ctx, images, "hull", dx, 45, 20);
-      }
-      for (const dy of [-25, 0, 25]) {
-        this.drawModule(ctx, images, "hull", -45, dy, 20);
-        this.drawModule(ctx, images, "hull", 45, dy, 20);
-      }
-      if (type === "core") this.drawCommandCapsule(ctx, images);
-      else this.drawModule(ctx, images, type, 0, 0, 70);
-      ctx.fillStyle = "#72dceb";
-      for (const dx of [-1, 1]) {
-        for (const dy of [-1, 1]) ctx.fillRect(dx * 44 - 5, dy * 44 - 1, 10, 2);
-      }
-      ctx.restore();
-    }
-
     drawDock(ctx, images, time) {
       ctx.fillStyle = "rgba(12, 27, 40, 0.5)";
       ctx.fillRect(-425, -110, 300, 220);
-      // Three-sided gantry leaves the entire western approach open.
-      for (let x = -425; x <= -125; x += 30) {
-        this.drawModule(ctx, images, "hull", x, -125);
-        this.drawModule(ctx, images, "hull", x, 125);
-      }
-      for (let y = -95; y <= 115; y += 30) {
-        this.drawModule(ctx, images, "hull", -125, y);
-      }
       for (const y of [-125, 125]) {
-        this.drawModule(ctx, images, "cargo", -425, y);
-        this.drawModule(ctx, images, "cargo", -125, y);
         ctx.fillStyle = "#387b93";
         ctx.fillRect(-408, y > 0 ? 108 : -110, 264, 2);
       }
