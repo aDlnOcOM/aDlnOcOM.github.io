@@ -69,6 +69,7 @@
     try {
       Object.assign(manifest, VS.Visuals.MANIFEST);
       const images = VS.Visuals.prepare(await VS.Utils.loadImages(manifest));
+      VS.Entities.prepareAsteroidAssets(images);
       window.voidspaceGame = new VS.Game(canvas, images, loadSave());
       const preview = document.getElementById("fleet-preview");
       if (preview) {

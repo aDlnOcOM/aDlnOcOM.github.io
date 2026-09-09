@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 const context = vm.createContext({ window: { localStorage: { getItem: () => null } } });
-for (const name of ['utils', 'modules', 'content', 'engineering-content', 'engineering', 'inventory', 'entities', 'station', 'ship', 'world', 'weapons', 'game']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', name + '.js'), 'utf8'), context);
+for (const name of ['utils', 'modules', 'content', 'engineering-content', 'engineering', 'inventory', 'entities', 'station', 'collisions', 'ship', 'world', 'weapons', 'game']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', name + '.js'), 'utf8'), context);
 const VS = context.window.Voidspace;
 const { MODULES, assemblyCells } = VS.ModuleSystem;
 const m = (type, gx, gy, rotation = 0) => ({ type, gx, gy, rotation });

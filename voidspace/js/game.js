@@ -5,11 +5,8 @@
   const { Utils, ModuleSystem, Entities, ORES } = VS;
   const { MODULES, MODULE_SIZE, getPlacementConflict, isAdjacentToShip } = ModuleSystem;
   const { METEOR_TYPES, Asteroid } = Entities;
-  const LASER_MINING_POWER = 33;
-  const DRILL_MINING_POWER = LASER_MINING_POWER * 1.6;
-  const DRILL_RAM_MULTIPLIER = 4;
-  const RAM_COOLDOWN = 0.3;
-  const COLLISION_KNOCKBACK_DIVISOR = 3;
+  const LASER_MINING_POWER = VS.Physics?.LASER_MINING_POWER || 33;
+  const DRILL_MINING_POWER = VS.Physics?.DRILL_MINING_POWER || LASER_MINING_POWER * 1.6;
 
   function moduleArtMarkup(definition) {
     const visual = VS.Visuals?.iconMarkup(definition);
@@ -247,19 +244,20 @@
     }
 
     update(dt) {
-      this.time += dt;
       const mouseWorld = Utils.screenToWorld(this.mouse, this.camera, this.viewport.width, this.viewport.height);
-      this.ship.update(dt, this.input, mouseWorld);
-      this.stationSafety(dt);
-
-      this.target = null;
-      this.laserBeams = [];
-      if (this.mouse.down || this.input.has("Space")) this.fireMiningLaser(dt, mouseWorld);
-
-      for (const asteroid of this.asteroids) asteroid.update(dt, this.station);
-      this.mineWithDrills(dt);
-      for (const asteroid of this.asteroids) if (!asteroid.dead) this.checkShipCollision(asteroid);
-      this.expedition.update(dt, mouseWorld);
+      // Small bounded motion steps include the speed of a rotating ship's outer modules.
+      const steps = VS.Physics.stepCount(this.expedition, dt), step = dt / steps;
+      for (let i = 0; i < steps && this.ship.hp > 0; i++) {
+        this.time += step;
+        this.ship.update(step, this.input, mouseWorld);
+        this.stationSafety(step);
+        this.target = null;
+        this.laserBeams = [];
+        if (this.mouse.down || this.input.has("Space")) this.fireMiningLaser(step, mouseWorld);
+        for (const asteroid of this.asteroids) asteroid.update(step, this.expedition.friendlyStations());
+        this.mineWithDrills(step);
+        this.expedition.update(step, mouseWorld);
+      }
       for (const pickup of this.pickups) pickup.update(dt, this.ship);
       for (const particle of this.particles) particle.update(dt);
       this.asteroids = this.asteroids.filter((asteroid) => !asteroid.dead && Utils.distance(asteroid, this.ship) < 1900);
@@ -305,15 +303,8 @@
         let nearest = requestedDistance;
         for (const asteroid of this.asteroids) {
           if (asteroid.dead) continue;
-          const offsetX = asteroid.x - origin.x;
-          const offsetY = asteroid.y - origin.y;
-          const projection = offsetX * direction.x + offsetY * direction.y;
-          if (projection < 0 || projection - asteroid.radius > nearest) continue;
-          const perpendicularSquared = offsetX * offsetX + offsetY * offsetY - projection * projection;
-          const radiusSquared = asteroid.radius * asteroid.radius;
-          if (perpendicularSquared > radiusSquared) continue;
-          const hitDistance = Math.max(0, projection - Math.sqrt(Math.max(0, radiusSquared - perpendicularSquared)));
-          if (hitDistance > nearest) continue;
+          const hitDistance = VS.Physics.rayAsteroid(origin, direction, nearest, asteroid);
+          if (hitDistance === null) continue;
           target = asteroid;
           nearest = hitDistance;
         }
@@ -345,7 +336,7 @@
         for (const asteroid of this.asteroids) {
           if (asteroid.dead) continue;
           const distance = Math.hypot(asteroid.x - drill.x, asteroid.y - drill.y);
-          if (distance > asteroid.radius + drill.radius || distance >= nearestDistance) continue;
+          if (!VS.Physics.drillContact(this.ship, drill.module, asteroid) || distance >= nearestDistance) continue;
           target = asteroid;
           nearestDistance = distance;
         }
@@ -355,45 +346,6 @@
         this.ship.activeDrills.add(drill.key);
         target.damage(miningPower * dt, drill.x, drill.y, this);
         if (!target.dead && !this.target) this.target = target;
-      }
-    }
-
-    checkShipCollision(asteroid) {
-      if (this.expedition.safeAt(this.ship)) return;
-      const collision = this.ship.getCircleCollision(asteroid.x, asteroid.y, asteroid.radius);
-      if (!collision) return;
-      this.ship.x += collision.normalX * collision.penetration;
-      this.ship.y += collision.normalY * collision.penetration;
-      const relativeNormalVelocity =
-        (this.ship.vx - asteroid.vx) * collision.normalX +
-        (this.ship.vy - asteroid.vy) * collision.normalY;
-      const impactSpeed = Math.max(0, -relativeNormalVelocity);
-      const impactRatio = Utils.clamp(impactSpeed / this.ship.getMaxSpeed(), 0, 1);
-      if (impactRatio > 0 && asteroid.ramCooldown <= 0) {
-        const maximumRamDamage = collision.kind === "drillTip"
-          ? DRILL_MINING_POWER * DRILL_RAM_MULTIPLIER
-          : LASER_MINING_POWER;
-        asteroid.damage(maximumRamDamage * impactRatio, collision.contactX, collision.contactY, this);
-        asteroid.ramCooldown = RAM_COOLDOWN;
-      }
-      const shipImpulse = (58 + impactSpeed * 0.62) / COLLISION_KNOCKBACK_DIVISOR;
-      this.ship.vx += collision.normalX * shipImpulse;
-      this.ship.vy += collision.normalY * shipImpulse;
-      const asteroidImpulse = (10 + impactSpeed * 0.08) / COLLISION_KNOCKBACK_DIVISOR;
-      asteroid.vx -= collision.normalX * asteroidImpulse;
-      asteroid.vy -= collision.normalY * asteroidImpulse;
-      if (this.ship.engineering) { if (this.ship.collisionCooldown <= 0) { this.ship.engineering.damage(collision.module, 8 + asteroid.size * 5, "kinetic"); this.ship.collisionCooldown = 0.45; } }
-      else this.ship.takeDamage(8 + asteroid.size * 5);
-      for (let index = 0; index < 5; index += 1) {
-        this.particles.push(new Entities.Particle(
-          collision.contactX,
-          collision.contactY,
-          Utils.randomRange(-70, 70),
-          Utils.randomRange(-70, 70),
-          0.4,
-          "spark",
-          7,
-        ));
       }
     }
 
@@ -576,7 +528,7 @@
       const candidate = { type: this.buildSelected, gx, gy, rotation: this.buildRotation };
       const cells = ModuleSystem.assemblyCells(candidate);
       const occupied = cells.some((cell) => this.ship.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy));
-      const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell));
+      const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell)) || VS.Physics.placementBlocked(this.ship, cells, this.expedition);
       const valid = this.deleteMode ? occupied : !occupied && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
       this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
       this.inspectedModule = this.ship.modules.find((m) => m.gx === gx && m.gy === gy) || null;
@@ -590,6 +542,10 @@
     handleBuildClick(forceDelete) {
       if (!this.buildHover) return;
       const deleting = forceDelete || this.deleteMode;
+      const candidate = { type: this.buildSelected, gx: this.buildHover.gx, gy: this.buildHover.gy, rotation: this.buildRotation };
+      if (!deleting && VS.Physics.placementBlocked(this.ship, ModuleSystem.assemblyCells(candidate), this.expedition)) {
+        this.notify("Модуль пересекает станцию, астероид или другой корабль", true); return;
+      }
       const result = deleting
         ? this.ship.removeModule(this.buildHover.gx, this.buildHover.gy)
         : this.ship.addModule(this.buildSelected, this.buildHover.gx, this.buildHover.gy, this.buildRotation);

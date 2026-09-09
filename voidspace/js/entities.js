@@ -8,6 +8,7 @@
   const ASTEROID_TEXTURE_SIZE = 256;
   const ASTEROID_CONTENT_SCALE = 0.84;
   const ASTEROID_TEXTURE_CACHE = new WeakMap();
+  const ASTEROID_HULLS = new Map();
 
   function isBackdropPixel(pixels, offset) {
     if (pixels[offset + 3] <= 8) return true;
@@ -147,6 +148,33 @@
     },
   };
 
+  function prepareAsteroidAssets(images) {
+    ASTEROID_HULLS.clear();
+    for (const [type, definition] of Object.entries(METEOR_TYPES)) {
+      const texture = prepareAsteroidTexture(images[definition.sprite]);
+      if (!texture) continue;
+      const { data } = texture.getContext("2d").getImageData(0, 0, texture.width, texture.height), boundary = [];
+      for (let y = 0; y < texture.height; y++) {
+        let left = texture.width, right = -1;
+        for (let x = 0; x < texture.width; x++) if (data[(y * texture.width + x) * 4 + 3] > 100) { left = Math.min(left, x); right = x; }
+        if (right >= 0) for (const x of [left, right]) boundary.push({ x: (x + 0.5) * 2 / texture.width - 1, y: (y + 0.5) * 2 / texture.height - 1 });
+      }
+      if (boundary.length < 3) continue;
+      // A compact convex silhouette, measured once from the same alpha texture as the renderer.
+      const selected = new Set();
+      for (let i = 0; i < 24; i++) {
+        const x = Math.cos(i * Math.PI / 12), y = Math.sin(i * Math.PI / 12);
+        selected.add(boundary.reduce((best, point) => point.x * x + point.y * y > best.x * x + best.y * y ? point : best));
+      }
+      const points = [...selected].sort((a, b) => a.x - b.x || a.y - b.y), lower = [], upper = [];
+      const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      for (const point of points) { while (lower.length > 1 && cross(lower.at(-2), lower.at(-1), point) <= 0) lower.pop(); lower.push(point); }
+      for (const point of points.slice().reverse()) { while (upper.length > 1 && cross(upper.at(-2), upper.at(-1), point) <= 0) upper.pop(); upper.push(point); }
+      lower.pop(); upper.pop(); const hull = [...lower, ...upper];
+      if (hull.length >= 3) ASTEROID_HULLS.set(type, hull);
+    }
+  }
+
   class Particle {
     constructor(x, y, vx, vy, life, kind = "spark", size = 7) {
       this.x = x;
@@ -246,17 +274,23 @@
       this.ramCooldown = 0;
     }
 
-    update(dt, station) {
+    get collisionHull() { return ASTEROID_HULLS.get(this.type); }
+    get collisionRadius() { return this.radius * (this.collisionHull ? Math.max(...this.collisionHull.map(p => Math.hypot(p.x, p.y))) : ASTEROID_CONTENT_SCALE); }
+
+    update(dt, stations) {
       this.x += this.vx * dt;
       this.y += this.vy * dt;
       this.rotation += this.spin * dt;
       this.hitFlash = Math.max(0, this.hitFlash - dt * 6);
       this.ramCooldown = Math.max(0, this.ramCooldown - dt);
-      const distanceFromStation = Math.hypot(this.x, this.y);
-      if (distanceFromStation < station.safeRadius + this.radius) {
-        const angle = Math.atan2(this.y, this.x);
-        this.vx += Math.cos(angle) * 18 * dt;
-        this.vy += Math.sin(angle) * 18 * dt;
+      for (const station of Array.isArray(stations) ? stations : [stations]) {
+        if (!station || station.powered === false) continue;
+        const dx = this.x - station.x, dy = this.y - station.y;
+        if (Math.hypot(dx, dy) < station.safeRadius + this.collisionRadius) {
+          const angle = Math.atan2(dy, dx);
+          this.vx += Math.cos(angle) * 18 * dt;
+          this.vy += Math.sin(angle) * 18 * dt;
+        }
       }
     }
 
@@ -300,5 +334,5 @@
     }
   }
 
-  VS.Entities = { METEOR_TYPES, Particle, OrePickup, Asteroid };
+  VS.Entities = { METEOR_TYPES, Particle, OrePickup, Asteroid, prepareAsteroidAssets };
 })();

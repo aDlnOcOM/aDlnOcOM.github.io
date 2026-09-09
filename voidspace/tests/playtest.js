@@ -8,10 +8,28 @@ window.addEventListener('DOMContentLoaded', async () => {
   for (const type of ['spark', 'debris']) manifest['particle_' + type] = 'assets/particles/' + type + '.png';
   Object.assign(manifest, VS.Visuals.MANIFEST);
   const images = VS.Visuals.prepare(await VS.Utils.loadImages(manifest));
+  VS.Entities.prepareAsteroidAssets(images);
   const game = new VS.Game(document.getElementById('game'), images, { ship: { credits: 4000 }, expedition: { seed: 12 } });
   const preview = document.getElementById('fleet-preview').getContext('2d'); preview.translate(260, 170); preview.rotate(-Math.PI / 5); preview.scale(3.2, 3.2);
   for (const module of VS.Content.CLASSES.miner.modules) VS.Visuals.drawCell(preview, images, module);
   game.save = () => {};
+  let collisionOverlay = false;
+  const originalRender = game.render.bind(game);
+  game.render = function (time) {
+    originalRender(time);
+    if (!collisionOverlay) return;
+    const ctx = this.ctx; ctx.save(); ctx.strokeStyle = '#9fffbc'; ctx.lineWidth = 0.7;
+    ctx.translate(this.viewport.width / 2 - this.camera.x, this.viewport.height / 2 - this.camera.y);
+    for (const body of [this.ship, ...this.expedition.friendlyStations(), ...this.asteroids, ...this.expedition.enemies.map(e => e.ship)]) {
+      for (const shape of VS.Physics.shapes(body)) {
+        ctx.beginPath();
+        if (shape.points) { shape.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); }
+        else ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  };
   document.getElementById('loading').remove();
   document.getElementById('reset-button').disabled = true;
   function engineeringRig() {
@@ -30,6 +48,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   compact.style.cssText = 'position:fixed;right:4px;top:4px;z-index:10000;font-size:14px'; document.body.append(compact);
   for (const [name, action] of [
     ['База', () => { game.ship.x = -175; game.ship.y = 0; }],
+    ['Контуры коллизий', () => { collisionOverlay = !collisionOverlay; }],
+    ['Удар о док', () => { game.input.clear(); game.ship = new VS.Ship({ x: -245, y: 0, modules: [{type:'core',gx:0,gy:0,rotation:0}] }); game.ship.vx = 140; game.paused = false; game.toggleBuild(false); }],
+    ['Контакт бура', () => {
+      game.input.clear(); game.input.add('KeyW'); game.mouse.down = false;
+      game.ship = new VS.Ship({ x: 2200, y: 1700, modules: [{type:'core',gx:-1,gy:0,rotation:0},{type:'drill',gx:0,gy:0,rotation:0}] });
+      game.ship.vx = 100; game.ship.inertiaDampingEnabled = false;
+      const asteroid = new VS.Entities.Asteroid(2280,1700,'iron',2); asteroid.vx = asteroid.vy = asteroid.spin = asteroid.rotation = 0;
+      game.asteroids = [asteroid]; game.expedition.enemies = []; game.expedition.spawnTimer = 999;
+      game.paused = false; game.toggleBuild(false);
+    }],
     ['Бой', () => { game.ship.x = 1900; game.ship.y = 800; game.ship.angle = 0; game.expedition.enemies = [new VS.Combat.Enemy(VS.Content.ENEMIES[0], 2150, 800, 1)]; }],
     ['Форпост', () => { const station = game.expedition.stations.find(s => s.hostile); game.ship.x = station.x - 400; game.ship.y = station.y; }],
     ['Инженерный стенд', engineeringRig],

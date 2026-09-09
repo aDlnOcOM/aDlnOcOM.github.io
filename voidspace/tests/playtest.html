@@ -1,7 +1,7 @@
 <!doctype html><html lang="ru"><meta charset="UTF-8"><title>VOIDSPACE — изолированный плейтест</title>
 <script>
 fetch('../index.html', { cache: 'no-cache' }).then(response => response.text()).then(html => {
-  html = html.replace('<head>', '<head><base href="../">').replace(/<script src="js\/main\.js[^>]*><\/script>/, '<script src="tests/playtest.js" defer><\/script>');
+  html = html.replace('<head>', '<head><base href="../">').replace(/<script src="js\/main\.js[^>]*><\/script>/, '<script src="tests/playtest.js?v=20260910-02" defer><\/script>');
   document.open(); document.write(html); document.close();
 });
 </script></html>

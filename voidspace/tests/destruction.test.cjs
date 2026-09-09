@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 const context = vm.createContext({ window: { localStorage: { getItem: () => null } } });
-for (const file of ['utils', 'modules', 'content', 'engineering-content', 'engineering', 'inventory', 'entities', 'station', 'ship', 'world', 'weapons', 'game']) {
+for (const file of ['utils', 'modules', 'content', 'engineering-content', 'engineering', 'inventory', 'entities', 'station', 'collisions', 'ship', 'world', 'weapons', 'game']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', file + '.js'), 'utf8'), context);
 }
 const VS = context.window.Voidspace;

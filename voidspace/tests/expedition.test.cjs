@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 const sandbox = vm.createContext({ window: { localStorage: { getItem: () => null } } });
-for (const name of ['utils', 'modules', 'content', 'inventory', 'entities', 'station', 'ship', 'world']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', name + '.js'), 'utf8'), sandbox);
+for (const name of ['utils', 'modules', 'content', 'inventory', 'entities', 'station', 'collisions', 'ship', 'world']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', name + '.js'), 'utf8'), sandbox);
 const { Content, ModuleSystem, Ship, Station, Expedition, Combat } = sandbox.window.Voidspace;
 const clone = (v) => JSON.parse(JSON.stringify(v));
 function fixture() {

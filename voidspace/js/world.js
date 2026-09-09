@@ -6,10 +6,11 @@
   const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   function rayCircle(origin, direction, length, object) {
+    if (object.collisionHull?.length) return VS.Physics.rayAsteroid(origin, direction, length, object);
     const dx = object.x - origin.x, dy = object.y - origin.y;
     const along = dx * direction.x + dy * direction.y;
     const perpendicular = dx * dx + dy * dy - along * along;
-    const radius = object.radius || 15;
+    const radius = object.collisionRadius ?? object.radius ?? 15;
     if (perpendicular > radius * radius || along + radius < 0) return null;
     const hit = Math.max(0, along - Math.sqrt(Math.max(0, radius * radius - perpendicular)));
     return hit <= length ? hit : null;
@@ -126,20 +127,6 @@
       const weaponRange = Math.max(950, ...this.ship.modules.map((m) => MODULES[m.type].weapon?.range || 0));
       if (!protectedTarget && distance < weaponRange) world.fireWeapons(this.ship, target, this.cooldowns, "enemy", dt, this.scale);
       else world.tickCooldowns(this.cooldowns, dt);
-      if (distance < 250 && !protectedTarget && this.contactCooldown <= 0) {
-        for (const module of this.ship.modules) {
-          const center = this.ship.localToWorld(module.gx * MODULE_SIZE, module.gy * MODULE_SIZE);
-          const contact = target.getCircleCollision(center.x, center.y, 14);
-          if (!contact) continue;
-          target.x += contact.normalX * contact.penetration;
-          target.y += contact.normalY * contact.penetration;
-          target.vx += contact.normalX * 14; target.vy += contact.normalY * 14;
-          if (target.engineering) target.engineering.damage(contact.module, 10);
-          else target.takeDamage(10);
-          this.damage(module, 12, world);
-          this.contactCooldown = 0.6; break;
-        }
-      }
     }
   }
   class Expedition {
@@ -302,6 +289,7 @@
       }
       for (const station of this.stations) if (station.hostile && !this.defeated.has(station.id) && Utils.distance(ship, station) < 1500 && !this.enemies.some((e) => e.stationId === station.id)) this.enemies.push(this.spawnOutpost(station));
       for (const enemy of this.enemies) if (!enemy.dead) enemy.update(dt, this);
+      VS.Physics?.solve(this, dt);
       if (VS.WeaponSystem) VS.WeaponSystem.update(this, dt);
       else for (const bullet of this.bullets) {
         const speed = Math.hypot(bullet.vx, bullet.vy);

@@ -39,9 +39,8 @@
   const LINEAR_VELOCITY_RETENTION = 0.985;
   const ANGULAR_VELOCITY_RETENTION_IDLE = 0.58;
   const ANGULAR_VELOCITY_RETENTION_ACTIVE = 0.82;
-  const MODULE_COLLISION_HALF = MODULE_SIZE / 2;
   const DRILL_TIP_OFFSET = MODULE_SIZE / 2 + 4;
-  const DRILL_CONTACT_RADIUS = 5;
+  const DRILL_CONTACT_RADIUS = 1;
   const DRILL_HEAD_WIDTH = 15;
   const DRILL_HEAD_HEIGHT = 10;
   const DRILL_HEAD_TOP = 9;
@@ -747,91 +746,7 @@
     }
 
     getCircleCollision(worldX, worldY, radius) {
-      const local = this.worldToLocal(worldX, worldY);
-      const radiusSquared = radius * radius;
-      let deepest = null;
-      const cosine = Math.cos(this.angle);
-      const sine = Math.sin(this.angle);
-      const considerCollision = (module, normalLocalX, normalLocalY, penetration, contactLocalX, contactLocalY, kind) => {
-        if (deepest && deepest.penetration >= penetration) return;
-        const contact = this.localToWorld(contactLocalX, contactLocalY);
-        deepest = {
-          module,
-          kind,
-          normalX: normalLocalX * cosine - normalLocalY * sine,
-          normalY: normalLocalX * sine + normalLocalY * cosine,
-          penetration,
-          contactX: contact.x,
-          contactY: contact.y,
-        };
-      };
-
-      for (const module of this.modules) {
-        const centerX = module.gx * MODULE_SIZE;
-        const centerY = module.gy * MODULE_SIZE;
-        const minX = centerX - MODULE_COLLISION_HALF;
-        const maxX = centerX + MODULE_COLLISION_HALF;
-        const minY = centerY - MODULE_COLLISION_HALF;
-        const maxY = centerY + MODULE_COLLISION_HALF;
-        const closestX = Utils.clamp(local.x, minX, maxX);
-        const closestY = Utils.clamp(local.y, minY, maxY);
-        const offsetX = local.x - closestX;
-        const offsetY = local.y - closestY;
-        const distanceSquared = offsetX * offsetX + offsetY * offsetY;
-        if (distanceSquared < radiusSquared) {
-          if (distanceSquared > 0.0001) {
-            const distance = Math.sqrt(distanceSquared);
-            considerCollision(
-              module,
-              -offsetX / distance,
-              -offsetY / distance,
-              radius - distance,
-              closestX,
-              closestY,
-              "module",
-            );
-          } else {
-            const edges = [
-              { distance: local.x - minX, normalX: 1, normalY: 0, x: minX, y: local.y },
-              { distance: maxX - local.x, normalX: -1, normalY: 0, x: maxX, y: local.y },
-              { distance: local.y - minY, normalX: 0, normalY: 1, x: local.x, y: minY },
-              { distance: maxY - local.y, normalX: 0, normalY: -1, x: local.x, y: maxY },
-            ];
-            const nearestEdge = edges.reduce((nearest, edge) => edge.distance < nearest.distance ? edge : nearest);
-            considerCollision(
-              module,
-              nearestEdge.normalX,
-              nearestEdge.normalY,
-              radius + nearestEdge.distance,
-              nearestEdge.x,
-              nearestEdge.y,
-              "module",
-            );
-          }
-        }
-
-        if (module.type !== "drill") continue;
-        const [directionX, directionY] = moduleDirection(module);
-        const tipX = centerX + directionX * DRILL_TIP_OFFSET;
-        const tipY = centerY + directionY * DRILL_TIP_OFFSET;
-        const tipOffsetX = tipX - local.x;
-        const tipOffsetY = tipY - local.y;
-        const tipDistance = Math.hypot(tipOffsetX, tipOffsetY);
-        const drillContactDistance = radius + DRILL_CONTACT_RADIUS;
-        if (tipDistance >= drillContactDistance) continue;
-        const normalLocalX = tipDistance > 0.0001 ? tipOffsetX / tipDistance : -directionX;
-        const normalLocalY = tipDistance > 0.0001 ? tipOffsetY / tipDistance : -directionY;
-        considerCollision(
-          module,
-          normalLocalX,
-          normalLocalY,
-          drillContactDistance - tipDistance,
-          tipX,
-          tipY,
-          "drillTip",
-        );
-      }
-      return deepest;
+      return VS.Physics.circleCollision(this, worldX, worldY, radius);
     }
 
     getLaserMounts(target = this.aimWorld) {
