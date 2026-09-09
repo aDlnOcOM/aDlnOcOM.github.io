@@ -19,7 +19,7 @@
   class Inventory {
     constructor(contents = {}) {
       this.contents = {};
-      for (const key of Object.keys(ORES)) this.contents[key] = Number(contents[key]) || 0;
+      for (const key of Object.keys(ORES)) this.contents[key] = Number.isFinite(contents?.[key]) ? Math.max(0, Math.floor(contents[key])) : 0;
     }
 
     get used() {
@@ -27,6 +27,7 @@
     }
 
     add(ore, amount, capacity) {
+      if (!Object.hasOwn(ORES, ore) || !Number.isFinite(amount) || !Number.isFinite(capacity)) return 0;
       const accepted = Math.max(0, Math.min(amount, capacity - this.used));
       this.contents[ore] = (this.contents[ore] || 0) + accepted;
       return accepted;

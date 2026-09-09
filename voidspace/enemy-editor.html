@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOIDSPACE — конструктор врагов</title>
+  <link rel="stylesheet" href="css/style.css?v=20260909-01">
+  <link rel="stylesheet" href="css/editor.css?v=20260909-01">
+</head>
+<body class="editor-page">
+  <header class="editor-header"><div><span class="eyebrow">VOIDSPACE / FLEET DESIGN BUREAU</span><h1>КОНСТРУКТОР ВРАГОВ</h1></div><a href="index.html">← Вернуться в игру</a></header>
+  <main class="editor-layout">
+    <section class="editor-controls" aria-label="Параметры противника">
+      <label>Чертёж<select id="blueprint-list"></select></label>
+      <div class="editor-actions"><button id="load-blueprint">ОТКРЫТЬ</button><button id="new-blueprint">НОВЫЙ</button></div>
+      <label>Название<input id="enemy-name" maxlength="40" value="Мой противник"></label>
+      <label>Поведение<select id="enemy-behaviour"><option value="raider">Налётчик — сближение</option><option value="artillery">Артиллерия — держит дистанцию</option></select></label>
+      <div class="editor-fields"><label>Угроза (1–8)<input id="enemy-tier" type="number" min="1" max="8" value="1"></label><label>Награда (10–500)<input id="enemy-reward" type="number" min="10" max="500" value="80"></label></div>
+      <label>Блок<select id="module-type"></select></label>
+      <p id="module-description"></p>
+      <div class="editor-actions"><button id="rotate">ПОВОРОТ · 0°</button><button id="erase" aria-pressed="false">УДАЛЕНИЕ</button></div>
+      <p class="editor-help">ЛКМ — поставить блок, ПКМ — удалить. R — поворот. Оранжевые клетки зарезервированы под выхлоп или инструмент. Стрелка показывает направление тяги / стрельбы.</p>
+      <div class="editor-actions"><button id="register" class="primary-button">ДОБАВИТЬ В ИГРУ</button><button id="export">ЭКСПОРТ JSON</button></div>
+      <label class="import-label">Импорт JSON<input id="import" type="file" accept=".json,application/json"></label>
+      <button id="remove-blueprint" class="danger-button">УДАЛИТЬ ЛОКАЛЬНЫЙ ЧЕРТЁЖ</button>
+      <p class="editor-help">«Добавить в игру» сохраняет врага в этом браузере. Он появляется в глубоком космосе при подходящем уровне угрозы. Экспорт позволяет перенести чертёж в другой браузер или включить в data/enemies.json.</p>
+    </section>
+    <section class="editor-workspace" aria-label="Сборка модульного врага">
+      <div class="editor-canvas-wrap"><canvas id="blueprint-canvas" width="680" height="680" tabindex="0" aria-label="Сетка 21 на 21 клетку. Используйте указатель для сборки."></canvas></div>
+      <div id="blueprint-stats" class="editor-stats"></div>
+      <p id="editor-status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <script src="js/utils.js" defer></script><script src="js/modules.js?v=20260909-01" defer></script>
+  <script src="js/content.js?v=20260909-01" defer></script><script src="js/inventory.js" defer></script>
+  <script src="js/ship.js?v=20260909-01" defer></script><script src="js/editor.js?v=20260909-01" defer></script>
+</body>
+</html>

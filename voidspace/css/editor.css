@@ -1,0 +1,24 @@
+.editor-page { overflow: auto; height: auto; min-height: 100vh; background: radial-gradient(ellipse at 80% 10%, #102332, #050b12 65%); font-size: 14px; }
+.editor-header { max-width: 1320px; margin: auto; padding: 30px 28px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.editor-header h1 { font-size: clamp(22px, 3vw, 34px); margin: 8px 0 0; }
+.editor-header a { color: #83dce9; font-size: 14px; }
+.editor-layout { max-width: 1320px; margin: auto; padding: 0 28px 40px; display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; }
+.editor-controls { border: 1px solid #2a465b; background: #0c1723e8; padding: 20px; }
+.editor-controls label { display: flex; flex-direction: column; gap: 7px; color: #9db9cc; margin-bottom: 16px; }
+.editor-controls input, .editor-controls select { border: 1px solid #35586e; background: #08121e; color: #d6eaf5; border-radius: 0; padding: 9px; width: 100%; font: 14px 'Segoe UI', sans-serif; }
+.editor-controls input:focus, .editor-controls select:focus { outline: 2px solid #68cddf; }
+.editor-actions, .editor-fields { display: flex; gap: 8px; margin-bottom: 16px; }
+.editor-actions button, .editor-fields label { flex: 1; min-width: 0; font-size: 14px; }
+.editor-fields label { margin: 0; }
+.editor-help { color: #7c9bad; font-size: 14px; line-height: 1.6; }
+#module-description { color: #b5d3df; min-height: 38px; }
+#erase[aria-pressed="true"] { border-color: #fb997c; color: #fb997c; }
+.editor-canvas-wrap { max-width: 720px; background: #030a10; border: 1px solid #274052; box-shadow: 0 15px 60px #0006; }
+.editor-controls button { background: #122638; border: 1px solid #355870; padding: 10px 8px; color: #c5e5f2; cursor: pointer; }
+.editor-controls button:hover { border-color: #6dd6e5; background: #183547; }
+.editor-controls .primary-button { color: #8cf5e4; border-color: #429f97; }
+#blueprint-canvas { display: block; width: 100%; aspect-ratio: 1; height: auto; touch-action: none; }
+.editor-stats { padding: 18px 0; display: flex; flex-wrap: wrap; gap: 20px; color: #9cbaca; }
+#editor-status { padding: 14px; border-left: 2px solid #6de9cb; background: #10262b; font-size: 14px; line-height: 1.5; }
+#editor-status.error { border-color: #ff9878; background: #2d1820; }
+@media (max-width: 850px) { .editor-layout { grid-template-columns: 1fr; padding: 0 12px 24px; } .editor-workspace { grid-row: 1; } .editor-header { padding: 20px 12px; } }

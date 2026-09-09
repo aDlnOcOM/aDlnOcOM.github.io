@@ -75,7 +75,7 @@ h2,
 .inertia-toggle {
   position: absolute;
   left: 18px;
-  bottom: 62px;
+  bottom: 205px;
   pointer-events: auto;
   padding: 10px 14px;
   max-width: calc(100% - 36px);
@@ -87,6 +87,22 @@ h2,
 .inertia-toggle[aria-pressed="true"] { color: #8eecff; border-color: #50b8d0; }
 .inertia-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
 .inertia-toggle:focus-visible { outline: 2px solid #b2f3ff; outline-offset: 3px; }
+.sector-status { position: absolute; top: 123px; left: 18px; max-width: 48%; padding: 8px 10px; background: #07121cdd; border-left: 2px solid #64bed1; color: #b8d1dd; font-size: 14px; }
+.editor-link { display: block; margin-top: 18px; color: #8bd5e4; font-size: 14px; }
+.tabs .tab { min-width: 0; padding: 12px 6px; white-space: normal; }
+.fleet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.fleet-card { border: 1px solid #294254; border-top: 2px solid var(--fleet-colour); background: #0b1824; padding: 18px; }
+.fleet-card h3 { margin: 10px 0; color: var(--fleet-colour); font: 700 18px var(--font-cyber); }
+.fleet-card p { min-height: 65px; font-size: 14px; color: #99b4c5; line-height: 1.5; }
+.fleet-card button, #claim-contract { border: 1px solid #426075; background: #102433; color: #beecf4; padding: 10px 12px; font-size: 14px; cursor: pointer; }
+.fleet-card button:hover, #claim-contract:hover { border-color: #8addeb; }
+.fleet-card button:disabled, #claim-contract:disabled { opacity: 0.4; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .fleet-grid { grid-template-columns: 1fr; }
+  .terminal-panel .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sector-status { top: 100px; left: 8px; max-width: 65%; }
+  .inertia-toggle { left: 8px; bottom: 194px; }
+}
 .hud-card {
   position: absolute;
   border: 1px solid var(--line);
@@ -200,7 +216,7 @@ h2,
 .build-panel h2 { margin: 4px 0 0; color: white; font-size: 18px; letter-spacing: 0.08em; }
 .icon-button { width: 34px; height: 34px; border: 1px solid var(--line); background: #0a1722; color: var(--muted); cursor: pointer; font-size: 20px; }
 .icon-button:hover { color: white; border-color: var(--cyan-soft); }
-.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
 .tab { padding: 12px; border: 0; border-right: 1px solid var(--line); background: #07111b; color: var(--muted); cursor: pointer; font-size: 14px; }
 .tab.active { background: #0c1f2c; color: var(--cyan); box-shadow: inset 0 -2px var(--cyan); }
 .panel-content { padding: 18px 20px 22px; }

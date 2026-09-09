@@ -9,16 +9,17 @@
       content="VOIDSPACE — пиксельная космическая игра о добыче руды, модульном корабле и возвращении на станцию."
     />
     <title>VOIDSPACE // Mining Protocol</title>
-    <link rel="stylesheet" href="css/style.css?v=20260908-04" />
+    <link rel="stylesheet" href="css/style.css?v=20260909-01" />
   </head>
   <body>
     <main id="game-shell" aria-label="VOIDSPACE — браузерная игра">
       <canvas id="game" width="960" height="540" aria-label="Игровое поле"></canvas>
 
       <section id="hud" class="hud" aria-live="polite">
+        <div id="sector-status" class="sector-status"></div>
         <button id="inertia-toggle" class="inertia-toggle" type="button" aria-pressed="false" disabled>Гашение инерции · нужен модуль</button>
         <div class="hud-card status-card">
-          <div class="eyebrow">VOIDSPACE // MINER 01</div>
+          <div class="eyebrow">VOIDSPACE // FLIGHT SYSTEMS</div>
           <div class="bar-row">
             <span>КОРПУС</span>
             <div class="meter"><i id="hp-fill"></i></div>
@@ -64,7 +65,7 @@
         <span><i>S</i> Назад</span>
         <span><i>Q / E</i> Влево / вправо</span>
         <span><i>A / D</i> Поворот</span>
-        <span><i>ЛКМ</i> Лазер</span>
+        <span><i>ЛКМ</i> Огонь / добыча</span>
         <span><i>B</i> Строительство</span>
         <span><i>I</i> Инвентарь</span>
         <span><i>ESC</i> Пауза</span>
@@ -75,9 +76,10 @@
         <div class="title-lockup">
           <span class="eyebrow">DEEP SPACE SALVAGE DIVISION</span>
           <h1>VOID<span>SPACE</span></h1>
-          <p>Добывайте. Возвращайтесь. Расширяйтесь.</p>
+          <p>Добывайте. Исследуйте. Сражайтесь.</p>
           <button id="start-button" class="primary-button">НАЧАТЬ ЭКСПЕДИЦИЮ</button>
           <small>Сохранение происходит автоматически</small>
+          <a class="editor-link" href="enemy-editor.html" target="_blank" rel="noopener">КОНСТРУКТОР ВРАГОВ ↗</a>
         </div>
       </section>
 
@@ -91,6 +93,7 @@
             <button class="tab active" data-tab="sell">ПРОДАЖА РУДЫ</button>
             <button class="tab" data-tab="shop">МАГАЗИН МОДУЛЕЙ</button>
             <button class="tab" data-tab="service">СЕРВИС</button>
+            <button class="tab" data-tab="hangar">АНГАР И КОНТРАКТЫ</button>
           </div>
           <div id="dock-content" class="panel-content"></div>
         </div>
@@ -125,6 +128,7 @@
           <h2>ПАУЗА</h2>
           <button id="resume-button" class="primary-button">ПРОДОЛЖИТЬ</button>
           <button id="reset-button" class="danger-button">СБРОСИТЬ ПРОГРЕСС</button>
+          <a class="editor-link" href="enemy-editor.html" target="_blank" rel="noopener">КОНСТРУКТОР ВРАГОВ ↗</a>
         </div>
       </section>
 
@@ -145,11 +149,13 @@
 
     <script src="js/utils.js?v=20260907-02" defer></script>
     <script src="js/modules.js?v=20260908-04" defer></script>
-    <script src="js/inventory.js?v=20260907-02" defer></script>
+    <script src="js/content.js?v=20260909-01" defer></script>
+    <script src="js/inventory.js?v=20260909-01" defer></script>
     <script src="js/entities.js?v=20260907-02" defer></script>
-    <script src="js/station.js?v=20260908-03" defer></script>
-    <script src="js/ship.js?v=20260908-04" defer></script>
-    <script src="js/game.js?v=20260908-04" defer></script>
-    <script src="js/main.js?v=20260908-04" defer></script>
+    <script src="js/station.js?v=20260909-01" defer></script>
+    <script src="js/ship.js?v=20260909-01" defer></script>
+    <script src="js/world.js?v=20260909-01" defer></script>
+    <script src="js/game.js?v=20260909-01" defer></script>
+    <script src="js/main.js?v=20260909-01" defer></script>
   </body>
 </html>

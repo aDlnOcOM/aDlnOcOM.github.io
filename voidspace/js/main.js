@@ -47,16 +47,33 @@
 
   function loadSave() {
     try {
-      return JSON.parse(localStorage.getItem("voidspace-save-v1")) || {};
+      const save = JSON.parse(localStorage.getItem("voidspace-save-v1"));
+      return save && typeof save === "object" && !Array.isArray(save) ? save : {};
     } catch (_error) {
       return {};
     }
   }
 
   window.addEventListener("DOMContentLoaded", async () => {
+    for (const [type, definition] of Object.entries(VS.ModuleSystem.MODULES)) manifest[`module_${type}`] = definition.sprite;
+    try {
+      const response = await fetch("data/enemies.json", { cache: "no-cache" });
+      if (response.ok) {
+        const blueprints = await response.json();
+        if (Array.isArray(blueprints)) VS.Content.PACKAGED_ENEMIES = blueprints.slice(0, 24).flatMap((blueprint) => {
+          try { return [VS.Content.validateBlueprint(blueprint)]; } catch { return []; }
+        });
+      }
+    } catch { /* Local file mode can still use the built-in and browser-saved enemies. */ }
     const canvas = document.getElementById("game");
     const images = await VS.Utils.loadImages(manifest);
-    window.voidspaceGame = new VS.Game(canvas, images, loadSave());
+    try {
+      window.voidspaceGame = new VS.Game(canvas, images, loadSave());
+    } catch (error) {
+      document.getElementById("loading").textContent = "Не удалось запустить игру. Перезагрузите страницу; сохранение не удалено.";
+      console.error("VOIDSPACE startup failed", error);
+      return;
+    }
     const loading = document.getElementById("loading");
     loading.classList.add("done");
     window.setTimeout(() => loading.remove(), 300);

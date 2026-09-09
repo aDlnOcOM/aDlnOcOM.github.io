@@ -15,11 +15,11 @@
     isDocked(ship) {
       const halfWidth = this.dockZone.width / 2;
       const halfHeight = this.dockZone.height / 2;
-      return ship.x > this.dockZone.x - halfWidth && ship.x < this.dockZone.x + halfWidth && ship.y > -halfHeight && ship.y < halfHeight;
+      return ship.x - this.x > this.dockZone.x - halfWidth && ship.x - this.x < this.dockZone.x + halfWidth && ship.y - this.y > -halfHeight && ship.y - this.y < halfHeight;
     }
 
     isSafe(ship) {
-      return Math.hypot(ship.x, ship.y) < this.safeRadius;
+      return Math.hypot(ship.x - this.x, ship.y - this.y) < this.safeRadius;
     }
 
     draw(ctx, camera, viewport, images, time) {

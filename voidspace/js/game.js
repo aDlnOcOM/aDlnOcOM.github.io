@@ -58,6 +58,7 @@
       this.asteroidsMined = Number(save.asteroidsMined) || 0;
       this.totalSold = Number(save.totalSold) || 0;
       this.record = Math.max(Number(save.record) || 0, this.totalSold);
+      this.expedition = new VS.Expedition(this, save.expedition || {});
       this.lastFrame = performance.now();
       this.saveTimer = 0;
       this.toastTimer = null;
@@ -75,7 +76,7 @@
         "hp-fill", "hp-value", "cargo-fill", "cargo-value", "credits", "distance", "target-card",
         "target-name", "target-fill", "target-yield", "dock-prompt", "toast", "mission", "mission-title",
         "mission-copy", "dock-panel", "dock-content", "inventory-panel", "inventory-content", "build-panel",
-        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle",
+        "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle", "sector-status",
       ];
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
@@ -99,6 +100,7 @@
     }
 
     bindEvents() {
+      window.addEventListener("storage", (event) => { if (event.key === "voidspace-enemies-v1") this.expedition.reloadTemplates(); });
       this.dom["inertia-toggle"].addEventListener("click", () => {
         if (!this.ship.canStabilize()) return;
         this.ship.inertiaDampingEnabled = !this.ship.inertiaDampingEnabled;
@@ -110,7 +112,12 @@
       window.addEventListener("blur", () => {
         this.input.clear();
         this.mouse.down = false;
+        if (this.started && !this.paused && !this.buildMode) this.togglePause(true);
       });
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) { this.input.clear(); this.mouse.down = false; if (this.started && !this.paused) this.togglePause(true); this.save(); }
+      });
+      window.addEventListener("pagehide", () => this.save());
       window.addEventListener("resize", () => this.resizeCanvas());
       this.canvas.addEventListener("pointermove", (event) => this.updatePointer(event));
       this.canvas.addEventListener("pointerdown", (event) => {
@@ -126,6 +133,7 @@
       document.getElementById("start-button").addEventListener("click", () => {
         this.started = true;
         this.dom["start-screen"].classList.add("hidden");
+        if (this.ship.hp <= 0) { this.onDeath(); return; }
         this.notify("Протокол добычи активирован");
       });
       document.getElementById("resume-button").addEventListener("click", () => this.togglePause(false));
@@ -162,11 +170,12 @@
     }
 
     onKeyDown(event) {
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
       if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX"].includes(event.code)) return;
       this.input.add(event.code);
 
-      if (!this.started || event.code === "Space") return;
+      if (!this.started || event.code === "Space" || this.ship.hp <= 0) return;
       if (event.code === "Escape") {
         if (this.buildMode) this.toggleBuild(false);
         else if (!this.dom["dock-panel"].classList.contains("hidden")) this.closePanel("dock-panel");
@@ -175,7 +184,7 @@
       }
       if (event.code === "KeyB" && !this.paused) this.toggleBuild(!this.buildMode);
       if (event.code === "KeyI" && !this.buildMode) this.toggleInventory();
-      if (event.code === "KeyF" && this.station.isDocked(this.ship) && !this.buildMode) this.openDock();
+      if (event.code === "KeyF" && this.expedition.dockAt(this.ship) && !this.buildMode && !this.paused) this.openDock();
       if (event.code === "KeyR" && this.buildMode) this.rotateBuildModule();
       if (event.code === "KeyX" && this.buildMode) this.toggleDeleteMode();
     }
@@ -201,6 +210,7 @@
       for (const asteroid of this.asteroids) asteroid.update(dt, this.station);
       this.mineWithDrills(dt);
       for (const asteroid of this.asteroids) if (!asteroid.dead) this.checkShipCollision(asteroid);
+      this.expedition.update(dt, mouseWorld);
       for (const pickup of this.pickups) pickup.update(dt, this.ship);
       for (const particle of this.particles) particle.update(dt);
       this.asteroids = this.asteroids.filter((asteroid) => !asteroid.dead && Utils.distance(asteroid, this.ship) < 1900);
@@ -223,7 +233,7 @@
     }
 
     stationSafety(dt) {
-      if (!this.station.isSafe(this.ship)) return;
+      if (!this.expedition.safeAt(this.ship)) return;
       if (this.ship.hp < this.ship.stats.maxHp) this.ship.hp = Math.min(this.ship.stats.maxHp, this.ship.hp + dt * 1.5);
     }
 
@@ -253,6 +263,13 @@
           if (hitDistance > nearest) continue;
           target = asteroid;
           nearest = hitDistance;
+        }
+        const enemyHit = this.expedition && !this.expedition.safeAt(this.ship) ? this.expedition.traceEnemy(origin, direction, nearest) : null;
+        if (enemyHit) {
+          const end = { x: origin.x + direction.x * enemyHit.distance, y: origin.y + direction.y * enemyHit.distance };
+          this.laserBeams.push({ origin, end });
+          enemyHit.enemy.damage(enemyHit.module, LASER_MINING_POWER * dt, this.expedition);
+          continue;
         }
         const beamEnd = target
           ? { x: origin.x + direction.x * nearest, y: origin.y + direction.y * nearest }
@@ -285,7 +302,7 @@
     }
 
     checkShipCollision(asteroid) {
-      if (this.station.isSafe(this.ship)) return;
+      if (this.expedition.safeAt(this.ship)) return;
       const collision = this.ship.getCircleCollision(asteroid.x, asteroid.y, asteroid.radius);
       if (!collision) return;
       this.ship.x += collision.normalX * collision.penetration;
@@ -327,8 +344,8 @@
     }
 
     maintainAsteroids() {
-      const difficulty = 1 + this.time / 150 + Math.hypot(this.ship.x, this.ship.y) / 1800;
-      const desired = Math.min(68, Math.floor(36 + difficulty * 5));
+      const difficulty = this.expedition.difficulty();
+      const desired = Math.min(64, this.expedition.biome().density + difficulty * 2);
       for (let index = this.asteroids.length; index < Math.min(desired, this.asteroids.length + 3); index += 1) this.spawnAsteroid(620, 1350, difficulty);
     }
 
@@ -337,8 +354,10 @@
       const distance = Utils.randomRange(minRadius, maxRadius);
       const x = this.ship.x + Math.cos(angle) * distance;
       const y = this.ship.y + Math.sin(angle) * distance;
-      if (Math.hypot(x, y) < this.station.safeRadius + 120) return;
+      if (this.expedition.friendlyStations().some((station) => Math.hypot(x - station.x, y - station.y) < station.safeRadius + 120)) return;
+      const biome = this.expedition.biome({ x, y });
       const type = Utils.weightedChoice([
+        { value: biome.ore, weight: 65 },
         { value: "chondrite", weight: 46 },
         { value: "iron", weight: 27 },
         { value: "troilite", weight: 16 },
@@ -354,6 +373,7 @@
       this.configureRenderer();
       ctx.clearRect(0, 0, this.viewport.width, this.viewport.height);
       this.drawBackground(time);
+      this.expedition.drawBackground(ctx, time);
       this.station.draw(ctx, this.camera, this.viewport, this.images, time);
       this.ship.drawExhaust(ctx, this.camera, this.viewport, this.images, this.time);
       for (const pickup of this.pickups) pickup.draw(ctx, this.camera, this.viewport, this.images);
@@ -361,7 +381,8 @@
       this.drawLaser(time);
       for (const particle of this.particles) particle.draw(ctx, this.camera, this.viewport, this.images);
       this.ship.draw(ctx, this.camera, this.viewport, this.images, this.buildMode, this.buildHover, this.time);
-      if (!this.station.isSafe(this.ship)) this.drawStationIndicator();
+      this.expedition.draw(ctx, time);
+      if (!this.expedition.safeAt(this.ship)) this.drawStationIndicator();
       this.drawCoordinates();
     }
 
@@ -438,7 +459,8 @@
     }
 
     drawStationIndicator() {
-      const angle = Math.atan2(-this.ship.y, -this.ship.x);
+      const station = this.expedition.friendlyStations().reduce((best, next) => Utils.distance(next, this.ship) < Utils.distance(best, this.ship) ? next : best);
+      const angle = Math.atan2(station.y - this.ship.y, station.x - this.ship.x);
       const x = this.viewport.width / 2 + Math.cos(angle) * Math.min(this.viewport.width * 0.39, 360);
       const y = this.viewport.height / 2 + Math.sin(angle) * Math.min(this.viewport.height * 0.36, 190);
       Utils.drawImage(this.ctx, this.images.ui_arrow, x, y, 22, 22, angle);
@@ -461,6 +483,7 @@
 
     toggleBuild(force) {
       if (!this.started || this.ship.hp <= 0) return;
+      if (force && this.expedition.enemies.some((enemy) => !enemy.dead && Utils.distance(enemy.ship, this.ship) < 900) && !this.expedition.safeAt(this.ship)) { this.notify("Строительство недоступно во время боя", true); return; }
       this.buildMode = force;
       this.deleteMode = false;
       this.dom["build-panel"].classList.toggle("hidden", !force);
@@ -516,13 +539,13 @@
       document.getElementById("delete-module").classList.toggle("active", this.deleteMode);
       this.dom["build-hint"].textContent = this.deleteMode
         ? "Выберите модуль для демонтажа. Возвращается 50% стоимости."
-        : "Перед инструментами свободна 1 клетка; позади двигателей — 6 клеток выхлопа.";
+        : "Перед инструментами свободна 1 клетка; позади двигателей — 5 клеток выхлопа.";
       this.updateBuildHover();
     }
 
     renderBuildPalette() {
       this.dom["build-modules"].innerHTML = Object.entries(MODULES)
-        .filter(([type]) => type !== "core")
+        .filter(([type, definition]) => type !== "core" && (!definition.shipClass || definition.shipClass === this.ship.shipClass))
         .map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
@@ -543,7 +566,7 @@
     }
 
     openDock() {
-      if (!this.station.isDocked(this.ship)) return;
+      if (!this.expedition.dockAt(this.ship)) return;
       this.paused = true;
       this.dom["dock-panel"].classList.remove("hidden");
       this.renderDockContent();
@@ -554,6 +577,7 @@
       if (this.activeDockTab === "sell") this.renderSellTab(container);
       if (this.activeDockTab === "shop") this.renderShopTab(container);
       if (this.activeDockTab === "service") this.renderServiceTab(container);
+      if (this.activeDockTab === "hangar") this.renderHangarTab(container);
     }
 
     renderSellTab(container) {
@@ -568,7 +592,7 @@
 
     renderShopTab(container) {
       container.innerHTML = `<div class="terminal-summary"><p>Покупка чертежа открывает модуль навсегда.<br>Установка выполняется в режиме строительства.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
-        <div class="shop-grid">${Object.entries(MODULES).filter(([type]) => !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
+        <div class="shop-grid">${Object.entries(MODULES).filter(([type, definition]) => !definition.shipClass && !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<div class="shop-card"><span class="module-sprite"><img src="assets/modules/frame.png" alt="">${moduleArtMarkup(definition)}</span><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
         }).join("")}</div>`;
@@ -605,6 +629,20 @@
         this.updateHud();
         this.save();
       });
+    }
+
+    renderHangarTab(container) {
+      const world = this.expedition;
+      container.innerHTML = `<div class="terminal-summary"><p>Лицензии постоянные. Каждый корабль хранится отдельно.<br>Перед сменой корабля продайте груз.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
+        <div class="service-card"><div><b>КОНТРАКТ № ${world.contracts + 1}</b><p>${world.contractText()}</p></div><button id="claim-contract" ${world.contractProgress() < world.contract.target ? "disabled" : ""}>ПОЛУЧИТЬ</button></div>
+        <div class="fleet-grid">${Object.entries(VS.Content.CLASSES).map(([id, type]) => `<article class="fleet-card" style="--fleet-colour:${type.colour}"><span class="eyebrow">${id.toUpperCase()}</span><h3>${type.name}</h3><p>${type.description}</p><button data-license="${id}" ${this.ship.shipClass === id || (!world.licenses.has(id) && this.ship.credits < type.price) || (world.licenses.has(id) && this.ship.inventory.used > 0) ? "disabled" : ""}>${this.ship.shipClass === id ? "АКТИВНЫЙ КОРАБЛЬ" : world.licenses.has(id) ? "ВЫБРАТЬ" : `ЛИЦЕНЗИЯ · ${type.price} ¤`}</button></article>`).join("")}</div>`;
+      container.querySelector("#claim-contract").addEventListener("click", () => { if (world.claimContract()) this.notify("Контракт выполнен. Доступен следующий."); this.renderHangarTab(container); this.updateHud(); });
+      container.querySelectorAll("[data-license]").forEach((button) => button.addEventListener("click", () => {
+        const id = button.dataset.license;
+        const changed = world.licenses.has(id) ? world.switchClass(id) : world.buyLicense(id);
+        if (changed) this.notify("Ангар обновлён");
+        this.renderHangarTab(container); this.renderBuildPalette(); this.updateHud();
+      }));
     }
 
     sellAll() {
@@ -671,6 +709,8 @@
       this.ship.y = 0;
       this.ship.vx = 0;
       this.ship.vy = 0;
+      this.ship.angularVelocity = 0;
+      this.expedition.bullets = [];
       this.ship.hp = this.ship.stats.maxHp;
       this.ship.inventory.clear();
       this.camera.x = this.ship.x;
@@ -683,6 +723,7 @@
 
     updateHud() {
       const stabilizationButton = this.dom["inertia-toggle"];
+      this.dom["sector-status"].textContent = `${this.expedition.biome().name} · Угроза ${this.expedition.biome().danger ? this.expedition.difficulty() : 0}/8 · ${VS.Content.CLASSES[this.ship.shipClass].name}`;
       const available = this.ship.canStabilize();
       const enabled = available && this.ship.inertiaDampingEnabled;
       stabilizationButton.disabled = !available;
@@ -700,7 +741,7 @@
       this.dom.credits.textContent = Utils.formatNumber(this.ship.credits);
       const distance = Math.max(0, Math.round(Math.hypot(this.ship.x, this.ship.y) - this.station.safeRadius));
       this.dom.distance.textContent = distance === 0 ? "СТАНЦИЯ · БЕЗОПАСНАЯ ЗОНА" : `СТАНЦИЯ · ${distance} м`;
-      this.dom["dock-prompt"].classList.toggle("hidden", !this.station.isDocked(this.ship) || this.paused || this.buildMode);
+      this.dom["dock-prompt"].classList.toggle("hidden", !this.expedition.dockAt(this.ship) || this.paused || this.buildMode);
       this.dom["target-card"].classList.toggle("hidden", !this.target);
       if (this.target) {
         const definition = METEOR_TYPES[this.target.type];
@@ -711,6 +752,11 @@
     }
 
     updateMission() {
+      if (this.asteroidsMined > 0 || this.expedition.farthest > 1400 || this.ship.shipClass !== "miner") {
+        this.dom["mission-title"].textContent = `КОНТРАКТ ${this.expedition.contracts + 1}`;
+        this.dom["mission-copy"].textContent = this.expedition.contractText() + (this.expedition.contractProgress() >= this.expedition.contract.target ? " · Заберите награду в ангаре станции." : "");
+        return;
+      }
       if (this.totalSold > 0) {
         this.dom["mission-title"].textContent = "РАСШИРЬТЕ КОРАБЛЬ";
         this.dom["mission-copy"].textContent = "Нажмите B и установите грузовой отсек, двигатель или структурный модуль.";
@@ -734,6 +780,8 @@
     save() {
       try {
         const payload = {
+          version: 2,
+          expedition: this.expedition.serialize(),
           ship: this.ship.serialize(),
           time: this.time,
           asteroidsMined: this.asteroidsMined,

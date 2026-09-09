@@ -67,7 +67,7 @@
   };
 
   function isEngine(module) {
-    return module.type === "thruster" || module.type === "booster";
+    return Boolean(MODULES[module.type]?.thrust);
   }
 
   function engineKey(module) {
@@ -428,24 +428,29 @@
 
   class Ship {
     constructor(save = {}) {
-      this.x = Number(save.x) || -175;
-      this.y = Number(save.y) || 0;
+      save = save && typeof save === "object" ? save : {};
+      const savedModules = Array.isArray(save.modules) ? save.modules.filter((module) => module && Object.hasOwn(MODULES, module.type) && Number.isInteger(module.gx) && Number.isInteger(module.gy) && Math.abs(module.gx) <= 10 && Math.abs(module.gy) <= 10).slice(0, 64).map((module) => ({ type: module.type, gx: module.gx, gy: module.gy, rotation: Number.isFinite(module.rotation) ? ((Math.round(module.rotation) % 4) + 4) % 4 : 0 })) : [];
+      const validLayout = savedModules.filter((m) => m.type === "core").length === 1 && new Set(savedModules.map((m) => `${m.gx},${m.gy}`)).size === savedModules.length;
+      this.x = Number.isFinite(save.x) ? save.x : -175;
+      this.y = Number.isFinite(save.y) ? save.y : 0;
       this.vx = 0;
       this.vy = 0;
-      this.angle = Number(save.angle) || 0;
-      this.modules = Array.isArray(save.modules) && save.modules.length > 0
-        ? save.modules.map((module) => ({ ...module }))
+      this.angle = Number.isFinite(save.angle) ? save.angle : 0;
+      this.modules = validLayout
+        ? savedModules
         : [
             { type: "core", gx: 0, gy: 0, rotation: 0 },
             { type: "laser", gx: 1, gy: 0, rotation: 0 },
             { type: "thruster", gx: -1, gy: 0, rotation: 0 },
           ];
-      this.credits = Number.isFinite(save.credits) ? save.credits : 120;
+      this.credits = Number.isFinite(save.credits) ? Math.max(0, save.credits) : 120;
       this.inventory = new Inventory(save.inventory || {});
       this.unlocked = new Set(Array.isArray(save.unlocked) ? save.unlocked : ["core", "laser", "thruster", "hull", "cargo"]);
       this.unlocked.add("computer");
+      this.unlocked.add("pulse");
+      this.shipClass = VS.Content && Object.hasOwn(VS.Content.CLASSES, save.shipClass) ? save.shipClass : "miner";
       this.inertiaDampingEnabled = save.inertiaDampingEnabled !== false;
-      this.upgradeLevel = Number(save.upgradeLevel) || 0;
+      this.upgradeLevel = Number.isFinite(save.upgradeLevel) ? Math.max(0, Math.min(100, Math.floor(save.upgradeLevel))) : 0;
       this.stats = calculateStats(this.modules, this.upgradeLevel);
       this.hp = Number.isFinite(save.hp) ? Math.min(save.hp, this.stats.maxHp) : this.stats.maxHp;
       this.lastLaserAt = 0;
@@ -576,7 +581,7 @@
           else if (throttle > 0) throttle *= 0.28;
         }
 
-        const exhaustConfig = EXHAUST_TEXTURES[engine.type];
+        const exhaustConfig = EXHAUST_TEXTURES[MODULES[engine.type].baseType || engine.type];
         if (stabilization) {
           throttle = stabilization.engines.get(key) || 0;
           gimbal = 0;
@@ -682,7 +687,7 @@
     }
 
     getNearestCargoIntake(worldX, worldY) {
-      const cargoModules = this.modules.filter((module) => module.type === "cargo");
+      const cargoModules = this.modules.filter((module) => MODULES[module.type]?.cargo && module.type !== "core");
       const intakeModules = cargoModules.length > 0
         ? cargoModules
         : this.modules.filter((module) => module.type === "core");
@@ -835,6 +840,8 @@
 
     addModule(type, gx, gy, rotation) {
       if (!MODULES[type] || !this.unlocked.has(type)) return { ok: false, reason: "Чертёж модуля ещё не разблокирован" };
+      if (MODULES[type].shipClass && MODULES[type].shipClass !== this.shipClass) return { ok: false, reason: "Модуль предназначен для другого класса корабля" };
+      if (this.modules.length >= 64 || !Number.isInteger(gx) || !Number.isInteger(gy) || Math.abs(gx) > 10 || Math.abs(gy) > 10) return { ok: false, reason: "Предел конструкции: 64 модуля, сетка 21×21" };
       if (this.modules.some((module) => module.gx === gx && module.gy === gy)) return { ok: false, reason: "Ячейка уже занята" };
       if (!isAdjacentToShip(this.modules, gx, gy)) return { ok: false, reason: "Нужна соседняя точка крепления" };
       const conflict = getPlacementConflict(this.modules, { type, gx, gy, rotation });
@@ -857,6 +864,7 @@
       if (!isConnected(candidate)) return { ok: false, reason: "Демонтаж разорвёт конструкцию" };
       const stats = calculateStats(candidate, this.upgradeLevel);
       if (stats.energyUse > stats.energy) return { ok: false, reason: "После демонтажа не хватит энергии" };
+      if (this.inventory.used > stats.cargo) return { ok: false, reason: "Сначала разгрузите трюм" };
       this.modules = candidate;
       this.credits += Math.floor(MODULES[target.type].cost * 0.5);
       this.recalculateStats();
@@ -872,12 +880,13 @@
     drawEngineExhaust(ctx, images, time) {
       if (!this.thrusting) return;
       for (const module of this.modules) {
-        if (module.type !== "thruster" && module.type !== "booster") continue;
+        if (!isEngine(module)) continue;
         const state = this.engineStates.get(engineKey(module));
         if (!state || state.throttle <= 0) continue;
-        const effect = getExhaustEffect(images[`exhaust_${module.type}`]);
+        const engineType = MODULES[module.type].baseType || module.type;
+        const effect = getExhaustEffect(images[`exhaust_${engineType}`]);
         if (!effect?.coreFrames.length || !effect.haloFrames.length) continue;
-        const config = EXHAUST_TEXTURES[module.type];
+        const config = EXHAUST_TEXTURES[engineType];
         const enginePower = Utils.clamp(MODULES[module.type].thrust / MODULES.booster.thrust, 0, 1);
         const activation = Utils.clamp(state.activation ?? state.throttle, 0, 1);
         const minimumLength = MODULE_SIZE * (0.55 + enginePower * 0.25);
@@ -960,6 +969,23 @@
         const toolActive = module.type !== "drill" || this.activeDrills.has(engineKey(module));
         const animated = drawAnimatedModule(ctx, image, module, definition, time, aimLocal, 1, toolActive);
         if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
+        if (definition.accent) {
+          ctx.fillStyle = definition.accent;
+          ctx.fillRect(module.gx * MODULE_SIZE - 9, module.gy * MODULE_SIZE + 11, 18, 2);
+        }
+        if (definition.weapon) {
+          const centerX = module.gx * MODULE_SIZE;
+          const centerY = module.gy * MODULE_SIZE;
+          const forward = (module.rotation || 0) * Math.PI / 2;
+          const arc = definition.weapon.arc || Math.PI / 2;
+          const aim = forward + Utils.clamp(Utils.angleDelta(forward, Math.atan2(aimLocal.y - centerY, aimLocal.x - centerX)), -arc / 2, arc / 2);
+          ctx.save();
+          ctx.translate(centerX, centerY); ctx.rotate(aim);
+          ctx.fillStyle = "#070f1a"; ctx.fillRect(-7, -6, 20, 12);
+          ctx.fillStyle = "#667e93"; ctx.fillRect(2, -3, 17, 6);
+          ctx.fillStyle = definition.accent || "#8eeaff"; ctx.fillRect(17, -3, 2, 6);
+          ctx.restore();
+        }
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
           ctx.strokeRect(module.gx * MODULE_SIZE - 17, module.gy * MODULE_SIZE - 17, 34, 34);
@@ -994,6 +1020,7 @@
         upgradeLevel: this.upgradeLevel,
         hp: this.hp,
         inertiaDampingEnabled: this.inertiaDampingEnabled,
+        shipClass: this.shipClass,
       };
     }
   }
