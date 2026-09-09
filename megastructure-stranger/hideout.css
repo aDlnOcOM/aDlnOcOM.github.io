@@ -1,4 +1,7 @@
 /* Architectural surfaces, cold terminals and sparse hazard-light accents. */
+.campaign-status { color:#91a99c; font:11px/1.6 Consolas,monospace; margin:0 0 12px; }
+.main-menu .mega-wall { background-image:linear-gradient(90deg,#020609cc,#0a191455),url('assets/wall.svg'); background-size:auto,220px 220px; }
+.shelter-playfield { box-shadow:0 12px 50px #0007; }
 .hideout-location-title { align-self:center; color:#789991; font:12px Consolas,monospace; }
 .shelter-service { width:min(1200px,94vw); max-height:88vh; overflow:auto; color:#c9dbd5; padding:26px; }
 .shelter-service::backdrop { background:#02070ccc; }

@@ -165,7 +165,8 @@
         equipment,
         hideout: window.HideoutUpgrades?.normalize(saved.hideout) || {},
         resources: window.Resources?.normalize(saved.resources) || {},
-        workshop: saved.workshop
+        workshop: saved.workshop,
+        campaign: window.Campaign?.normalize(saved.campaign)
       };
     } catch {
       return { salvage: 0, bestFloor: 0, implants: [], equipment: createEquipmentProgress(), hideout: window.HideoutUpgrades?.normalize() || {} };
@@ -261,8 +262,10 @@
     });
     if (window.PowerInventory) window.PowerInventory.render(element("supply-grid"), createPowerStock());
     window.HideoutShell?.refresh(progression, currentLoadout());
-    element("salvage-count").textContent = String(progression.salvage).padStart(4, "0");
-    element("best-floor").textContent = String(progression.bestFloor).padStart(2, "0");
+    if (window.Campaign) {
+      const campaign = window.Campaign.normalize(progression.campaign);
+      element("campaign-status").textContent = campaign.completed ? "ЯДРО ОТКЛЮЧЕНО · Кампания завершена. Можно повторно исследовать этажи." : `ЦЕЛЬ: ЯДРО / ЭТАЖ 24 · Пройдено ${campaign.cleared}/24 · Следующий контрольный вход: ${window.Campaign.start(progression)}`;
+    }
     renderLoadout();
     renderImplants();
     window.ShelterLocation?.refresh(progression);
@@ -986,7 +989,8 @@
 
   function createGuard(type, x, y, patrolStart, patrolEnd, angle) {
     const template = ENEMY_TYPES[type];
-    const multiplier = 1 + (state.floor - 1) * .18;
+    const balance = window.Campaign?.difficulty(state.floor);
+    const multiplier = balance?.health || 1 + (state.floor - 1) * .18;
     return {
       type,
       x,
@@ -995,11 +999,11 @@
       color: template.color,
       health: Math.round(template.hp * multiplier),
       maxHealth: Math.round(template.hp * multiplier),
-      speed: template.speed * (type === "turret" ? 1 : multiplier),
+      speed: template.speed * (balance?.speed || (type === "turret" ? 1 : multiplier)),
       fireRate: type === "turret" ? Math.max(.72, template.fire - state.floor * .035) : template.fire,
       fireTimer: randomBetween(.2, template.fire),
       bulletSpeed: template.bulletSpeed * (1 + (state.floor - 1) * .04),
-      damage: template.damage + Math.floor((state.floor - 1) / 2),
+      damage: template.damage + (balance ? balance.damage : Math.floor((state.floor - 1) / 2)),
       reward: template.reward + state.floor * 2,
       patrolStart,
       patrolEnd,
@@ -1017,7 +1021,7 @@
 
   function createLongFloor(floor) {
     const sectorCount = state.runSectorCount || randomInteger(10, 12);
-    const bodyLength = Math.round(sectorCount * WIDTH * Math.pow(1.2, floor - 1));
+    const bodyLength = Math.round(sectorCount * WIDTH * (window.Campaign ? window.Campaign.length(floor) : Math.pow(1.2, floor - 1)));
     const sectorWidth = bodyLength / sectorCount;
     const bossWidth = Math.round(WIDTH / 1.5);
     const worldWidth = bodyLength + bossWidth + 140;
@@ -1031,7 +1035,7 @@
     const sensors = [];
 
     const seed = Math.floor(Math.random() * 4294967296);
-    const generated = window.SectorGenerator.generate(sectorCount, sectorWidth, HEIGHT, seed);
+    const generated = window.SectorGenerator.generate(sectorCount, sectorWidth, HEIGHT, seed, window.Campaign?.route[(floor - 1) % 24]);
     walls.push(...generated.walls);
     for (const sector of generated.sectors) {
       const start = sector.x;
@@ -1067,7 +1071,7 @@
       seed,
       sectors: generated.sectors,
       containers: window.LootContainers.generate(generated.sectors, walls, seed,
-        window.SectorGenerator.seeded, window.SecurityAI.clear, window.SecurityAI.route),
+        window.SectorGenerator.seeded, window.SecurityAI.clear, window.SecurityAI.route, floor),
       sectorWidth,
       bodyLength,
       bossWidth,
@@ -1091,7 +1095,7 @@
   function beginRun() {
     if (state.runActive && window.Workshop) window.Workshop.age(progression);
     state.runItems = [];
-    state.floor = 1;
+    state.floor = window.Campaign ? window.Campaign.start(progression) : 1;
     state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);
     state.runSalvage = 0;
@@ -1622,6 +1626,7 @@
     createParticles(enemy.x, enemy.y, "#d4ee70", enemy.boss ? 20 : 9, enemy.boss ? 100 : 58);
     if (enemy.boss) {
       state.floorMap.bossDefeated = true;
+      window.Campaign?.record(progression, state.floor);
       state.floorMap.exitOpen = true;
       renderRoute();
       element("signal-text").textContent = "Смотритель отключён. Правый шлюз разблокирован: войди в лифт.";
@@ -1656,7 +1661,7 @@
     state.player.y = HEIGHT / 2;
     const bossType = state.floor % 2 === 0 ? "breaker" : "warden";
     const template = ENEMY_TYPES[bossType];
-    const multiplier = 1 + (state.floor - 1) * .22;
+    const multiplier = window.Campaign ? 1 + (state.floor - 1) * .08 : 1 + (state.floor - 1) * .22;
     const boss = {
       type: bossType,
       x: map.entryGate.x + map.bossWidth * .52,
@@ -1710,6 +1715,11 @@
       return;
     }
     if (map.bossDefeated && state.player.x > map.exitGate.x - 84) {
+      if (window.Campaign && state.floor >= window.Campaign.floors) {
+        progression.campaign = { ...window.Campaign.normalize(progression.campaign), completed: true };
+        finishRun(1);
+        return;
+      }
       state.floor += 1;
       beginFloor();
     }
@@ -1761,6 +1771,7 @@
     window.SectorGenerator.draw(context, map, state.cameraX, WIDTH, HEIGHT, state.alarm);
     for (const wall of map.walls) {
       if (wall.x + wall.width < state.cameraX || wall.x > state.cameraX + WIDTH) continue;
+      if (window.GameAssets?.wall(context, wall)) continue;
       context.fillStyle = wall.outer ? "#080b0d" : wall.console ? "#15191c" : "#0b0e10";
       context.fillRect(wall.x, wall.y, wall.width, wall.height);
       context.strokeStyle = wall.outer ? "#242a2d" : "#2c3438";
@@ -1797,6 +1808,7 @@
       }
     }
     const drawGate = (gate, open, label) => {
+      if (!open) window.GameAssets?.sprite(context, "door", gate.x + gate.width / 2, gate.y + gate.height / 2, gate.width, gate.height);
       context.fillStyle = open ? "rgba(125, 236, 194, .24)" : "rgba(255, 109, 104, .34)";
       context.fillRect(gate.x, gate.y, gate.width, gate.height);
       context.strokeStyle = open ? "#9dfdc4" : "#ff6d68";
@@ -1824,10 +1836,12 @@
     context.save();
     context.translate(screenX, sensor.y);
     context.rotate(sensor.angle);
+    if (!window.GameAssets?.sprite(context, 'props/sensor', 0, 0, 30, 30)) {
     context.fillStyle = "#b9d0df";
     context.fillRect(-7, -7, 14, 14);
     context.fillStyle = sensor.exposure >= .5 ? "#ff6d68" : sensor.exposure > 0 ? "#ffbd63" : "#63e4dd";
     context.fillRect(3, -2, 11, 4);
+    }
     context.restore();
     if (sensor.exposure > 0) drawDetection(screenX, sensor.y - 18, sensor.exposure / .5, sensor.exposure >= .5 ? "!" : "?");
   }
@@ -1866,6 +1880,8 @@
     context.save();
     context.translate(screenX, enemy.y);
     context.rotate(enemy.angle || 0);
+    const drawn = window.GameAssets?.sprite(context, "actors/" + enemy.type, 0, 0, enemy.radius * 3, enemy.radius * 3);
+    if (!drawn) {
     context.fillStyle = enemy.hitFlash ? "#ffffff" : enemy.color;
     context.shadowBlur = enemy.boss ? 20 : 8;
     context.shadowColor = enemy.color;
@@ -1897,6 +1913,10 @@
         context.beginPath(); context.moveTo(enemy.radius, 0);
         context.lineTo(raycastDistance(enemy.x, enemy.y, enemy.angle, 300), 0); context.stroke();
       }
+    }
+    }
+    if (drawn && enemy.type === "breaker" && enemy.attackPhase === "windup") {
+      context.strokeStyle = "#ffe0a4"; context.setLineDash([10,9]); context.beginPath(); context.moveTo(enemy.radius,0); context.lineTo(raycastDistance(enemy.x, enemy.y, enemy.angle,300),0); context.stroke();
     }
     context.restore();
     context.shadowBlur = 0;
@@ -1962,12 +1982,16 @@
     context.translate(player.x - state.cameraX, player.y);
     context.rotate(angle);
     if (player.dash?.remaining > 0) context.scale(1.25, .8);
+    if (!window.GameAssets?.sprite(context, "actors/player", 0, 0, 42, 42)) {
     context.fillStyle = "#8ff7ef";
     context.shadowBlur = 14;
     context.shadowColor = "#63e4dd";
     context.fillRect(-7, -10, 14, 20);
     context.fillStyle = "#d4ee70";
     context.fillRect(4, -3, 19, 6);
+    }
+    const family = window.Workshop?.definition(window.Workshop.equipped(progression, "smg"))?.family || "smg";
+    if (player.weapon !== "knife") window.GameAssets?.sprite(context, "weapons/" + family, 18, 0, 32, 22);
     context.restore();
     context.shadowBlur = 0;
     if (player.knifeFlash > 0 && window.Arsenal) {
@@ -1990,11 +2014,15 @@
       if (!isPointVisible(near)) continue;
       const x = crate.x - state.cameraX;
       context.save();
+      context.globalAlpha = crate.opened ? .5 : 1;
+      if (!window.GameAssets?.sprite(context, 'props/storage', x, crate.y, 36, 36)) {
       context.fillStyle = crate.opened ? '#252c2a' : crate.kind === 'supply' ? '#4f6358' : '#665c43';
       context.fillRect(x - 15, crate.y - 15, 30, 30);
       context.strokeStyle = crate.opened ? '#53635a' : '#b5b58c'; context.lineWidth = 2;
       context.strokeRect(x - 13, crate.y - 13, 26, 26);
       context.fillStyle = '#a5bcb0'; context.fillRect(x - 2, crate.y - 13, 4, crate.opened ? 7 : 26);
+      }
+      context.globalAlpha = 1;
       if (!crate.opened && d < 72) {
         context.font = '11px Consolas, monospace'; context.textAlign = 'center';
         context.fillText('E · ОТКРЫТЬ', x, crate.y - 24);

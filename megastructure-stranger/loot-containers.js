@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  function generate(sectors, walls, seed, randomFactory, clear, route) {
+  function generate(sectors, walls, seed, randomFactory, clear, route, floor = 1) {
     const random = randomFactory(seed ^ 0x51a7c0de), containers = [];
     for (const sector of sectors) {
       for (let slot = 0; slot < 2; slot++) {
@@ -20,7 +20,7 @@
           salvage: 5 + Math.floor(random() * 9), ammoType, ammoKey,
           ammo: kind === 'supply' ? 18 + Math.floor(random() * 25) : 0, opened: false,
           resources: window.Resources?.roll('sectors', sector.id, random, 3) || {},
-          items: window.Workshop && ((sector.index === 0 && slot === 0) || random() < .3) ? [window.Workshop.loot(random, sector.index === 0 && slot === 0)] : [] });
+          items: window.Workshop && ((sector.index === 0 && slot === 0) || random() < .3) ? [window.Workshop.loot(random, sector.index === 0 && slot === 0, floor)] : [] });
       }
     }
     return containers;

@@ -53,6 +53,7 @@
   function draw(time) {
     context.fillStyle='#080f14';context.fillRect(0,0,960,500);
     const light=context.createRadialGradient(475,245,30,475,245,530);light.addColorStop(0,'#243638');light.addColorStop(1,'#10191e');context.fillStyle=light;context.fillRect(25,25,910,450);
+    window.GameAssets?.surface(context,'shelter',25,25,910,450);
     context.strokeStyle='#344247';context.lineWidth=1;
     for(let x=25;x<940;x+=48){context.beginPath();context.moveTo(x,25);context.lineTo(x,475);context.stroke();}
     for(let y=25;y<480;y+=48){context.beginPath();context.moveTo(25,y);context.lineTo(935,y);context.stroke();}
@@ -67,7 +68,7 @@
       context.save();context.translate(point.x,point.y);
       context.strokeStyle=near===point?'#d8eac5':facility?.color||'#7da3a6';context.lineWidth=near===point?2:1;
       if(!built){context.setLineDash([6,5]);context.strokeRect(-40,-26,80,52);context.setLineDash([]);context.fillStyle='#708081';context.fillText('+',0,5);}
-      else{
+      else if(!window.GameAssets?.sprite(context,point.id==='exit'?'door':'props/'+point.id,0,0,94,80)){
         context.fillStyle='#050b0f';context.fillRect(-43,-26,88,59);context.fillStyle=facility?'#34464a':'#263a3b';context.fillRect(-40,-26,80,52);context.strokeRect(-40,-26,80,52);
         context.fillStyle='#0a181c';context.fillRect(-30,-17,40,30);context.fillStyle=facility?.color||'#a6cdbb';
         context.globalAlpha=.7+Math.sin(time*2+point.x)*.15;context.fillRect(-26,-13,32,3);
@@ -80,8 +81,10 @@
     }
     context.save();context.translate(player.x,player.y);context.rotate(player.angle);
     context.fillStyle='#080c0e';context.beginPath();context.ellipse(3,5,15,10,0,0,Math.PI*2);context.fill();
-    context.fillStyle='#7d9998';context.fillRect(-7,-11+Math.sin(player.step)*2,7,7);context.fillRect(-7,4-Math.sin(player.step)*2,7,7);
-    context.fillStyle='#b4d8cb';context.fillRect(-7,-8,15,16);context.fillStyle='#314c50';context.fillRect(4,-5,7,10);context.restore();
+    if(!window.GameAssets?.sprite(context,'actors/player',0,0,42,42+Math.sin(player.step)*2)){
+      context.fillStyle='#7d9998';context.fillRect(-7,-11+Math.sin(player.step)*2,7,7);context.fillRect(-7,4-Math.sin(player.step)*2,7,7);
+      context.fillStyle='#b4d8cb';context.fillRect(-7,-8,15,16);context.fillStyle='#314c50';context.fillRect(4,-5,7,10);
+    }context.restore();
     const message=near?'E · '+near.name+(levels[near.id]===0?' — строительство':''):'WASD / стрелки — движение · Подойдите к объекту';
     if(get('shelter-prompt').textContent!==message)get('shelter-prompt').textContent=message;
     get('shelter-interact').disabled=!near;

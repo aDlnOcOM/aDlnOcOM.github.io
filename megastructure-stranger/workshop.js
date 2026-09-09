@@ -115,7 +115,7 @@
     let armor=0;for(const slot of ['chest','helmet','pants','boots']){const item=equipped(p,slot);armor+=(definition(item)?.armor||0)*factor(item);}
     base.armor=Math.max(0,base.armor-4+armor);const bag=equipped(p,'bag'),bd=definition(bag);if(bd){base.deathRetention=Math.min(.95,base.deathRetention+(bd.retention-.4)*factor(bag));base.salvageMultiplier+=(bd.capacity-4)*.01*factor(bag);}return base;
   }
-  function loot(random,guaranteeCarrier=false){const pool=guaranteeCarrier?A.items.filter(item=>item.carrier):A.items;const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*5),condition:45+Math.floor(random()*51)};}
+  function loot(random,guaranteeCarrier=false,floor=1){const tier=clamp(Math.ceil(floor/5),1,5);const pool=guaranteeCarrier?A.items.filter(item=>item.carrier&&item.maxClass<=Math.min(6,tier+2)):A.items.filter(item=>!item.carrier&&item.tier<=tier);const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*tier),condition:55+Math.floor(random()*36)};}
   function receive(p,drops){for(const drop of drops||[]){if(!A.byId[drop.defId]||p.workshop.items.length>=1500)continue;const item=make(p.workshop,drop.defId,drop.quality);item.condition=clamp(finite(drop.condition,70),1,100);p.workshop.items.push(item);}}
   window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,repairQuote,repair,wear,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
 })();

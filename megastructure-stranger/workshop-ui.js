@@ -38,13 +38,16 @@
     page=Math.min(page,Math.max(0,Math.ceil(filtered.length/24)-1));
     for(const entry of filtered.slice(page*24,page*24+24)){
       const def=tab==='craft'?entry:W.definition(entry);
+      const art=document.createElement('img');art.alt='';art.width=72;art.height=72;art.loading='lazy';
+      art.src='assets/'+(def.kind==='ranged'?'weapons/'+def.family:def.kind==='melee'?'weapons/'+def.id:def.kind==='armor'||def.kind==='plate'?'props/equipment':def.kind==='bag'?'props/storage':'props/research')+'.svg';
       let details=def.kind==='ranged'?`${def.family} · ${def.type} · ${def.caliber} · магазин ${def.magazine} · урон ${def.damage.toFixed(1)}`:def.kind==='melee'?`Урон ${def.damage} · радиус ${def.range} · пауза ${def.delay} с`:def.kind==='plate'?`Защита ${def.protection} · ${def.material}`:def.carrier?`НАЙТИ В ЗАБЕГЕ · ${def.plateSlots} слота · класс ≤ ${def.maxClass}`:def.kind==='bag'?`Перенос предметов: ${def.capacity} · удержание ${(def.retention*100).toFixed(0)}%`:def.kind==='armor'?`Броня ${def.armor.toFixed(1)}`:'';
       if(tab==='craft'){
         const offer=W.craftQuote(p,def.id,quality);const el=card(def.name,details+' · '+costs(offer.cost)+(def.station?' · '+stationNames[def.station]:'')+' · '+(offer.reason||'Доступно'));
-        el.appendChild(button(def.lootOnly?'Только добыча':'Изготовить',()=>act('craft',def.id,quality),Boolean(offer.reason)));
+        el.insertBefore(art,el.firstChild);el.appendChild(button(def.lootOnly?'Только добыча':'Изготовить',()=>act('craft',def.id,quality),Boolean(offer.reason)));
       }else{
         const isEquipped=Object.values(p.workshop.equipped).includes(entry.uid),mounted=p.workshop.items.some(item=>item.plates.includes(entry.uid));
         const el=card(def.name,details+` · ${A.qualities[entry.quality]} · Прочность ${entry.condition.toFixed(1)}/${entry.ceiling.toFixed(1)} · Возраст ${entry.age} забегов`+(isEquipped?' · НАДЕТО':'')+(mounted?' · В ЖИЛЕТЕ':''));
+        el.insertBefore(art,el.firstChild);
         if(def.slot&&def.kind!=='module')el.appendChild(button('Надеть',()=>act('equip',entry.uid),isEquipped||entry.condition<=0));
         if(def.kind==='plate')el.appendChild(button(mounted?'Извлечь плиту':'Вставить в жилет',()=>act(mounted?'unmount':'mount',entry.uid)));
         if(def.carrier){const plates=document.createElement('p');plates.textContent='Установлено: '+(entry.plates.map(uid=>W.definition(p.workshop.items.find(item=>item.uid===uid))?.name).join(', ')||'нет плит');el.appendChild(plates);}

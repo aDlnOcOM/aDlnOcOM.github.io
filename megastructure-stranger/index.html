@@ -64,17 +64,8 @@
         <button id="start-run" class="deploy-button" type="button">Забег <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4H4v16h6M8 12h12m-5-5 5 5-5 5"/></svg></button>
       </header>
       <div class="hideout-strip"><span><i class="status-dot"></i> УБЕЖИЩЕ 41 / СЛЕПАЯ ЗОНА</span><span>СВЯЗЬ С СИСТЕМОЙ: РАЗОРВАНА</span></div>
-      <section id="panel-shelter" class="hideout-panel shelter-layout" aria-labelledby="home-title">
-      <div class="briefing-panel">
-        <p class="eyebrow">убежище 41 / служебный уровень не отмечен</p>
-        <h1 id="home-title">Пока система не видит тебя — ты жив.</h1>
-        <p class="briefing-copy">Ты перестал принимать стабилизаторы, вышел из смены и спрятался между техническими этажами. Каждый спуск приносит лом для убежища, имплантов и снаряжения — если вернёшься.</p>
-        <div class="run-stats" aria-label="Статистика убежища">
-          <div><span>Лом</span><strong id="salvage-count">0000</strong></div>
-          <div><span>Лучший этаж</span><strong id="best-floor">00</strong></div>
-          <div><span>Состояние</span><strong>НЕ ЗАРЕГИСТРИРОВАН</strong></div>
-        </div>
-      </div>
+      <section id="panel-shelter" class="hideout-panel shelter-layout" aria-label="Убежище">
+      <p id="campaign-status" class="campaign-status" role="status"></p>
       <section class="shelter-playfield" aria-label="Интерактивная локация убежища">
         <canvas id="shelter-canvas" width="960" height="500" tabindex="0" aria-label="Убежище. Нажмите на локацию или перейдите сюда клавишей Tab. WASD или стрелки — движение, E — взаимодействие с ближайшим объектом."></canvas>
         <div class="shelter-controls"><p id="shelter-prompt" role="status">Нажмите на локацию · WASD / стрелки — движение · E — взаимодействие</p><button id="shelter-interact" type="button" class="quiet-button" disabled>Взаимодействовать · E</button></div>
@@ -171,6 +162,8 @@
   <script src="power-inventory.js"></script>
   <script src="hideout.js"></script>
   <script src="hideout-upgrades.js"></script>
+  <script src="game-assets.js"></script>
+  <script src="campaign.js"></script>
   <script src="shelter-location.js"></script>
   <script src="security-ai.js"></script>
   <script src="enemy-specialists.js"></script>

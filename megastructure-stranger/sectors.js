@@ -25,9 +25,9 @@
     for (const type of types) { roll -= type.weight; if (roll < 0) return type; }
     return types[types.length - 1];
   }
-  function generate(count, width, height, seed) {
+  function generate(count, width, height, seed, district) {
     const random = seeded(seed), sectors = [], walls = [];
-    const type = pick(random);
+    const type = types.find(item => item.id === district) || pick(random);
     for (let index = 0; index < count; index++) {
       const x = index * width;
       const lane = height / 2 + (Math.floor(random() * 3) - 1) * 36;
@@ -91,6 +91,7 @@
       if (sector.x + sector.width < cameraX || sector.x > cameraX + screenWidth) continue;
       context.fillStyle = alarm ? '#302426' : sector.floor;
       context.fillRect(sector.x, 28, sector.width, height - 56);
+      window.GameAssets?.surface(context, sector.id, sector.x, 28, sector.width, height - 56, cameraX, screenWidth);
       context.strokeStyle = alarm ? '#77403b' : sector.color;
       context.globalAlpha = .13;
       const tile = sector.style === 'suites' ? 96 : sector.style === 'scrap' ? 48 : 64;
