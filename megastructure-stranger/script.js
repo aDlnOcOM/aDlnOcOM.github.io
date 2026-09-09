@@ -1451,6 +1451,7 @@
     window.Workshop?.wear(progression, "smg", .07);
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
     player.fireCooldown = stats.fireDelay || .105;
+    window.GameAnimation?.trigger(player, "fire");
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
     const suppressed = hasUpgrade("smg", "muzzle", "suppressor");
     const noiseScale = suppressed ? (hasTier("smg", "muzzle", "suppressor") ? .55 : .75) : 1;
@@ -1469,6 +1470,7 @@
       return;
     }
     player.reload = playerStats().reload;
+    window.GameAnimation?.trigger(player, "reload", player.reload);
     emitNoise(player.x, player.y, 105, "звук перезарядки");
   }
 
@@ -1480,6 +1482,7 @@
     player.knifeCooldown = stats.knifeDelay;
     window.Workshop?.wear(progression, "knife", .2);
     player.knifeFlash = window.Workshop ? .25 : .16;
+    window.GameAnimation?.trigger(player, "melee");
     const angle = playerAimAngle();
     let hit = false;
     state.enemies.forEach(enemy => {
@@ -1562,6 +1565,7 @@
     if (enemy.type === "enforcer") {
       if (distance(enemy, state.player) <= enemy.radius + state.player.radius + 10 && hasLineOfSight(enemy.x, enemy.y, state.player.x, state.player.y)) damagePlayer(enemy.damage);
       enemy.meleeFlash = .18;
+      window.GameAnimation?.trigger(enemy, "melee");
       return;
     }
     if (enemy.type === "burstTurret") {
@@ -1577,6 +1581,7 @@
   }
 
   function createEnemyBullet(enemy, angle, speed, damage, color) {
+    window.GameAnimation?.trigger(enemy, "fire");
     const damageType = enemy.damageType || window.DamageTypes.attacks[enemy.type] || "energy";
     color = window.DamageTypes.get(damageType).color;
     state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, damageType, color, lifetime: 4 });
@@ -1735,6 +1740,8 @@
 
   function update(delta) {
     if (!state.active || !state.player || !state.floorMap) return;
+    window.GameAnimation?.tick(state.player, delta);
+    for (const enemy of state.enemies) window.GameAnimation?.tick(enemy, delta);
     state.elapsed += delta;
     updatePlayer(delta);
     updateSensors(delta);
@@ -1880,7 +1887,8 @@
     context.save();
     context.translate(screenX, enemy.y);
     context.rotate(enemy.angle || 0);
-    const drawn = window.GameAssets?.sprite(context, "actors/" + enemy.type, 0, 0, enemy.radius * 3, enemy.radius * 3);
+    const drawn = window.GameAnimation?.actor(context, enemy, enemy.type, enemy.radius * 3)
+      || window.GameAssets?.sprite(context, "actors/" + enemy.type, 0, 0, enemy.radius * 3, enemy.radius * 3);
     if (!drawn) {
     context.fillStyle = enemy.hitFlash ? "#ffffff" : enemy.color;
     context.shadowBlur = enemy.boss ? 20 : 8;
@@ -1982,7 +1990,8 @@
     context.translate(player.x - state.cameraX, player.y);
     context.rotate(angle);
     if (player.dash?.remaining > 0) context.scale(1.25, .8);
-    if (!window.GameAssets?.sprite(context, "actors/player", 0, 0, 42, 42)) {
+    if (!(window.GameAnimation?.actor(context, player, "player", 42)
+      || window.GameAssets?.sprite(context, "actors/player", 0, 0, 42, 42))) {
     context.fillStyle = "#8ff7ef";
     context.shadowBlur = 14;
     context.shadowColor = "#63e4dd";
@@ -1991,7 +2000,11 @@
     context.fillRect(4, -3, 19, 6);
     }
     const family = window.Workshop?.definition(window.Workshop.equipped(progression, "smg"))?.family || "smg";
-    if (player.weapon !== "knife") window.GameAssets?.sprite(context, "weapons/" + family, 18, 0, 32, 22);
+    if (window.GameAnimation) {
+      const melee = window.Workshop?.definition(window.Workshop.equipped(progression, "knife"));
+      window.GameAnimation.weapon(context, player, family, melee?.animation || 0,
+        window.DamageTypes?.get(state.powerInventory.type || "energy").color);
+    } else if (player.weapon !== "knife") window.GameAssets?.sprite(context, "weapons/" + family, 18, 0, 32, 22);
     context.restore();
     context.shadowBlur = 0;
     if (player.knifeFlash > 0 && window.Arsenal) {

@@ -8,9 +8,9 @@ function load(ui=false){
   drawing.createRadialGradient=()=>({addColorStop(){}});
   function get(id){if(!nodes.has(id))nodes.set(id,{id,handlers:{},children:[],dataset:{},open:false,textContent:'',getContext:()=>drawing,addEventListener(type,handler){this.handlers[type]=handler;},focus(){},click(){this.clicked=true;this.handlers.click?.();},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(id);}
   const scope=vm.createContext({window:{HideoutShell:{openService(name){get('service-'+name).clicked=true;}},addEventListener(){},requestAnimationFrame(callback){frames.set(++frameId,callback);return frameId;},cancelAnimationFrame(id){frames.delete(id);}},...(ui?{document:{getElementById:get}}:{})});
-  for(const file of ['hideout-upgrades.js','shelter-location.js'])vm.runInContext(fs.readFileSync(`${__dirname}/${file}`,'utf8'),scope);
+  for(const file of ['hideout-upgrades.js','animation.js','shelter-location.js'])vm.runInContext(fs.readFileSync(`${__dirname}/${file}`,'utf8'),scope);
   function frame(time){const entry=frames.entries().next().value;assert.ok(entry);frames.delete(entry[0]);entry[1](time);}
-  return {api:scope.window.ShelterLocation,get,frames,frame};
+  return {api:scope.window.ShelterLocation,animation:scope.window.GameAnimation,get,frames,frame};
 }
 test('mini-location has five facility sites, research table and four services',()=>{
   const {api}=load();assert.equal(api.points.length,10);
@@ -40,6 +40,20 @@ test('location animation starts once, pauses on exit and never runs in hidden ta
   assert.equal(frames.size,0);api.setActive(true);api.setActive(true);assert.equal(frames.size,1);
   frame(100);assert.equal(frames.size,1);assert.match(get('shelter-prompt').textContent,/WASD/);
   api.setActive(false);assert.equal(frames.size,0);
+});
+
+test('live shelter animates only installed machines and actual ongoing research',()=>{
+  const {api,animation,frame}=load(true),calls=[];
+  animation.facility=(_ctx,id,time,level,working)=>{calls.push({id,time,level,working});return true;};
+  const progression={hideout:{generator:1},workshop:{table:1,job:{ends:Date.now()+60000}}};
+  api.refresh(progression);api.setActive(true);frame(100);frame(150);
+  assert.ok(calls.some(c=>c.id==='generator'));assert.ok(!calls.some(c=>c.id==='mill'));
+  assert.ok(calls.some(c=>c.id==='research'&&c.working));
+  progression.workshop.job.ends=Date.now()-1;calls.length=0;frame(200);
+  assert.equal(calls.find(c=>c.id==='research').working,false);
+  const time=calls.find(c=>c.id==='generator').time;
+  api.setActive(false);api.setActive(true);calls.length=0;frame(600000);
+  assert.equal(calls.find(c=>c.id==='generator').time,time,'hidden time must not jump the mechanism phase');
 });
 test('nearby equipment interaction opens its service window without affecting combat input',()=>{
   const {api,frame,get}=load(true);api.refresh({hideout:{}});api.setActive(true);frame(100);

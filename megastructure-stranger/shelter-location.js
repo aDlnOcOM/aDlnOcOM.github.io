@@ -19,15 +19,17 @@
     x=x/length*190*Math.min(delta,.05);y=y/length*190*Math.min(delta,.05);
     const blocked=(px,py)=>points.some(point=>(levels[point.id]>0||['implants','storage','equipment','exit'].includes(point.id))&&Math.abs(px-point.x)<53&&Math.abs(py-point.y)<39);
     const nx=Math.max(42,Math.min(918,player.x+x)),ny=Math.max(42,Math.min(458,player.y+y));
+    const before={x:player.x,y:player.y};
     if(!blocked(nx,player.y))player.x=nx;
     if(!blocked(player.x,ny))player.y=ny;
-    player.angle=Math.atan2(y,x);player.step=(player.step||0)+delta*12;
+    player.angle=Math.atan2(y,x);player.step=(player.step||0)+Math.hypot(player.x-before.x,player.y-before.y)*.15;
   }
   const api={points,nearest,move,unstick};window.ShelterLocation=api;
   if(typeof document==='undefined')return;
   const get=id=>document.getElementById(id),canvas=get('shelter-canvas');if(!canvas)return;
   const context=canvas.getContext('2d'),keys=new Set(),player={x:470,y:250,angle:0,step:0};
   const dialog=get('shelter-console');let active=false,frameId=null,last=0,levels={},selected=null;
+  let sceneTime=0,workshop=null;
   function close() { if(dialog.open)dialog.close(); keys.clear(); if(active)canvas.focus(); }
   function filterCards() {
     for(const card of get('hideout-facilities').children)card.hidden=card.dataset.facility!==selected;
@@ -44,7 +46,7 @@
     get('shelter-console-title').textContent=point.name;
     get('hideout-upgrade-status').textContent='';filterCards();dialog.showModal();get('shelter-console-close').focus();
   }
-  api.refresh=progression=>{levels={...window.HideoutUpgrades.normalize(progression.hideout),research:progression.workshop?.table||0};unstick(player,levels);if(dialog.open)filterCards();};
+  api.refresh=progression=>{levels={...window.HideoutUpgrades.normalize(progression.hideout),research:progression.workshop?.table||0};workshop=progression.workshop;unstick(player,levels);if(dialog.open)filterCards();};
   api.setActive=value=>{
     active=value;keys.clear();last=0;
     if(!active){if(frameId!==null)window.cancelAnimationFrame(frameId);frameId=null;close();}
@@ -68,7 +70,9 @@
       context.save();context.translate(point.x,point.y);
       context.strokeStyle=near===point?'#d8eac5':facility?.color||'#7da3a6';context.lineWidth=near===point?2:1;
       if(!built){context.setLineDash([6,5]);context.strokeRect(-40,-26,80,52);context.setLineDash([]);context.fillStyle='#708081';context.fillText('+',0,5);}
-      else if(!window.GameAssets?.sprite(context,point.id==='exit'?'door':'props/'+point.id,0,0,94,80)){
+      else if(!(window.GameAnimation?.facility(context,point.id,time+point.x*.01,facility?level:1,
+        point.id==='research'&&workshop?.job?.ends>Date.now())
+        ||window.GameAssets?.sprite(context,point.id==='exit'?'door':'props/'+point.id,0,0,94,80))){
         context.fillStyle='#050b0f';context.fillRect(-43,-26,88,59);context.fillStyle=facility?'#34464a':'#263a3b';context.fillRect(-40,-26,80,52);context.strokeRect(-40,-26,80,52);
         context.fillStyle='#0a181c';context.fillRect(-30,-17,40,30);context.fillStyle=facility?.color||'#a6cdbb';
         context.globalAlpha=.7+Math.sin(time*2+point.x)*.15;context.fillRect(-26,-13,32,3);
@@ -81,7 +85,7 @@
     }
     context.save();context.translate(player.x,player.y);context.rotate(player.angle);
     context.fillStyle='#080c0e';context.beginPath();context.ellipse(3,5,15,10,0,0,Math.PI*2);context.fill();
-    if(!window.GameAssets?.sprite(context,'actors/player',0,0,42,42+Math.sin(player.step)*2)){
+    if(!(window.GameAnimation?.actor(context,player,'player',42)||window.GameAssets?.sprite(context,'actors/player',0,0,42,42))){
       context.fillStyle='#7d9998';context.fillRect(-7,-11+Math.sin(player.step)*2,7,7);context.fillRect(-7,4-Math.sin(player.step)*2,7,7);
       context.fillStyle='#b4d8cb';context.fillRect(-7,-8,15,16);context.fillStyle='#314c50';context.fillRect(4,-5,7,10);
     }context.restore();
@@ -89,7 +93,14 @@
     if(get('shelter-prompt').textContent!==message)get('shelter-prompt').textContent=message;
     get('shelter-interact').disabled=!near;
   }
-  function frame(time){frameId=null;if(!active)return;const delta=last?(time-last)/1000:0;last=time;if(!dialog.open)move(player,keys,delta,levels);draw(time/1000);frameId=window.requestAnimationFrame(frame);}
+  function frame(time){
+    frameId=null;if(!active)return;
+    const delta=last?Math.max(0,Math.min(.05,(time-last)/1000)):0;last=time;
+    window.GameAnimation?.state(player);
+    if(!dialog.open)move(player,keys,delta,levels);
+    window.GameAnimation?.tick(player,delta);sceneTime+=delta;
+    draw(sceneTime);frameId=window.requestAnimationFrame(frame);
+  }
   canvas.addEventListener('keydown',event=>{
     if(!active||dialog.open)return;
     if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyE'].includes(event.code)){event.preventDefault();event.stopPropagation();keys.add(event.code);if(event.code==='KeyE'&&!event.repeat)interact();}
