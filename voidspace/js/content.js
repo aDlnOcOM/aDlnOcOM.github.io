@@ -90,5 +90,19 @@
     if (distance < 5000) return BIOMES[2 + (Math.sin(Math.atan2(y, x) * 2 + seed) > 0 ? 1 : 0)];
     return BIOMES[4];
   }
-  VS.Content = { CLASSES, ENEMIES, BIOMES, biomeAt, validateBlueprint, customEnemies };
+  function smoothstep(from, to, value) {
+    const t = Math.max(0, Math.min(1, (value - from) / (to - from)));
+    return t * t * (3 - 2 * t);
+  }
+  // Continuous spatial atmosphere; gameplay thresholds and ore distribution stay unchanged.
+  function biomeBlend(x, y, seed = 1) {
+    const radius = Math.hypot(x, y);
+    const belt = smoothstep(1080, 1720, radius);
+    const outer = smoothstep(2320, 3080, radius);
+    const rift = smoothstep(4500, 5500, radius);
+    const ion = smoothstep(-0.24, 0.24, Math.sin(Math.atan2(y, x) * 2 + seed));
+    const weights = [(1 - belt), belt * (1 - outer), belt * outer * (1 - rift) * (1 - ion), belt * outer * (1 - rift) * ion, belt * outer * rift];
+    return BIOMES.map((biome, i) => ({ ...biome, weight: weights[i] }));
+  }
+  VS.Content = { CLASSES, ENEMIES, BIOMES, biomeAt, biomeBlend, validateBlueprint, customEnemies };
 })();

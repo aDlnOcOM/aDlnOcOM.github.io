@@ -67,6 +67,8 @@
           : engineering && engineering.available(m) < (weapon.energy || 0) * (power > 1 ? 1.3 : 1) ? "Недостаточно энергии" : "";
       if (failure) { if (faction === "player") world.weaponWarning = failure; continue; }
       if (engineering && !engineering.request(m, weapon.energy || 0)) continue;
+      ship.weaponAnimation ||= new Map();
+      ship.weaponAnimation.set(key(m), { time: world.game.time });
       if (weapon.ammo) engineering.takeStock(weapon.ammo, count);
       if (weapon.heatCost) engineering.takeHeat(m, weapon.heatCost);
       engineering?.addHeat(m, (weapon.heat || 2) * engineering.heatMultiplier(m));
@@ -145,6 +147,7 @@
     ctx.save(); ctx.globalCompositeOperation = "lighter";
     for (const beam of world.weaponBeams || []) {
       const start = VS.Utils.worldToScreen(beam.origin, camera, viewport.width, viewport.height);
+      if (beam.ring && VS.Visuals?.effect(ctx, world.game.images, beam.colour.includes("ad") ? "emp" : "explosion", start.x, start.y, beam.radius * 2 * (1 - beam.life / 0.45), Math.min(0.45, beam.life * 1.5))) continue;
       ctx.strokeStyle = beam.colour; ctx.globalAlpha = Math.min(1, beam.life * 5); ctx.lineWidth = beam.ring ? 3 : 2;
       ctx.beginPath();
       if (beam.ring) ctx.arc(start.x, start.y, beam.radius * (1 - beam.life / 0.45), 0, Math.PI * 2);

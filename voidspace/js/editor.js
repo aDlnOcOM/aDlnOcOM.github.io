@@ -66,6 +66,7 @@
     if (erase || event.button === 2) { if (index !== -1) { const chosen = modules[index]; modules = modules.filter((m) => chosen.assembly ? m.assembly !== chosen.assembly : m !== chosen); } }
     else if (index !== -1) { status("Клетка занята. Сначала удалите блок.", true); return; }
     else {
+      if (!MODULES[$("module-type").value]) { status("Выберите модуль из каталога", true); return; }
       const cells = VS.ModuleSystem.assemblyCells({ type: $("module-type").value, gx, gy, rotation });
       if (modules.length + cells.length > 256 || cells.some((c) => Math.abs(c.gx) > 24 || Math.abs(c.gy) > 24 || modules.some((m) => c.gx === m.gx && c.gy === m.gy))) { status("Сборка выходит за границы или перекрывает блоки", true); return; }
       modules.push(...cells);
@@ -75,7 +76,21 @@
   $("module-type").replaceChildren(...Object.entries(MODULES).filter(([, d]) => !d.internal).map(([id, definition]) => { const option = document.createElement("option"); option.value = id; option.textContent = definition.name; return option; }));
   $("editor-zoom").addEventListener("click", () => { zoom = zoom === 1 ? 0.44 : 1; render(); });
   $("module-type").value = "hull";
-  $("module-type").addEventListener("change", () => { $("module-description").textContent = MODULES[$("module-type").value].description; });
+  function previewModule() {
+    const def = MODULES[$("module-type").value];
+    if (!def) return;
+    $("module-description").textContent = def.description;
+    $("editor-module-preview").innerHTML = `<span class="module-sprite">${VS.Visuals.iconMarkup(def)}</span><div><b>${def.name}</b><small>${VS.Visuals.CATEGORIES[VS.Visuals.category(def.visualType)]} · ${def.hp} прочности</small></div>`;
+  }
+  $("module-type").addEventListener("change", previewModule);
+  $("editor-module-search").addEventListener("input", () => {
+    const chosen = $("module-type").value;
+    const options = Object.entries(MODULES).filter(([type, def]) => !def.internal && VS.Visuals.matches(type, "all", $("editor-module-search").value));
+    $("module-type").replaceChildren(...options.map(([id, def]) => { const option = document.createElement("option"); option.value = id; option.textContent = def.name; return option; }));
+    if (options.some(([id]) => id === chosen)) $("module-type").value = chosen;
+    if (!options.length) { $("editor-module-preview").textContent = "Модуль не найден"; $("module-description").textContent = "Измените поисковый запрос"; }
+    else previewModule();
+  });
   $("rotate").addEventListener("click", rotate);
   window.addEventListener("keydown", (event) => { if (event.code === "KeyR" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) rotate(); });
   $("erase").addEventListener("click", () => { erase = !erase; $("erase").setAttribute("aria-pressed", String(erase)); });
@@ -119,5 +134,6 @@
   });
   const manifest = { module_frame: "assets/modules/frame.png" };
   for (const [type, definition] of Object.entries(MODULES)) manifest[`module_${type}`] = definition.sprite;
-  VS.Utils.loadImages(manifest).then((loaded) => { images = loaded; refreshList(); render(); });
+  Object.assign(manifest, VS.Visuals.MANIFEST);
+  VS.Utils.loadImages(manifest).then((loaded) => { images = VS.Visuals.prepare(loaded); refreshList(); render(); previewModule(); }).catch((error) => status(error.message, true));
 })();

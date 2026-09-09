@@ -898,6 +898,7 @@
     }
 
     drawEngineExhaust(ctx, images, time) {
+      if (VS.Visuals?.drawExhaust(ctx, images, this, time)) return;
       if (!this.thrusting) return;
       for (const module of this.modules) {
         if (!isEngine(module)) continue;
@@ -986,15 +987,16 @@
         const image = images[`module_${module.type}`];
         if (this.engineering?.nodes.get(engineKey(module))?.integrity <= 0) continue;
         const spriteRotation = module.rotation + (definition?.spriteRotation || 0);
-        Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
+        const visual = VS.Visuals?.drawCell(ctx, images, module, time, aimLocal, 1, this);
+        if (!visual) Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
         const toolActive = module.type !== "drill" || this.activeDrills.has(engineKey(module));
-        const animated = drawAnimatedModule(ctx, image, module, definition, time, aimLocal, 1, toolActive);
+        const animated = visual || drawAnimatedModule(ctx, image, module, definition, time, aimLocal, 1, toolActive);
         if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
-        if (definition.accent) {
+        if (!visual && definition.accent) {
           ctx.fillStyle = definition.accent;
           ctx.fillRect(module.gx * MODULE_SIZE - 9, module.gy * MODULE_SIZE + 11, 18, 2);
         }
-        if (definition.weapon && !definition.footprint) {
+        if (!visual && definition.weapon && !definition.footprint) {
           const centerX = module.gx * MODULE_SIZE;
           const centerY = module.gy * MODULE_SIZE;
           const forward = (module.rotation || 0) * Math.PI / 2;
@@ -1014,7 +1016,7 @@
           }
           ctx.restore();
         }
-        this.engineering?.drawModule(ctx, module, time);
+        this.engineering?.drawModule(ctx, module, time, Boolean(visual));
         if (module.type === "shield") {
           ctx.strokeStyle = "rgba(92, 232, 255, 0.3)";
           ctx.strokeRect(module.gx * MODULE_SIZE - 17, module.gy * MODULE_SIZE - 17, 34, 34);
@@ -1022,13 +1024,14 @@
         if (!definition) continue;
       }
 
-      this.engineering?.drawAssemblies(ctx, time);
+      if (!VS.Visuals?.drawAssemblies(ctx, images, this.engineering, time)) this.engineering?.drawAssemblies(ctx, time);
       if (buildMode && buildHover) {
         const definition = MODULES[buildHover.type];
         const image = images[`module_${buildHover.type}`];
         const spriteRotation = buildHover.rotation + (definition.spriteRotation || 0);
-        Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
-        const animated = drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52, false);
+        const visual = VS.Visuals?.drawCell(ctx, images, buildHover, time, aimLocal, 0.52);
+        if (!visual) Utils.drawImage(ctx, images.module_frame, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE, 0, 0.52);
+        const animated = visual || drawAnimatedModule(ctx, image, buildHover, definition, time, aimLocal, 0.52, false);
         if (!animated) drawModuleSprite(ctx, image, definition, buildHover.gx * MODULE_SIZE, buildHover.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 0.52);
         ctx.strokeStyle = buildHover.valid ? "#5ce8ff" : "#ff4f63";
         ctx.lineWidth = 1;

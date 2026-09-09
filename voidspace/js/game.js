@@ -12,6 +12,8 @@
   const COLLISION_KNOCKBACK_DIVISOR = 3;
 
   function moduleArtMarkup(definition) {
+    const visual = VS.Visuals?.iconMarkup(definition);
+    if (visual) return visual;
     const rotation = (definition.spriteRotation || 0) * 90;
     const crop = definition.spriteCrop;
     if (!crop) {
@@ -63,11 +65,14 @@
       this.saveTimer = 0;
       this.toastTimer = null;
       this.activeDockTab = "sell";
+      this.engineeringTab = "supply";
+      this.catalogState = { category: "all", query: "" };
       this.dom = this.captureDom();
       this.bindEvents();
       this.seedAsteroids();
       this.renderBuildPalette();
       this.updateHud();
+      this.syncInterface();
       requestAnimationFrame((timestamp) => this.loop(timestamp));
     }
 
@@ -77,6 +82,7 @@
         "target-name", "target-fill", "target-yield", "dock-prompt", "toast", "mission", "mission-title",
         "mission-copy", "dock-panel", "dock-content", "inventory-panel", "inventory-content", "build-panel",
         "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle", "sector-status", "engineering-status",
+        "energy-fill", "energy-value", "speed-value", "temperature-value", "generation-value",
       ];
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
@@ -88,6 +94,9 @@
       const height = Math.max(1, Math.round(bounds.height * pixelRatio));
       if (this.canvas.width !== width) this.canvas.width = width;
       if (this.canvas.height !== height) this.canvas.height = height;
+      // Keep square modules square on ultrawide and non-16:9 displays.
+      this.viewport.height = 540;
+      this.viewport.width = 540 * width / height;
       this.renderScale.x = width / this.viewport.width;
       this.renderScale.y = height / this.viewport.height;
       this.configureRenderer();
@@ -100,6 +109,16 @@
     }
 
     bindEvents() {
+      document.getElementById("hud-build")?.addEventListener("click", () => { if (this.started && !this.paused) this.toggleBuild(!this.buildMode); });
+      document.getElementById("hud-inventory")?.addEventListener("click", () => { if (this.started && !this.buildMode) this.toggleInventory(); });
+      document.getElementById("hud-pause")?.addEventListener("click", () => { if (this.started) { if (this.buildMode) this.toggleBuild(false); this.togglePause(true); } });
+      this.dom["dock-prompt"].addEventListener("click", () => { if (!this.paused && !this.buildMode) this.openDock(); });
+      const category = document.getElementById("build-category");
+      if (category && VS.Visuals) {
+        category.innerHTML = Object.entries(VS.Visuals.CATEGORIES).map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+        category.addEventListener("change", () => this.renderBuildPalette());
+        document.getElementById("build-search").addEventListener("input", () => this.renderBuildPalette());
+      }
       window.addEventListener("storage", (event) => { if (event.key === "voidspace-enemies-v1") this.expedition.reloadTemplates(); });
       this.dom["inertia-toggle"].addEventListener("click", () => {
         if (!this.ship.canStabilize()) return;
@@ -134,6 +153,7 @@
       document.getElementById("start-button").addEventListener("click", () => {
         this.started = true;
         this.dom["start-screen"].classList.add("hidden");
+        this.syncInterface();
         if (this.ship.hp <= 0) { this.onDeath(); return; }
         this.notify("Протокол добычи активирован");
       });
@@ -150,15 +170,21 @@
       document.getElementById("delete-module").addEventListener("click", () => this.toggleDeleteMode());
       document.getElementById("overclock-module")?.addEventListener("click", () => this.toggleModuleOverclock());
       document.getElementById("heat-view")?.addEventListener("click", () => { this.ship.heatView = !this.ship.heatView; document.getElementById("heat-view").setAttribute("aria-pressed", String(this.ship.heatView)); });
-      document.getElementById("mission-toggle").addEventListener("click", () => this.dom.mission.classList.toggle("collapsed"));
+      document.getElementById("mission-toggle").addEventListener("click", (event) => {
+        const collapsed = this.dom.mission.classList.toggle("collapsed");
+        event.currentTarget.setAttribute("aria-expanded", String(!collapsed));
+        event.currentTarget.setAttribute("aria-label", collapsed ? "Развернуть задачу" : "Свернуть задачу");
+        event.currentTarget.textContent = collapsed ? "+" : "−";
+      });
 
       document.querySelectorAll(".close-panel").forEach((button) => {
         button.addEventListener("click", () => this.closePanel(button.dataset.close));
       });
       document.querySelectorAll(".tab").forEach((button) => {
         button.addEventListener("click", () => {
-          document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
+          document.querySelectorAll(".tab").forEach((tab) => { tab.classList.remove("active"); tab.removeAttribute("aria-current"); });
           button.classList.add("active");
+          button.setAttribute("aria-current", "page");
           this.activeDockTab = button.dataset.tab;
           this.renderDockContent();
         });
@@ -177,7 +203,17 @@
     }
 
     onKeyDown(event) {
-      if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
+      if (event.code === "Tab") {
+        const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
+        if (modal) {
+          const controls = [...modal.querySelectorAll('button:not(:disabled), a[href], input, select')].filter((element) => element.getClientRects().length);
+          const first = controls[0], last = controls[controls.length - 1];
+          if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+        }
+        return;
+      }
+      if (event.code !== "Escape" && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
       if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX", "KeyO"].includes(event.code)) return;
       if (this.buildMode && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
@@ -497,6 +533,7 @@
     }
 
     drawCoordinates() {
+      if (this.dom["speed-value"]) return;
       this.ctx.save();
       this.ctx.fillStyle = "rgba(83, 132, 151, 0.55)";
       this.ctx.font = "14px 'Segoe UI', Arial, sans-serif";
@@ -509,6 +546,8 @@
       if (!this.started || this.ship.hp <= 0) return;
       if (force && this.expedition.enemies.some((enemy) => !enemy.dead && Utils.distance(enemy.ship, this.ship) < 900) && !this.expedition.safeAt(this.ship)) { this.notify("Строительство недоступно во время боя", true); return; }
       this.buildMode = force;
+      document.getElementById("game-shell")?.classList.toggle("building", force);
+      document.getElementById("hud-build")?.setAttribute("aria-pressed", String(force));
       this.deleteMode = false;
       this.dom["build-panel"].classList.toggle("hidden", !force);
       document.getElementById("delete-module").classList.remove("active");
@@ -525,6 +564,7 @@
         this.buildHover = null;
         this.save();
       }
+      this.updateHud();
     }
 
     updateBuildHover() {
@@ -584,8 +624,11 @@
     }
 
     renderBuildPalette() {
+      const category = document.getElementById("build-category")?.value || "all";
+      const query = document.getElementById("build-search")?.value || "";
       this.dom["build-modules"].innerHTML = Object.entries(MODULES)
         .filter(([type, definition]) => type !== "core" && !definition.internal && (!definition.shipClass || definition.shipClass === this.ship.shipClass))
+        .filter(([type]) => !VS.Visuals || VS.Visuals.matches(type, category, query))
         .map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
           return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
@@ -593,7 +636,7 @@
             <span><b>${definition.name}</b><small>${VS.EngineeringData ? VS.EngineeringData.consumption(definition) : definition.description}</small></span>
             <strong>${definition.cost} ¤</strong>
           </button>`;
-        }).join("");
+        }).join("") || '<div class="empty-state">Модули не найдены.<br>Измените запрос или категорию.</div>';
       this.dom["build-modules"].querySelectorAll("[data-module]").forEach((button) => {
         button.addEventListener("click", () => {
           this.buildSelected = button.dataset.module;
@@ -610,6 +653,7 @@
       this.paused = true;
       this.dom["dock-panel"].classList.remove("hidden");
       this.renderDockContent();
+      this.syncInterface("dock-panel");
     }
 
     renderDockContent() {
@@ -635,11 +679,26 @@
       container.innerHTML = `<div class="terminal-summary"><p>Покупка чертежа открывает модуль навсегда.<br>Установка выполняется в режиме строительства.</p><strong>${Utils.formatNumber(this.ship.credits)} ¤</strong></div>
         <div class="shop-grid">${Object.entries(MODULES).filter(([type, definition]) => !definition.internal && !definition.shipClass && !["core", "laser", "thruster", "hull", "cargo"].includes(type)).map(([type, definition]) => {
           const unlocked = this.ship.unlocked.has(type);
-          return `<div class="shop-card"><span class="module-sprite"><img src="assets/modules/frame.png" alt="">${moduleArtMarkup(definition)}</span><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
+          return `<div class="shop-card" data-catalog-module="${type}"><span class="module-sprite">${moduleArtMarkup(definition)}</span><div><b>${definition.name}</b><small>${definition.description}</small></div><button class="action-button" data-unlock="${type}" ${unlocked || this.ship.credits < definition.unlock ? "disabled" : ""}>${unlocked ? "ОТКРЫТО" : `${definition.unlock} ¤`}</button></div>`;
         }).join("")}</div>`;
       container.querySelectorAll("[data-unlock]").forEach((button) => {
         button.addEventListener("click", () => this.unlockModule(button.dataset.unlock));
       });
+      if (VS.Visuals) {
+        const toolbar = document.createElement("div"); toolbar.className = "catalog-toolbar";
+        toolbar.innerHTML = `<label class="search-field"><span>⌕</span><input type="search" aria-label="Поиск чертежа" placeholder="Поиск чертежа…"></label><select aria-label="Категория чертежей">${Object.entries(VS.Visuals.CATEGORIES).map(([id, name]) => `<option value="${id}">${name}</option>`).join("")}</select>`;
+        container.querySelector(".shop-grid").before(toolbar);
+        const search = toolbar.querySelector("input"), category = toolbar.querySelector("select");
+        search.value = this.catalogState.query; category.value = this.catalogState.category;
+        const empty = document.createElement("div"); empty.className = "empty-state hidden"; empty.textContent = "Ничего не найдено. Измените запрос или категорию."; container.append(empty);
+        const filter = () => {
+          this.catalogState = { query: search.value, category: category.value };
+          let count = 0;
+          container.querySelectorAll("[data-catalog-module]").forEach((card) => { const visible = VS.Visuals.matches(card.dataset.catalogModule, category.value, search.value); card.classList.toggle("hidden", !visible); if (visible) count++; });
+          empty.classList.toggle("hidden", count > 0);
+        };
+        search.addEventListener("input", filter); category.addEventListener("change", filter); filter();
+      }
     }
 
     renderServiceTab(container) {
@@ -709,6 +768,22 @@
         this.ship.credits -= def.researchCost; this.ship.research.add(type); this.renderEngineeringTab(container); this.updateHud(); this.save();
       }));
       container.querySelectorAll("[data-factory]").forEach((select) => select.addEventListener("change", () => { engineering.nodes.get(select.dataset.factory).recipe = select.value; this.save(); }));
+      const sections = ["supply", "factory", "research"];
+      [...container.querySelectorAll("h3")].forEach((heading, i) => {
+        const section = document.createElement("section"); section.className = "engineering-section"; section.dataset.engineeringSection = sections[i]; heading.before(section);
+        let element = heading;
+        while (element) { const next = element.nextElementSibling; section.append(element); if (next?.tagName === "H3") break; element = next; }
+      });
+      const navigation = document.createElement("nav"); navigation.className = "engineering-nav"; navigation.setAttribute("aria-label", "Разделы инженерии");
+      navigation.innerHTML = sections.map((id, i) => `<button data-engineering-tab="${id}" aria-pressed="false">${["Снабжение", "Производство", "Исследования"][i]}</button>`).join("");
+      container.querySelector(".terminal-summary").after(navigation);
+      const switchSection = (id) => {
+        this.engineeringTab = id;
+        container.querySelectorAll("[data-engineering-section]").forEach((section) => section.classList.toggle("hidden", section.dataset.engineeringSection !== id));
+        navigation.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.engineeringTab === id)));
+      };
+      navigation.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => switchSection(button.dataset.engineeringTab)));
+      switchSection(this.engineeringTab);
     }
 
     sellAll() {
@@ -743,6 +818,7 @@
         this.paused = true;
         this.renderInventory();
         panel.classList.remove("hidden");
+        this.syncInterface("inventory-panel");
       } else this.closePanel("inventory-panel");
     }
 
@@ -756,17 +832,30 @@
       const panel = this.dom[id];
       if (panel) panel.classList.add("hidden");
       if (!silent && this.dom["dock-panel"].classList.contains("hidden") && this.dom["inventory-panel"].classList.contains("hidden") && this.dom["pause-panel"].classList.contains("hidden")) this.paused = false;
+      this.syncInterface();
+    }
+
+    syncInterface(focusPanel = null) {
+      const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
+      for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel"]) {
+        const element = document.querySelector(selector); if (element) element.inert = Boolean(modal);
+      }
+      if (modal) { this.input.clear(); this.mouse.down = false; }
+      if (focusPanel) this.dom[focusPanel]?.querySelector("button:not(:disabled)")?.focus();
     }
 
     togglePause(force) {
       if (this.ship.hp <= 0) return;
       this.paused = force;
       this.dom["pause-panel"].classList.toggle("hidden", !force);
+      this.syncInterface(force ? "pause-panel" : null);
+      if (force) this.save();
     }
 
     onDeath() {
       this.paused = true;
       this.dom["death-panel"].classList.remove("hidden");
+      this.syncInterface("death-panel");
       this.save();
     }
 
@@ -785,6 +874,7 @@
       this.camera.y = this.ship.y;
       this.paused = false;
       this.dom["death-panel"].classList.add("hidden");
+      this.syncInterface();
       this.notify("Резервная капсула развёрнута");
       this.save();
     }
@@ -792,16 +882,25 @@
     updateHud() {
       if (this.ship.engineering && this.dom["engineering-status"]) {
         const stats = this.ship.engineering.summary();
-        this.dom["engineering-status"].textContent = `Тепло ${Math.round(stats.temperature)}° · Энергия ${Math.floor(stats.stored)}/${Math.floor(stats.capacity)} (+${stats.generation.toFixed(0)}/с) · Запас ${this.ship.engineering.stockUsed()}\n${this.expedition.weaponWarning || this.ship.engineering.warning}`;
+        this.dom["engineering-status"].textContent = this.expedition.weaponWarning || this.ship.engineering.warning || "";
+        if (this.dom["energy-fill"]) {
+          this.dom["energy-fill"].style.width = `${Utils.clamp(stats.stored / Math.max(1, stats.capacity), 0, 1) * 100}%`;
+          this.dom["energy-value"].textContent = `${Math.floor(stats.stored)}/${Math.floor(stats.capacity)}`;
+          this.dom["temperature-value"].textContent = `${Math.round(stats.temperature)}°`;
+          this.dom["temperature-value"].style.color = stats.temperature > 220 ? "var(--red)" : "var(--text)";
+          this.dom["generation-value"].textContent = `+${stats.generation.toFixed(0)}/с`;
+          this.dom["speed-value"].textContent = `${Math.hypot(this.ship.vx, this.ship.vy).toFixed(0)} м/с`;
+        }
       }
       const stabilizationButton = this.dom["inertia-toggle"];
-      this.dom["sector-status"].textContent = `${this.expedition.biome().name} · Угроза ${this.expedition.biome().danger ? this.expedition.difficulty() : 0}/8 · ${VS.Content.CLASSES[this.ship.shipClass].name}`;
+      this.dom["sector-status"].textContent = `${this.expedition.biome().name} / Угроза ${this.expedition.biome().danger ? this.expedition.difficulty() : 0} из 8`;
+      this.dom["sector-status"].title = VS.Content.CLASSES[this.ship.shipClass].name;
       const available = this.ship.canStabilize();
       const enabled = available && this.ship.inertiaDampingEnabled;
       stabilizationButton.disabled = !available;
       stabilizationButton.setAttribute("aria-pressed", String(enabled));
-      stabilizationButton.textContent = `Гашение инерции · ${available ? (enabled ? "ВКЛ" : "ВЫКЛ") :
-        this.ship.modules.some((module) => module.type === "computer") ? "нет энергии" : "нужен модуль"}`;
+      stabilizationButton.textContent = `Инерция · ${available ? (enabled ? "гашение ВКЛ" : "свободный ход") :
+        this.ship.modules.some((module) => module.type === "computer") ? "нет энергии" : "нужен компьютер"}`;
       stabilizationButton.title = "После отпускания W/S, A/D и Q/E компьютер гасит движение доступными двигателями, РСМ и гиродином";
       const hpRatio = Utils.clamp(this.ship.hp / this.ship.stats.maxHp, 0, 1);
       const cargoRatio = Utils.clamp(this.ship.inventory.used / Math.max(1, this.ship.stats.cargo), 0, 1);

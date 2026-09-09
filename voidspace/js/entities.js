@@ -172,6 +172,9 @@
     draw(ctx, camera, viewport, images) {
       const screen = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       const alpha = Utils.clamp(this.life / this.maxLife, 0, 1);
+      const progress = 1 - alpha;
+      const size = this.size * (this.kind === "debris" ? 1 + progress * 0.2 : 1.5 + progress * 1.8);
+      if (VS.Visuals?.effect(ctx, images, this.kind === "debris" ? "debris" : "spark", screen.x, screen.y, size, alpha * alpha, this.rotation)) return;
       const image = images[this.kind === "debris" ? "particle_debris" : "particle_spark"];
       Utils.drawImage(ctx, image, screen.x, screen.y, this.size, this.size, this.rotation, alpha);
     }

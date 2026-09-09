@@ -6,8 +6,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   for (const [type, definition] of Object.entries(VS.ORES)) manifest['ore_' + type] = definition.sprite;
   for (const type of ['iron', 'chondrite', 'troilite', 'carbon', 'pallasite']) manifest['meteor_' + type] = 'assets/ores/meteor_' + type + '.png';
   for (const type of ['spark', 'debris']) manifest['particle_' + type] = 'assets/particles/' + type + '.png';
-  const images = await VS.Utils.loadImages(manifest);
+  Object.assign(manifest, VS.Visuals.MANIFEST);
+  const images = VS.Visuals.prepare(await VS.Utils.loadImages(manifest));
   const game = new VS.Game(document.getElementById('game'), images, { ship: { credits: 4000 }, expedition: { seed: 12 } });
+  const preview = document.getElementById('fleet-preview').getContext('2d'); preview.translate(260, 170); preview.rotate(-Math.PI / 5); preview.scale(3.2, 3.2);
+  for (const module of VS.Content.CLASSES.miner.modules) VS.Visuals.drawCell(preview, images, module);
   game.save = () => {};
   document.getElementById('loading').remove();
   document.getElementById('reset-button').disabled = true;
@@ -22,6 +25,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   const tools = document.createElement('div');
   tools.style.cssText = 'position:fixed;top:0;left:35%;z-index:9999;display:flex;flex-wrap:wrap;max-width:60%;gap:6px;background:#10303e;padding:6px;font-size:14px';
+  const compact = document.createElement('button'); compact.textContent = 'Скрыть стенд';
+  compact.onclick = () => { tools.hidden = !tools.hidden; tools.style.display = tools.hidden ? 'none' : 'flex'; compact.textContent = tools.hidden ? 'Показать стенд' : 'Скрыть стенд'; };
+  compact.style.cssText = 'position:fixed;right:4px;top:4px;z-index:10000;font-size:14px'; document.body.append(compact);
   for (const [name, action] of [
     ['База', () => { game.ship.x = -175; game.ship.y = 0; }],
     ['Бой', () => { game.ship.x = 1900; game.ship.y = 800; game.ship.angle = 0; game.expedition.enemies = [new VS.Combat.Enemy(VS.Content.ENEMIES[0], 2150, 800, 1)]; }],
@@ -29,6 +35,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     ['Инженерный стенд', engineeringRig],
     ['Терминал', () => game.openDock()],
     ['Строить', () => game.toggleBuild(!game.buildMode)],
+    ['Граница биома', () => { game.ship.x = 1370; game.ship.y = 0; game.ship.vx = 35; game.ship.inertiaDampingEnabled = false; game.expedition.enemies = []; game.paused = false; }],
+    ['Дальний биом', () => { game.ship.x = 4950; game.ship.y = 0; game.ship.vx = 20; game.ship.inertiaDampingEnabled = false; game.expedition.enemies = []; game.paused = false; }],
+    ['Выхлоп и турели', () => {
+      engineeringRig(); game.ship.x = 2100; game.ship.y = 1400; game.ship.angle = 0;
+      game.ship.modules.push({type:'booster',gx:-3,gy:1,rotation:0}); game.ship.recalculateStats();
+      game.input.add('KeyW'); game.expedition.enemies = []; game.paused = false;
+    }],
     ['Стенд разрушения', () => {
       game.ship = new VS.Ship({ x: -250, modules: [{ type: 'core', gx: 0, gy: 0, rotation: 0 }, { type: 'beam', gx: 1, gy: 0, rotation: 0 }, { type: 'cargo', gx: 2, gy: 0, rotation: 0 }, { type: 'thruster', gx: 3, gy: 0, rotation: 2 }], credits: 4000 });
       game.station.restore(); game.renderBuildPalette();

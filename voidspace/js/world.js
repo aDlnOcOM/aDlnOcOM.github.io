@@ -333,15 +333,31 @@
     }
     drawBackground(ctx, time) {
       const { camera, viewport } = this.game;
-      const biome = this.biome(camera);
+      const layers = Content.biomeBlend(camera.x, camera.y, this.seed);
       ctx.save();
       ctx.globalCompositeOperation = "screen";
-      for (let i = 0; i < 3; i++) {
-        const x = viewport.width * (0.2 + i * 0.32) + Math.sin(time * 0.04 + i) * 40;
-        const y = viewport.height * (0.3 + i * 0.13);
-        const haze = ctx.createRadialGradient(x, y, 5, x, y, 340);
-        haze.addColorStop(0, biome.colour + "65"); haze.addColorStop(1, biome.colour + "00");
-        ctx.fillStyle = haze; ctx.fillRect(0, 0, viewport.width, viewport.height);
+      for (const [index, biome] of layers.entries()) {
+        if (biome.weight < 0.001) continue;
+        ctx.globalAlpha = biome.weight;
+        for (let i = 0; i < 3; i++) {
+          const drift = index * 1.7 + i * 2.3;
+          const x = viewport.width * (0.12 + i * 0.38) + Math.sin(time * 0.025 + camera.x / 3400 + drift) * 140;
+          const y = viewport.height * (0.35 + Math.sin(drift + camera.y / 2800) * 0.22);
+          const radius = 230 + index * 35 + i * 30;
+          const haze = ctx.createRadialGradient(x, y, 0, x, y, radius);
+          haze.addColorStop(0, biome.colour + "b0"); haze.addColorStop(0.45, biome.colour + "55"); haze.addColorStop(1, biome.colour + "00");
+          ctx.fillStyle = haze; ctx.fillRect(0, 0, viewport.width, viewport.height);
+        }
+        // Anchored world-space dust: no teleporting particles at biome boundaries.
+        const spacing = 165, ox = Math.floor(camera.x / spacing), oy = Math.floor(camera.y / spacing);
+        for (let gx = ox - 4; gx <= ox + 4; gx++) for (let gy = oy - 3; gy <= oy + 3; gy++) {
+          const noise = Utils.hashNoise(gx + index * 70, gy);
+          if (noise > 0.18 + index * 0.11) continue;
+          const p = Utils.worldToScreen({ x: gx * spacing + noise * 110, y: gy * spacing + Utils.hashNoise(gy, gx) * 130 }, camera, viewport.width, viewport.height);
+          ctx.fillStyle = ["#77bace", "#cba675", "#b2eaff", "#b89aee", "#e6a1b6"][index];
+          ctx.globalAlpha = biome.weight * (0.08 + noise * 0.35);
+          ctx.beginPath(); ctx.ellipse(p.x, p.y, index === 2 ? 1.3 : 0.7, index === 2 ? 2.6 : 0.7, noise * 6, 0, Math.PI * 2); ctx.fill();
+        }
       }
       ctx.restore();
     }
@@ -381,11 +397,16 @@
       ctx.save(); ctx.globalCompositeOperation = "lighter";
       for (const bullet of this.bullets) {
         const p = Utils.worldToScreen(bullet, camera, viewport.width, viewport.height);
+        const kind = bullet.weapon?.kind;
+        const angle = Math.atan2(bullet.vy, bullet.vx), length = kind === "thermal" ? 52 : kind === "missile" ? 20 : 28;
+        if (VS.Visuals?.effect(ctx, images, kind === "ballistic" ? "tracer" : kind === "thermal" ? "thermal" : "bolt", p.x - Math.cos(angle) * length * 0.35, p.y - Math.sin(angle) * length * 0.35, length, 0.85, angle, kind === "thermal" ? 25 : 12)) continue;
         ctx.strokeStyle = bullet.colour; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - bullet.vx * 0.025, p.y - bullet.vy * 0.025); ctx.stroke();
       }
       for (const effect of this.effects) {
         const p = Utils.worldToScreen(effect, camera, viewport.width, viewport.height);
+        const life = Utils.clamp(effect.life / effect.maxLife, 0, 1);
+        if (VS.Visuals?.effect(ctx, images, effect.colour?.startsWith("#ff") ? "explosion" : "ion_explosion", p.x, p.y, effect.size * (3 + (1 - life) * 5), life * life * 0.65, effect.vx)) continue;
         ctx.globalAlpha = Utils.clamp(effect.life / effect.maxLife, 0, 1);
         ctx.fillStyle = effect.colour; ctx.beginPath(); ctx.arc(p.x, p.y, effect.size, 0, Math.PI * 2); ctx.fill();
       }
@@ -395,10 +416,16 @@
     }
     drawRadar(ctx, ship) {
       const { viewport } = this.game;
+      if (viewport.width < 590) return;
       const x = viewport.width - 92, y = viewport.height - 145, radius = 65;
       const range = 2500 + ship.modules.reduce((sum, m) => sum + (MODULES[m.type].radar || 0), 0);
       ctx.save(); ctx.fillStyle = "rgba(5,14,24,0.85)"; ctx.strokeStyle = "#31576b";
       ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.strokeStyle = "#36595680"; ctx.setLineDash([2, 5]);
+      ctx.beginPath(); ctx.arc(x, y, radius / 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      const sweep = (this.game.time || 0) * 0.45;
+      ctx.strokeStyle = "#9ce7dc45"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(sweep) * radius, y + Math.sin(sweep) * radius); ctx.stroke();
+      ctx.strokeStyle = "#29414e";
       ctx.beginPath(); ctx.moveTo(x - radius, y); ctx.lineTo(x + radius, y); ctx.moveTo(x, y - radius); ctx.lineTo(x, y + radius); ctx.stroke();
       for (const object of [...this.friendlyStations().map((s) => ({ ...s, friendly: true })), ...this.stations.filter((s) => s.hostile && !this.defeated.has(s.id)), ...this.enemies.filter((e) => !e.stationId).map((e) => e.ship)]) {
         const dx = object.x - ship.x, dy = object.y - ship.y;

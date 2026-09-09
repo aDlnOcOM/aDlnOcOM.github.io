@@ -159,6 +159,10 @@
     }
 
     drawModule(ctx, images, type, x, y, size = 30) {
+      if (images.visualBodies) {
+        ctx.save(); ctx.translate(x, y); ctx.scale(size / 30, size / 30);
+        VS.Visuals.drawCell(ctx, images, { type, gx: 0, gy: 0, rotation: 0 }); ctx.restore(); return;
+      }
       const definition = VS.ModuleSystem.MODULES[type];
       const image = images[`module_${type}`];
       Utils.drawImage(ctx, images.module_frame, x, y, size, size);
@@ -208,6 +212,7 @@
     }
 
     drawCommandCapsule(ctx, images) {
+      if (images.visualBodies) { this.drawModule(ctx, images, "core", 0, 0, 70); return; }
       // Use the detailed 256px armour, not an enlarged 41×37 cockpit crop.
       this.drawModule(ctx, images, "cargo", 0, 0, 70);
       for (const [radius, colour] of [[26, "#080f19"], [24, "#7e90a0"], [22, "#253d54"], [19, "#101e31"], [16, "#468299"]]) {

@@ -288,12 +288,12 @@
       }
       this.updateHull();
     }
-    drawModule(ctx, m, time) {
+    drawModule(ctx, m, time, textured = false) {
       const def = MODULES[m.type], state = this.nodes.get(key(m));
       if (!state) return;
       const x = m.gx * 30, y = m.gy * 30;
       ctx.save(); ctx.translate(x, y);
-      if (def.glyph && def.glyph !== "weapon") {
+      if (!textured && def.glyph && def.glyph !== "weapon") {
         if (!["section", "armor"].includes(def.glyph)) { ctx.fillStyle = "#0b1925db"; ctx.fillRect(-10, -10, 20, 20); }
         ctx.strokeStyle = "#6f91a8"; ctx.lineWidth = 1.5;
         if (def.glyph === "pipe" || def.glyph === "bus") {
@@ -326,7 +326,7 @@
         ctx.fillStyle = state.temperature > 220 ? `rgba(255,78,36,${clamp((state.temperature - 180) / 650, 0.1, 0.65)})` : "rgba(65,170,235,0.18)";
         ctx.fillRect(-14, -14, 28, 28);
       }
-      if (state.temperature > 300) {
+      if (!textured && state.temperature > 300) {
         ctx.fillStyle = "#ffb548";
         ctx.beginPath(); ctx.moveTo(-5, 8); ctx.lineTo(Math.sin(time * 15 + x) * 4, -15); ctx.lineTo(6, 8); ctx.closePath(); ctx.fill();
       }

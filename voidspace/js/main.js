@@ -66,9 +66,16 @@
       }
     } catch { /* Local file mode can still use the built-in and browser-saved enemies. */ }
     const canvas = document.getElementById("game");
-    const images = await VS.Utils.loadImages(manifest);
     try {
+      Object.assign(manifest, VS.Visuals.MANIFEST);
+      const images = VS.Visuals.prepare(await VS.Utils.loadImages(manifest));
       window.voidspaceGame = new VS.Game(canvas, images, loadSave());
+      const preview = document.getElementById("fleet-preview");
+      if (preview) {
+        const ctx = preview.getContext("2d");
+        ctx.translate(260, 170); ctx.rotate(-Math.PI / 5); ctx.scale(3.2, 3.2);
+        for (const m of VS.Content.CLASSES.miner.modules) VS.Visuals.drawCell(ctx, images, m);
+      }
     } catch (error) {
       document.getElementById("loading").textContent = "Не удалось запустить игру. Перезагрузите страницу; сохранение не удалено.";
       console.error("VOIDSPACE startup failed", error);
