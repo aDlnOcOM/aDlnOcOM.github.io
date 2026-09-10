@@ -16,6 +16,7 @@ export function startNewCase(_app, seed, difficultyKey, caseKind = "auto") {
   saveCase();
   closeDialog(dom.newCaseDialog);
   renderCurrentView();
+  dom.workspace.scrollTop = 0;
   toast(`Дело ${caseData.number} принято. Материалы загружены.`);
   setStatus(`Открыто дело ${caseData.number}`);
 }
@@ -27,6 +28,7 @@ export function openNewCaseDialog(_app) {
   const { showDialog } = _app;
   document.querySelector("#case-seed").value = randomCaseCode();
   _app.updateCasePreview();
+  document.querySelector("#replace-case-note").hidden = !_app.caseData;
   showDialog(dom.newCaseDialog);
 }
 
@@ -101,6 +103,7 @@ export function handleClick(_app, event) {
   if (target.dataset.archiveFilter) {
     _app.archiveFilter = archiveFilter = target.dataset.archiveFilter;
     renderArchive();
+    document.querySelector(`[data-archive-filter="${archiveFilter}"]`)?.focus({ preventScroll: true });
   }
   if (target.dataset.taskId) {
     const running = Object.values(state.tasks).some((task) => task.status === "running");
@@ -125,12 +128,14 @@ export function handleClick(_app, event) {
     state.computer.opened = target.dataset.mailId;
     saveCase();
     renderComputer();
+    if (window.matchMedia("(max-width: 800px)").matches) document.querySelector(".mail-reader")?.scrollIntoView({ block: "start" });
   }
   if (target.dataset.fileId) {
     state.computer.opened = target.dataset.fileId;
     state.computer.toolOutput = "";
     saveCase();
     renderComputer();
+    if (window.matchMedia("(max-width: 800px)").matches) document.querySelector(".file-preview")?.scrollIntoView({ block: "start" });
   }
   if (target.dataset.computerTool) {
     runComputerTool(target.dataset.computerTool);
@@ -164,6 +169,7 @@ export function handleClick(_app, event) {
     updateChrome();
     handleTutorialEvent("board-add");
   }
+  if (target.dataset.action === "open-board-card") _app.openBoardCard();
   if (target.dataset.action === "open-board-note") openBoardNoteDialog();
   if (target.dataset.action === "delete-board-note" && state.boardSelected.length === 1) {
     const id = state.boardSelected[0];
@@ -317,6 +323,9 @@ export function handleSubmit(_app, event) {
     const evidenceCount = formData.getAll("evidence").length;
     if (evidenceCount < 3 || evidenceCount > 5) {
       toast("Выберите от трёх до пяти материалов для доказательной цепочки.", true);
+      const counter = document.querySelector("#report-selection-status");
+      counter?.classList.add("is-invalid");
+      counter?.scrollIntoView({ block: "center" });
       return;
     }
     state.report = evaluateReport(formData);
@@ -348,12 +357,11 @@ export function handleKeyboard(_app, event) {
   if (!typing && /^[1-9]$/.test(event.key) && caseData && !document.querySelector("dialog[open]")) {
     navigate(VIEW_ORDER[Number(event.key) - 1]);
   }
-  if (!typing && event.key.toLowerCase() === "n") {
-    document.querySelector(".notebook")?.classList.toggle("is-open");
-    if (document.querySelector(".notebook")?.classList.contains("is-open")) dom.notes.focus();
+  if (!typing && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    _app.toggleNotebook();
   }
-  if (!typing && event.key === "?") showDialog(dom.helpDialog);
-  if (event.key === "Escape") document.querySelector(".notebook")?.classList.remove("is-open");
+  if (!typing && event.key === "?" && !document.querySelector("dialog[open]")) showDialog(dom.helpDialog);
 }
 
 
@@ -413,6 +421,7 @@ export function init(_app) {
   const { loadCase, setStatus, showDialog, closeDialog, saveInvestigationDraft, renderCurrentView, initNotebook, applySettings, saveSettings, handleInterfaceSound, openNewCaseDialog, handleClick, handleSubmit, handleKeyboard, tick } = _app;
   applySettings();
   initNotebook();
+  _app.initExperience();
   document.addEventListener("click", handleClick);
   document.addEventListener("pointerdown", handleInterfaceSound, { passive: true });
   document.addEventListener("submit", handleSubmit);

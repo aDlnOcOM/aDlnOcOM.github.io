@@ -16,7 +16,7 @@ export function renderComputer(_app) {
   dom.workspace.innerHTML = `
     <div class="view view-wide computer-view">
       <header class="view-header">
-        <div><span class="eyebrow">АРМ следователя / изолированный контур</span><h2>Рабочий компьютер</h2><p>Локальные копии, образы и инструменты анализа. Система не подсказывает, какая находка важна.</p></div>
+        <div><span class="eyebrow">Письма, файлы и цифровые следы</span><h2>Рабочий компьютер</h2><p>Выберите программу, изучите копии документов и сохраните полезные находки в материалы дела.</p></div>
         <div class="computer-clock"><span id="computer-clock">${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span><small>ТО-OS / READ ONLY</small></div>
       </header>
       <section class="computer-shell">

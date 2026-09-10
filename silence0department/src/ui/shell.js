@@ -1,6 +1,7 @@
 /** Навигация, сводка и постоянные индикаторы. Рендер не меняет игровые правила. */
 import { VIEW_ORDER } from '../data/catalog.js';
 import { escapeHtml, formatClock, formatDuration } from '../core/utils.js';
+import { nextStep, icon } from './experience.js';
 import detective from '../domain/engine.js';
 
 // Синхронизирует связанный блок интерфейса с сохранённым прогрессом.
@@ -33,7 +34,7 @@ export function updateChrome(_app) {
     <h1>${escapeHtml(caseData.title)}</h1>
   `;
   dom.sidebarBrief.innerHTML = `
-    <span class="eyebrow">Готовность версии</span>
+    <span class="eyebrow">Ход расследования</span>
       <p><strong>${progress}%</strong> · полевых материалов ${state.field.found.length}; аналитика ${solved}/${caseData.puzzles.length}.</p>
     <div class="sidebar-progress"><i style="width:${progress}%"></i></div>
   `;
@@ -43,8 +44,12 @@ export function updateChrome(_app) {
   dom.taskIndicator.hidden = !activeTask;
   dom.computerIndicator.hidden = !unreadComputer;
   updateThreatChrome();
-  document.querySelectorAll(".nav-item").forEach((button) => {
+  const more = document.querySelector('#menu-button');
+  more?.classList.toggle('is-active', !['overview', 'field', 'archive'].includes(state.view));
+  document.querySelectorAll(".nav-item, .mobile-nav [data-view]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === state.view);
+    if (button.dataset.view === state.view) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   });
 }
 
@@ -86,92 +91,29 @@ export function navigate(_app, view) {
   state.boardSelected = [];
   renderCurrentView();
   dom.workspace.scrollTop = 0;
+  dom.workspace.focus({ preventScroll: true });
   setStatus(`Открыт раздел: ${document.querySelector(`[data-view="${view}"] span:nth-child(2)`)?.textContent || view}`);
 }
 
 
 // Формирует представление из актуального состояния; данные пользователя экранируются.
 export function renderOverview(_app) {
-  const { dom, caseData, state } = _app;
-  const { availableEvidence } = _app;
-  const solved = state.solvedPuzzles.length;
+  const { dom, caseData: data, state } = _app;
+  const step = nextStep(data, state);
   const asked = Object.values(state.askedQuestions).flat().length;
-  const tasksDone = Object.values(state.tasks).filter((task) => task.status === "done").length;
-  const objectives = [
-    { done: solved >= 1, text: "Получить первую проверяемую связь" },
-    { done: asked >= 3, text: "Собрать показания для независимой проверки" },
-    { done: tasksDone >= 1, text: "Делегировать массив рутинных данных" },
+  const shortcuts = [
+    ['field', 'На месте', `${state.field.checked.length} точек обследовано`, 'Ищите следы и новые адреса'],
+    ['interviews', 'Беседы', `${asked} вопросов задано`, 'Узнайте, что скрывают люди'],
+    ['archive', 'Материалы', `${_app.availableEvidence().length} записей доступно`, 'Читайте, ищите, отмечайте'],
+    ['analysis', 'Кира на связи', 'Ваш ассистент', 'Обсудите версию и поручите проверку'],
   ];
-  dom.workspace.innerHTML = `
-    <div class="view">
-      <header class="view-header">
-        <div>
-          <span class="eyebrow">Оперативная сводка</span>
-          <h2>${escapeHtml(caseData.title)}</h2>
-          <p>${escapeHtml(caseData.circumstance)}</p>
-        </div>
-        <div class="tag-row">
-          <span class="tag tag-accent">${escapeHtml(caseData.sector)}</span>
-          <span class="tag">код ${escapeHtml(caseData.seed)}</span>
-        </div>
-      </header>
-
-      <section class="field-entry"><div><span class="eyebrow">Следующий шаг · частное расследование</span><h3>Выйдите из-за стола</h3><p>${state.field.found.length ? `Полевых материалов: ${state.field.found.length}. Продолжайте проверку источников.` : "На месте остались детали, которых нет в первичном протоколе."}</p></div><button class="button button-primary" data-view="field">Выехать на место</button></section>
-      <div class="case-lead">
-        <article class="briefing-card">
-          <span class="briefing-number">${escapeHtml(caseData.archetype.label)} / ${escapeHtml(caseData.number)}</span>
-          <blockquote>«${escapeHtml(caseData.mandateText)}»</blockquote>
-          <span class="briefing-sign">Поручение ${caseData.commissioner.gender === "female" ? "передала" : "передал"}: ${escapeHtml(caseData.commissioner.name)}, ${escapeHtml(caseData.commissioner.role)} · ${escapeHtml(caseData.commissioner.organization)}</span>
-        </article>
-        <div class="briefing-facts">
-          <div class="fact-row"><span>${escapeHtml(caseData.archetype.targetLabel)}</span><strong>${escapeHtml(caseData.victim.name)}<br>${escapeHtml(caseData.victim.role)}</strong></div>
-          <div class="fact-row"><span>Адрес</span><strong>${escapeHtml(caseData.incidentAddress)}</strong></div>
-          <div class="fact-row"><span>Окно</span><strong>${formatClock(caseData.incidentMinute - 8)}–${formatClock(caseData.incidentMinute + 9)}</strong></div>
-          <div class="fact-row"><span>Видимость</span><strong>${escapeHtml(caseData.apparentMethod)}</strong></div>
-          <div class="fact-row"><span>Маршрут</span><strong>${escapeHtml(caseData.discoveryRoute.label)}</strong></div>
-        </div>
-      </div>
-
-      <div class="stats-grid">
-        <article class="stat-card"><span>Подозреваемые</span><strong>${caseData.suspects.length}</strong><small>легенды сформированы</small></article>
-        <article class="stat-card"><span>Архив</span><strong>${availableEvidence().length}</strong><small>из ${caseData.evidence.length} записей доступно</small></article>
-        <article class="stat-card"><span>Аналитика</span><strong>${solved}/${caseData.puzzles.length}</strong><small>задач решено</small></article>
-        <article class="stat-card"><span>Допросы</span><strong>${asked}</strong><small>вопросов задано</small></article>
-      </div>
-
-      <section class="panel objective-panel">
-        <span class="micro-label">Ближайшие ориентиры</span>
-        <div class="objective-list">
-          ${objectives.map((item, index) => `
-            <div class="objective${item.done ? " is-done" : ""}">
-              <i>${item.done ? "✓" : index + 1}</i><span>${escapeHtml(item.text)}</span>
-            </div>`).join("")}
-        </div>
-      </section>
-      <section class="panel world-panel">
-        <span class="micro-label">Контекст поручения</span>
-        <div class="world-grid">
-          <div><span>Практический интерес</span><b>${escapeHtml(caseData.commissioner.interest)}</b></div>
-          <div><span>Вероятное предубеждение</span><b>${escapeHtml(caseData.commissioner.bias)}</b></div>
-          <div><span>Ограничение</span><b>${escapeHtml(caseData.commissioner.constraint)}</b></div>
-          <div><span>Основной вопрос</span><b>${escapeHtml(caseData.archetype.objective)}</b></div>
-        </div>
-      </section>
-      <section class="panel world-panel">
-        <span class="micro-label">Рабочая группа и лаборатории</span>
-        <div class="world-grid">
-          ${caseData.supportStaff.map((person) => `<div><span>${escapeHtml(person.role)}</span><b>${escapeHtml(person.name)}</b><small>${escapeHtml(person.specialty)}</small></div>`).join("")}
-        </div>
-        <p class="fine-print">Эксперты расширяют архив и выполняют отдельные проверки. Их заключения описывают метод и границы данных, но не назначают виновного.</p>
-      </section>
-      ${caseData.conflictChains.length ? `<section class="panel condition-panel">
-        <span class="micro-label">Особые развилки этого дела</span>
-        <div class="condition-grid">
-          <div><b>${caseData.conflictChains.length}</b><span>${caseData.conflictChains.length === 1 ? "реальная конфликтная цепочка может" : "реальные конфликтные цепочки могут"} объяснить ложь, не объясняя основное событие</span></div>
-          <div><b>3</b><span>слоя нужно разделить: причина, сознательная маскировка и случайное обстоятельство</span></div>
-          <div><b>1</b><span>кажущийся мотив «${escapeHtml(caseData.apparentMotive)}» конкурирует с фактическим</span></div>
-        </div>
-      </section>` : ""}
-    </div>
-  `;
+  dom.workspace.innerHTML = `<div class="view overview-view">
+    <header class="view-header"><div><span class="eyebrow">Частное расследование / ${escapeHtml(data.number)}</span><h2>${escapeHtml(data.title)}</h2><p>${escapeHtml(data.circumstance)}</p></div><span class="tag">${escapeHtml(data.sector)}</span></header>
+    <section class="next-step" aria-label="Следующий шаг"><div class="next-step-icon">${icon(step.view)}</div><div><span class="eyebrow">${state.outcome ? 'Итог дела' : 'Можно продолжить здесь'}</span><h3>${step.title}</h3><p>${step.text}</p></div><button class="button button-primary" data-view="${step.view}">${step.action} <span aria-hidden="true">↗</span></button></section>
+    <section class="case-brief panel"><div class="brief-story"><span class="eyebrow">Поручение клиента</span><blockquote>«${escapeHtml(data.mandateText)}»</blockquote><div class="client-sign"><span class="client-avatar">${escapeHtml(data.commissioner.name.charAt(0))}</span><span><b>${escapeHtml(data.commissioner.name)}</b><small>${escapeHtml(data.commissioner.role)} · ${escapeHtml(data.commissioner.organization)}</small></span></div></div><dl class="brief-facts"><div><dt>${escapeHtml(data.archetype.targetLabel)}</dt><dd>${escapeHtml(data.victim.name)}<small>${escapeHtml(data.victim.role)}</small></dd></div><div><dt>Место события</dt><dd>${escapeHtml(data.incidentAddress)}</dd></div><div><dt>Время события</dt><dd>${formatClock(data.incidentMinute - 8)}–${formatClock(data.incidentMinute + 9)}</dd></div><div><dt>Первое впечатление · требует проверки</dt><dd>${escapeHtml(data.apparentMethod)}</dd></div></dl></section>
+    <div class="section-heading"><h3>Зацепка начинается с вопроса</h3><span>Вы выбираете порядок</span></div>
+    <div class="shortcut-grid">${shortcuts.map(([view, title, count, text]) => `<button class="shortcut-card" data-view="${view}"><span class="shortcut-icon">${icon(view)}</span><strong>${title}<span aria-hidden="true">↗</span></strong><p>${text}</p><small>${count}</small></button>`).join('')}</div>
+    <details class="panel context-details"><summary>Заказчик, ограничения и рабочая группа <span>Контекст дела</span></summary><div class="world-grid"><div><span>Интерес клиента</span><b>${escapeHtml(data.commissioner.interest)}</b></div><div><span>Возможное предубеждение</span><b>${escapeHtml(data.commissioner.bias)}</b></div><div><span>Ограничения</span><b>${escapeHtml(data.commissioner.constraint)}</b></div><div><span>Главный вопрос</span><b>${escapeHtml(data.archetype.objective)}</b></div>${data.supportStaff.map(person => `<div><span>${escapeHtml(person.role)}</span><b>${escapeHtml(person.name)}</b><small>${escapeHtml(person.specialty)}</small></div>`).join('')}</div></details>
+    <p class="overview-foot">${data.profile.timed ? 'Встречная охота активна. Время идёт даже после закрытия страницы.' : 'В своём темпе. В этом деле нет ограничения по времени.'} Прогресс сохраняется автоматически. <span>Код дела: ${escapeHtml(data.seed)}</span></p>
+  </div>`;
 }

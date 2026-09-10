@@ -59,11 +59,29 @@ export function initNotebook(_app) {
   dom.notes.addEventListener("input", saveNotesSoon);
   dom.quotes.addEventListener("input", saveNotesSoon);
   document.querySelectorAll("[data-note-tab]").forEach((button) => {
+    // Вкладки связаны с панелями и доступны стрелками с клавиатуры.
+    const name = button.dataset.noteTab;
+    button.id = `note-tab-${name}`;
+    button.setAttribute("aria-controls", `${name}-page`);
+    button.tabIndex = button.classList.contains("is-active") ? 0 : -1;
+    const panel = document.querySelector(`#${name}-page`);
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", button.id);
+    button.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = [...document.querySelectorAll("[data-note-tab]")];
+      const index = tabs.indexOf(button);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].click();
+      tabs[next].focus();
+    });
     button.addEventListener("click", () => {
       document.querySelectorAll("[data-note-tab]").forEach((tab) => {
         const active = tab === button;
         tab.classList.toggle("is-active", active);
         tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
       });
       document.querySelectorAll(".notebook-page").forEach((page) => { page.hidden = true; });
       document.querySelector(`#${button.dataset.noteTab}-page`).hidden = false;

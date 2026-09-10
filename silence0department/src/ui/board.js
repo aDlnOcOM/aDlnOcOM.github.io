@@ -77,8 +77,9 @@ export function renderBoard(_app) {
   dom.workspace.innerHTML = `
     <div class="view view-wide">
       <header class="view-header">
-        <div><span class="eyebrow">Интерактивная борда</span><h2>Карта связей</h2><p>Кликните две карточки и сами определите характер связи. Удерживайте карточку ${appSettings.holdDuration / 1000} ${appSettings.holdDuration === 1000 ? "секунду" : "секунды"}, чтобы прочитать её целиком.</p></div>
+        <div><span class="eyebrow">Рабочие гипотезы</span><h2>Доска связей</h2><p>Выберите карточку и нажмите «Прочитать». Выберите две, чтобы провести связь. Карточки можно перетаскивать; удержание ${appSettings.holdDuration / 1000} с открывает быстрый просмотр.</p></div>
         <div class="view-actions">
+          <button class="button button-ghost button-small" type="button" data-action="open-board-card" ${state.boardSelected.length === 1 ? "" : "disabled"}>Прочитать</button>
           <button class="button button-ghost button-small" type="button" data-action="open-board-note">Добавить мысль</button>
           <button class="button button-ghost button-small" type="button" data-action="delete-board-note" ${canDeleteSelectedNote ? "" : "disabled"}>Убрать мысль</button>
           <button class="button button-ghost button-small" type="button" data-action="clear-board-links" ${state.boardLinks.length ? "" : "disabled"}>Очистить связи</button>
@@ -93,7 +94,7 @@ export function renderBoard(_app) {
         </div>
         <p>${entities.length} ${pluralRu(entities.length, "карточка", "карточки", "карточек")} · ${state.boardLinks.length} ${pluralRu(state.boardLinks.length, "связь", "связи", "связей")}</p>
       </div>
-      <div class="board" id="case-board">
+      <div class="board-scroll" tabindex="0" role="region" aria-label="Доска связей · прокрутка по горизонтали"><div class="board" id="case-board">
         <svg class="board-lines" id="board-lines" aria-hidden="true"></svg>
         ${entities.map((entity) => {
           const position = state.boardPositions[entity.id] || { x: 30, y: 30 };
@@ -106,7 +107,7 @@ export function renderBoard(_app) {
           </button>`;
         }).join("")}
         ${entities.length ? "" : '<div class="empty-board-hint">Добавляйте материалы из архива</div>'}
-      </div>
+      </div></div>
     </div>
   `;
   scheduleBoardLines();
@@ -270,6 +271,8 @@ export function updateBoardSelectionUi(_app) {
         ? "Выберите вторую карточку"
         : "Связь готова к фиксации";
   }
+  const read = document.querySelector('[data-action="open-board-card"]');
+  if (read) read.disabled = state.boardSelected.length !== 1;
   const connect = document.querySelector('[data-action="connect-board"]');
   if (connect) connect.disabled = state.boardSelected.length !== 2;
   const deleteNote = document.querySelector('[data-action="delete-board-note"]');
@@ -296,4 +299,15 @@ export function openBoardNoteDialog(_app) {
     </form>
   `;
   showDialog(dom.detailDialog);
+}
+
+// Доступное открытие карточки без удержания мыши или пальца.
+export function openBoardCard(_app) {
+  const id = _app.state.boardSelected.length === 1 ? _app.state.boardSelected[0] : null;
+  if (!id) return;
+  if (_app.getEvidence(id)) { _app.openEvidence(id); return; }
+  const entity = _app.boardEntity(id);
+  if (!entity) return;
+  _app.dom.detailContent.innerHTML = `<button class="modal-close" data-action="close-detail" aria-label="Закрыть">×</button><span class="eyebrow">Карточка на доске</span><h2>${escapeHtml(entity.title)}</h2><p>${escapeHtml(entity.subtitle)}</p><div class="document-sheet">${escapeHtml(entity.readingText)}</div>`;
+  _app.showDialog(_app.dom.detailDialog);
 }

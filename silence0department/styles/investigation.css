@@ -1,114 +1,85 @@
-/* Field work, private conversations and case outcomes. */
-.case-mode-note { color: var(--muted); font-size: 12px; line-height: 1.65; }
-.sidebar { overflow-y: auto; }
-#case-kind { width: 100%; padding: 12px; color: var(--cream); background: var(--ink-soft); border: 1px solid var(--line-strong); border-radius: 4px; }
-.threat-status { display: grid; gap: 7px; margin: 4px 12px 12px; padding: 13px; border: 1px solid var(--brass); background: var(--ink-soft); font-size: 11px; }
-.threat-status[hidden] { display: none; }
-.threat-status strong { font-family: var(--mono); font-size: 24px; font-variant-numeric: tabular-nums; }
-.threat-status small { color: var(--muted); line-height: 1.5; }
-.threat-status meter { width: 100%; height: 9px; accent-color: var(--brass); }
-.threat-status.is-critical { border-color: var(--red); color: var(--red); }
-.field-locations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
-.field-location { display: grid; gap: 8px; min-width: 0; padding: 17px; text-align: left; background: var(--panel); border: 1px solid var(--line); cursor: pointer; border-radius: 4px; }
-.field-location span { color: var(--brass); font-family: var(--mono); font-size: 11px; }
-.field-location b { font-family: var(--serif); font-size: 19px; font-weight: 400; }
-.field-location small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
-.field-location.is-active { border-color: var(--brass); background: var(--panel-raised); }
-.field-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 18px; align-items: start; }
-.field-scene { min-width: 0; }
-.scene-caption { padding: 18px 22px; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; }
-.scene-caption p { margin-bottom: 0; line-height: 1.75; color: var(--muted); font-family: var(--serif); font-style: italic; }
-.scene-map { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 28px 24px 52px; border: 1px solid var(--line-strong); background-color: var(--ink-soft); background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 24px 24px; box-shadow: inset 0 0 50px rgba(0,0,0,.14); }
-.scene-spot { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-content: center; min-height: 92px; padding: 12px; color: var(--cream); border: 1px solid var(--line-strong); border-radius: 3px; background: var(--panel); text-align: left; cursor: pointer; }
-.scene-spot i { grid-row: span 2; align-self: center; color: var(--brass); font-family: var(--mono); font-size: 18px; font-style: normal; }
-.scene-spot span { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
-.scene-spot small { color: var(--muted); font-size: 10px; }
-.scene-spot:hover, .scene-spot.is-active { border-color: var(--brass-light); box-shadow: 0 0 0 1px var(--brass); }
-.scene-spot.is-checked { border-color: var(--green); }
-.scene-spot.is-checked i { color: var(--green); }
-.map-door { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); color: var(--muted); font: 10px var(--mono); letter-spacing: .2em; }
-.field-inspector { padding: 23px; }
-.field-inspector h3 { font: 25px var(--serif); }
-.field-inspector p { line-height: 1.75; }
-.field-inspector > .button { width: 100%; white-space: normal; }
-.field-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 20px 0; }
-.field-tools .button { min-width: 0; padding: 10px 6px; font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
-.field-tools .is-active, .conversation-controls .is-active { border-color: var(--brass); background: var(--panel-raised); color: var(--brass-light); }
-.field-feedback { padding: 12px; background: var(--ink-soft); border-left: 2px solid var(--brass); font-size: 12px; }
-.field-decisions, .lead-panel { margin: 20px 0; padding: 24px; }
-.decision-grid, .ending-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 22px; }
-.decision-grid p, .ending-grid p { color: var(--muted); font-size: 12px; line-height: 1.7; }
-.decision-grid .button { display: block; margin: 8px 0; white-space: normal; text-align: left; }
-.ending-grid { margin: 24px 0; text-align: left; }
-.ending-grid > div { padding: 16px; border: 1px solid var(--line); }
-.field-log { max-height: 300px; overflow-y: auto; padding: 12px 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
-.field-log b { color: var(--cream); margin-right: 6px; }
-.assistant-chat { overflow: hidden; margin-bottom: 26px; background: var(--ink-soft); border: 1px solid var(--line-strong); border-radius: 5px; }
-.chat-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
-.chat-heading span { color: var(--muted); font-size: 11px; margin-left: auto; }
-.chat-presence { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
-.chat-messages { display: flex; flex-direction: column; gap: 14px; min-height: 220px; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; padding: 22px; }
-.chat-bubble { align-self: flex-start; max-width: 88%; padding: 16px 18px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 2px 12px 12px; }
-.chat-bubble.is-user { align-self: flex-end; background: var(--panel-raised); border-color: var(--line-strong); border-radius: 12px 2px 12px 12px; }
-.chat-bubble b { color: var(--brass-light); font-size: 11px; }
-.chat-bubble p { margin: 7px 0; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
-.chat-bubble time { display: block; text-align: right; color: var(--muted); font: 10px var(--mono); }
-.chat-prompts { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 18px; }
-.chat-compose { display: flex; gap: 8px; padding: 0 18px 10px; }
-.chat-compose input { flex: 1; min-width: 0; padding: 12px; background: var(--ink); color: var(--cream); border: 1px solid var(--line-strong); border-radius: 3px; }
-.assistant-chat > .fine-print { margin: 0; padding: 4px 18px 18px; }
-.conversation-controls { padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--ink-soft); font-size: 12px; }
-.conversation-controls > span { display: block; margin-bottom: 9px; }
-.conversation-controls > small { display: block; color: var(--muted); margin: 9px 0; line-height: 1.5; }
-.present-evidence { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.present-evidence label { grid-column: 1 / -1; color: var(--muted); }
-.present-evidence select { width: 100%; min-width: 0; padding: 8px; background: var(--panel); color: var(--cream); border: 1px solid var(--line-strong); }
-.interview-subject small { display: block; color: var(--muted); line-height: 1.6; max-width: 60ch; }
-.question-button.is-locked::after { content: none; }
-.question-lock { display: block; margin-top: 7px; font-size: 10px; font-weight: normal; }
-.outcome-mark { font: 80px var(--serif); color: var(--red); }
-.fatal-result p { max-width: 65ch; margin: 18px auto; line-height: 1.8; }
-.field-entry { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 24px; margin-bottom: 24px; border: 1px solid var(--brass); background: var(--panel); }
-.field-entry h3 { margin: 6px 0; font: 24px var(--serif); }
-.field-entry p { margin: 0; color: var(--muted); line-height: 1.6; }
-:root[data-theme^="high-contrast"] .field-view .tag { color: var(--cream); }
-@media (max-width: 1100px) {
-  .field-layout { grid-template-columns: 1fr; }
-  .field-inspector { display: block; }
-  .field-tools { grid-template-columns: repeat(4, 1fr); }
-}
-/* На узких экранах угроза остаётся видимой вне прокручиваемого меню. */
-@media (min-width: 901px) and (max-width: 1180px) {
-  .threat-status { position: fixed; z-index: 19; top: 74px; left: 70px; right: 280px; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; background: var(--ink); }
-  .threat-status strong { font-size: 18px; }
-  .threat-status small { display: none; }
-  .threat-status meter { width: 70px; }
-  body:has(.threat-status:not([hidden])) .workspace > .view { padding-top: 90px; }
-}
-@media (max-width: 900px) {
-  .threat-status { position: fixed; z-index: 19; top: 64px; left: 64px; right: 0; margin: 0 !important; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px !important; background: var(--ink); }
-  .threat-status strong { font-size: 16px; }
-  .threat-status small { display: none; }
-  .threat-status meter { width: 55px; }
-  body:has(.threat-status:not([hidden])) .workspace > .view { padding-top: 105px; }
-}
-@media (max-width: 700px) {
-  .field-locations { grid-template-columns: 1fr; }
-  .field-location { padding: 12px; gap: 4px; }
-  .field-location b { font-size: 17px; }
-  .scene-map { padding: 16px 12px 42px; gap: 12px; }
-  .scene-spot { padding: 9px; grid-template-columns: 23px minmax(0, 1fr); }
-  .field-tools { grid-template-columns: 1fr 1fr; }
-  .field-entry { align-items: stretch; flex-direction: column; }
-  .chat-messages { padding: 12px; }
-  .chat-bubble { max-width: 96%; padding: 12px; }
-  .chat-compose { padding-inline: 12px; }
-  .chat-compose .button { padding: 10px; font-size: 11px; }
-  .chat-heading span { margin-left: 0; }
-  .threat-status { display: flex; flex-wrap: wrap; align-items: center; margin: 6px 12px; padding: 9px; }
-  .threat-status strong { font-size: 18px; }
-  .threat-status small { display: none; }
-  .threat-status meter { width: 55px; }
-  .decision-grid, .ending-grid { grid-template-columns: 1fr; }
-  .present-evidence { grid-template-columns: minmax(0, 1fr); }
-}
+/* Полевое обследование: адрес, точка, инструмент, результат. */
+.field-locations { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:22px; }
+.field-location { padding:17px 20px; border:1px solid var(--line); border-radius:10px; background:var(--panel); text-align:left; }
+.field-location.is-active { border-color:var(--brass); background:var(--accent-soft); }
+.field-location span,.field-location b,.field-location small { display:block; }
+.field-location span { font:10px var(--mono); color:var(--brass-light); margin-bottom:8px; }
+.field-location b { font-size:14px; line-height:1.4; margin-bottom:6px; }
+.field-location small { color:var(--muted); font-size:11px; line-height:1.6; }
+.field-layout { display:grid; grid-template-columns:1.3fr 1fr; gap:22px; margin-bottom:24px; align-items:start; }
+.field-scene { min-width:0; }
+.scene-caption { padding:0 3px; }
+.scene-caption p { color:var(--muted); font-size:13px; margin-top:9px; }
+.scene-map { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:26px; border:1px solid var(--line-strong); border-radius:12px; background:radial-gradient(var(--line-strong) 1px,transparent 1px) 0 0/18px 18px,var(--ink-soft); }
+.scene-spot { position:relative; min-height:126px; padding:17px; background:var(--panel); border:1px solid var(--line-strong); border-radius:6px; text-align:left; }
+.scene-spot i { font:12px var(--mono); color:var(--brass-light); display:block; margin-bottom:12px; }
+.scene-spot span { display:block; font-size:14px; font-weight:600; }
+.scene-spot small { display:block; color:var(--muted); font-size:10px; margin-top:6px; }
+.scene-spot.is-active { outline:2px solid var(--brass); outline-offset:2px; }
+.scene-spot.is-checked { background:var(--accent-soft); border-style:dashed; }
+.map-door { grid-column:1/-1; text-align:center; color:var(--muted); font:10px var(--mono); }
+.field-scene > .fine-print { margin:14px 3px 0; }
+.field-inspector { position:sticky; top:22px; }
+.field-inspector h3 { font:26px var(--serif); margin:12px 0; }
+.field-inspector > p { font-size:13px; color:var(--muted); }
+.field-tools { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:20px 0 15px; }
+.field-tools .button { font-size:12px; padding:10px; }
+.field-tools .is-active,.conversation-controls .is-active { background:var(--accent-soft); border-color:var(--brass); color:var(--brass-light); }
+.field-inspector > .button { width:100%; }
+.field-feedback { margin:18px 0; padding:14px; border-left:3px solid var(--brass); background:var(--accent-soft); border-radius:4px; color:var(--cream) !important; font-size:13px; }
+.field-steps { display:flex; gap:20px; margin:0 0 22px; padding:0; list-style:none; color:var(--muted); font-size:11px; }
+.field-steps b { display:inline-grid; place-items:center; width:22px; height:22px; border:1px solid var(--line-strong); border-radius:50%; margin-right:6px; color:var(--brass-light); }
+.field-decisions,.lead-panel { margin-bottom:22px; }
+.field-decisions h3 { margin-top:10px; }
+.decision-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:25px; margin-top:20px; }
+.decision-grid p { font-size:13px; color:var(--muted); margin:8px 0 15px; }
+.decision-grid b { font-size:14px; }
+.decision-grid .button { margin:0 5px 8px 0; font-size:12px; }
+.field-log { max-height:260px; overflow:auto; font-size:12px; color:var(--muted); margin-top:15px; }
+.field-log p { border-bottom:1px solid var(--line); padding-bottom:12px; }
+.field-log b { display:block; color:var(--cream); margin-bottom:4px; }
+/* Угроза отличается от обычного прогресса и всегда видна в срочном деле. */
+.threat-status { padding:14px; border:1px solid #bb9273; border-radius:8px; background:#fff2dc; color:#64452b; }
+.threat-status .eyebrow { color:#64452b; font-size:10px; }
+.threat-status strong { display:block; font:26px var(--mono); margin:8px 0; }
+.threat-status span,.threat-status small { display:block; font-size:11px; }
+.threat-status meter { display:block; width:100%; height:10px; margin:7px 0; accent-color:#b56a34; }
+.threat-status.is-critical { border-color:#bf6860; background:#ffe5df; color:#802f27; }
+/* Чат — основной экран ассистента, поручения размещены рядом. */
+.assistant-layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start; }
+.assistant-chat { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--panel); }
+.chat-heading { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:18px 22px; border-bottom:1px solid var(--line); font-size:13px; }
+.chat-heading > span { margin-left:auto; font-size:10px; color:var(--muted); }
+.chat-presence { width:7px; height:7px; border-radius:50%; background:var(--brass); }
+.chat-messages { height:410px; overflow:auto; background:var(--ink); padding:24px; }
+.chat-bubble { padding:14px 18px; max-width:90%; margin-bottom:18px; border:1px solid var(--line); border-radius:2px 12px 12px; background:var(--panel); }
+.chat-bubble.is-user { margin-left:auto; border:0; border-radius:12px 2px 12px 12px; background:var(--accent-soft); }
+.chat-bubble b { font-size:11px; color:var(--brass-light); }
+.chat-bubble p { font-size:14px; white-space:pre-wrap; line-height:1.75; margin:7px 0; }
+.chat-bubble time { display:block; text-align:right; font:10px var(--mono); color:var(--muted); }
+.chat-prompts { display:flex; flex-wrap:wrap; gap:7px; padding:18px 20px 0; }
+.chat-prompts .button { min-height:34px; font-size:11px; padding:7px 10px; }
+.chat-compose { display:flex; gap:8px; padding:18px 20px 10px; }
+.assistant-chat > .fine-print { font-size:10px; padding:0 20px 8px; }
+.assistant-jobs h3 { font:23px var(--serif); margin:0 0 8px; }
+.assistant-jobs > p { font-size:12px; color:var(--muted); }
+.task-list { display:grid; gap:14px; }
+.task-card { display:grid; gap:12px; padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+.task-icon { font:10px var(--mono); color:var(--brass-light); }
+.task-card h3 { font-size:14px; font-family:var(--sans); margin:0 0 8px; }
+.task-card p { color:var(--muted); font-size:12px; margin:0; }
+.task-status .button { width:100%; }
+.task-countdown { font:20px var(--mono); }
+.task-progress { margin-top:10px; }
+.solved-mark { font-size:12px; color:var(--brass-light); }
+.partner-quote { margin:18px 0; color:var(--muted); font:16px/1.6 var(--serif); }
+/* Тон беседы и предъявление материала доступны до отправки вопроса. */
+.conversation-controls { padding:18px 26px; display:grid; gap:10px; }
+.conversation-controls > span { color:var(--muted); font-size:12px; }
+.conversation-controls small { color:var(--muted); font-size:11px; }
+.present-evidence { display:grid; gap:10px; margin-top:12px; }
+.present-evidence label { font-size:12px; }
+.present-evidence select { font-size:12px; }
+
+/* Возврат к плану не тратит игровое время. */
+.back-to-map { margin-bottom:18px; }

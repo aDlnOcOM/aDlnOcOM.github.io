@@ -22,8 +22,7 @@ export function renderAnalysis(_app) {
   dom.workspace.innerHTML = `
     <div class="view">
       <header class="view-header"><div><span class="eyebrow">На связи с бюро</span><h2>Кира · ваш ассистент</h2><p>Обсуждайте людей, улики и следующие шаги. Кира отвечает по доступным материалам дела.</p></div></header>
-      ${renderAssistantChat()}
-      <section class="panel partner-intro"><div class="partner-avatar">КР</div><div><span class="micro-label">Кира Руднева · аналитик</span><h3>«Рутину беру на себя. Вы ищите, где цифры не сходятся с человеком».</h3><p>Обработка идёт по реальному времени и сохраняется, даже если закрыть страницу. Пока задача выполняется, остальные разделы полностью доступны.</p></div></section>
+      <div class="assistant-layout">${renderAssistantChat()}<aside class="assistant-jobs"><h3>Поручения Кире</h3><p>Одна проверка за раз. Работайте дальше — результат появится в материалах.</p>
       <div class="task-list">
         ${caseData.tasks.map((task, index) => {
           const info = taskStatus(task);
@@ -34,6 +33,7 @@ export function renderAnalysis(_app) {
         }).join("")}
       </div>
       ${doneCount ? `<blockquote class="partner-quote">«Готовые выборки уже в архиве. Помните: геопозиция устройства подтверждает маршрут устройства, не человека. Нужна вторая независимая связь».</blockquote>` : ""}
+      </aside></div>
     </div>
   `;
 }

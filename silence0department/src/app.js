@@ -1,4 +1,5 @@
 /** Композиционный корень. Модули получают один явный контекст; глобального состояния и циклических импортов нет. */
+import { initExperience, toggleNotebook } from './ui/experience.js';
 import { bindDom } from './core/dom.js';
 import {
   createInitialState, getEvidence, getSuspect, isEvidenceUnlocked, availableEvidence, saveCase, loadCase
@@ -25,7 +26,7 @@ import {
   currentTutorialStep, clearTutorialUi, renderTutorialUi, advanceTutorial, handleTutorialEvent, shouldAdvanceTutorialForNavigation
 } from './ui/tutorial.js';
 import {
-  boardEntity, isBoardNote, boardLink, renderBoard, scheduleBoardLines, drawBoardLines, enableBoardDragging, updateBoardSelectionUi, openBoardNoteDialog
+  boardEntity, isBoardNote, boardLink, renderBoard, scheduleBoardLines, drawBoardLines, enableBoardDragging, updateBoardSelectionUi, openBoardNoteDialog, openBoardCard
 } from './ui/board.js';
 import {
   renderArchive, openEvidence
@@ -53,6 +54,8 @@ import {
 export function createApplication() {
   const app = { dom: bindDom(document), caseData: null, state: null, archiveQuery: '', archiveFilter: 'all', noteSaveTimer: null, ticker: null, audioSystem: null, appSettings: null, suppressBoardClickUntil: 0, boardLineFrame: 0 };
   const features = [
+    // Общая оболочка и доступные выдвижные панели.
+    { initExperience, toggleNotebook },
     // session: явно перечисленный публичный интерфейс раздела.
     { createInitialState, getEvidence, getSuspect, isEvidenceUnlocked, availableEvidence, saveCase, loadCase },
     // feedback: явно перечисленный публичный интерфейс раздела.
@@ -70,7 +73,7 @@ export function createApplication() {
     // tutorial: явно перечисленный публичный интерфейс раздела.
     { currentTutorialStep, clearTutorialUi, renderTutorialUi, advanceTutorial, handleTutorialEvent, shouldAdvanceTutorialForNavigation },
     // board: явно перечисленный публичный интерфейс раздела.
-    { boardEntity, isBoardNote, boardLink, renderBoard, scheduleBoardLines, drawBoardLines, enableBoardDragging, updateBoardSelectionUi, openBoardNoteDialog },
+    { boardEntity, isBoardNote, boardLink, renderBoard, scheduleBoardLines, drawBoardLines, enableBoardDragging, updateBoardSelectionUi, openBoardNoteDialog, openBoardCard },
     // archive: явно перечисленный публичный интерфейс раздела.
     { renderArchive, openEvidence },
     // computer: явно перечисленный публичный интерфейс раздела.

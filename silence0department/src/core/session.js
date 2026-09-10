@@ -22,6 +22,7 @@ export function createInitialState(_app, data) {
     solvedPuzzles: [],
     hintsUsed: [],
     importantIds: [],
+    readEvidenceIds: [],
     boardIds,
     boardPositions,
     boardLinks: [],

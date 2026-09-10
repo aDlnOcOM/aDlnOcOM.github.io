@@ -14,7 +14,8 @@ export function renderField(_app) {
   const total = caseData.scenes.reduce((count, item) => count + item.spots.length, 0);
   const leadStatus = state.decisions.leads.anonymous;
   dom.workspace.innerHTML = `<div class="view field-view">
-    <header class="view-header"><div><span class="eyebrow">Частное расследование · выезд ${String(caseData.scenes.indexOf(scene) + 1).padStart(2, "0")}</span><h2>В поле</h2><p>Не всё, что выглядит уликой, ею окажется. Изучите точку и выберите способ проверки.</p></div><span class="tag">${state.field.checked.length}/${total} точек обследовано</span></header>
+    <header class="view-header"><div><span class="eyebrow">Частное расследование · выезд ${String(caseData.scenes.indexOf(scene) + 1).padStart(2, "0")}</span><h2>На месте</h2><p>Не всё, что выглядит уликой, ею окажется. Изучите точку и выберите способ проверки.</p></div><span class="tag">${state.field.checked.length}/${total} точек обследовано</span></header>
+    <ol class="field-steps" aria-label="Как обследовать место"><li><b>1</b>Выберите точку</li><li><b>2</b>Подберите инструмент</li><li><b>3</b>Проверьте результат</li></ol>
     <div class="field-locations" aria-label="Места для обследования">${caseData.scenes.map((item, index) => {
       const locked = item.requires && !state.field.found.includes(item.requires);
       return `<button class="field-location ${scene.id === item.id ? "is-active" : ""}" data-scene-id="${item.id}" ${locked ? "disabled" : ""} aria-pressed="${scene.id === item.id}"><span>0${index + 1} ${locked ? "· нужен адрес" : ""}</span><b>${escapeHtml(item.name)}</b><small>${locked ? "Откроется по находке предыдущего выезда" : escapeHtml(item.subtitle)}</small></button>`;
@@ -22,8 +23,8 @@ export function renderField(_app) {
     <div class="field-layout"><section class="field-scene"><div class="scene-caption"><span class="eyebrow">${escapeHtml(scene.name)}</span><p>${escapeHtml(scene.atmosphere)}</p></div>
       <div class="scene-map" aria-label="План обследования">${scene.spots.map((item, index) => `<button class="scene-spot ${state.field.checked.includes(`${scene.id}:${item.id}`) ? "is-checked" : ""} ${spot?.id === item.id ? "is-active" : ""}" data-spot-id="${item.id}" aria-pressed="${spot?.id === item.id}"><i>${state.field.checked.includes(`${scene.id}:${item.id}`) ? "✓" : `0${index + 1}`}</i><span>${escapeHtml(item.label)}</span><small>${state.field.checked.includes(`${scene.id}:${item.id}`) ? "обследовано" : "изучить точку"}</small></button>`).join("")}<div class="map-door" aria-hidden="true">ВХОД ↑</div></div>
       <p class="fine-print">Доступ к месту согласован с владельцем. Находки сохраняются в архиве. ${caseData.profile.timed ? "Смена места: 40 с; проверка: 15 с; образец: 25 с и +1 заметность." : "Здесь нет ограничения по времени — можно спокойно исследовать каждую точку."}</p>
-    </section><aside class="panel field-inspector"><span class="eyebrow">Полевой набор</span><h3>${spot ? escapeHtml(spot.label) : "С чего начнём?"}</h3><p>${spot ? escapeHtml(spot.description) : "Выберите отмеченную точку на плане. Описание подскажет, какой инструмент даст проверяемый результат."}</p>
-      <div class="field-tools" role="group" aria-label="Инструмент">${Object.entries(FIELD_TOOLS).map(([key, label]) => `<button class="button button-ghost ${state.field.tool === key ? "is-active" : ""}" data-field-tool="${key}" aria-pressed="${state.field.tool === key}">${label}</button>`).join("")}</div>
+    </section><aside class="panel field-inspector" id="field-inspector" tabindex="-1">${spot ? '<button class="button button-ghost button-small back-to-map" data-action="field-map">← К плану места</button>' : ""}<span class="eyebrow">Полевой набор</span><h3>${spot ? escapeHtml(spot.label) : "С чего начнём?"}</h3><p>${spot ? escapeHtml(spot.description) : "Выберите отмеченную точку на плане. Описание подскажет, какой инструмент даст проверяемый результат."}</p>
+      <div class="field-tools" role="group" aria-label="Инструмент">${Object.entries(FIELD_TOOLS).map(([key, label]) => `<button class="button button-ghost ${state.field.tool === key ? "is-active" : ""}" data-field-tool="${key}" aria-pressed="${state.field.tool === key}">${label}${caseData.profile.timed ? `<small>${key === "sample" ? "25 с · +1 риск" : "15 с"}</small>` : ""}</button>`).join("")}</div>
       <button class="button button-primary" data-action="field-examine" ${!spot || checked || closed ? "disabled" : ""}>${checked ? "Точка обследована" : "Применить инструмент"}</button>
       <p class="field-feedback" role="status">${escapeHtml(state.lastFieldMessage)}</p>
       ${checked && spot?.evidenceId ? `<button class="button button-ghost" data-evidence-id="${spot.evidenceId}">Открыть материал</button>` : ""}
@@ -47,6 +48,7 @@ export function handleDetectiveClick(_app, target) {
   if (target.dataset.action === "open-new-case" || target.dataset.action?.startsWith("close-")) return false;
   if (detective.checkThreat(caseData, state)) { saveCase(); renderCurrentView(); return true; }
   if (state.outcome?.kind === "dead" && (target.closest("#workspace") || target.dataset.view)) { renderOutcome(); return true; }
+  if (target.dataset.action === "field-map") { document.querySelector(".scene-map")?.scrollIntoView({ block: "center" }); return true; }
   if (target.dataset.chatPrompt) { sendAssistantMessage(target.dataset.chatPrompt); return true; }
   if (target.dataset.approach) { state.approach = target.dataset.approach; saveCase(); renderInterviews(); return true; }
   if (target.dataset.sceneId) {
@@ -81,5 +83,11 @@ export function handleDetectiveClick(_app, target) {
   } else return false;
   saveCase();
   renderCurrentView();
+  // На телефоне выбранная точка ведёт к инструментам, а не оставляет их ниже экрана.
+  if (target.dataset.spotId && window.matchMedia("(max-width: 800px)").matches) {
+    const inspector = document.querySelector("#field-inspector");
+    inspector?.scrollIntoView({ block: "start" });
+    inspector?.focus({ preventScroll: true });
+  }
   return true;
 }

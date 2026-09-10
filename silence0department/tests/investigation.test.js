@@ -159,11 +159,13 @@ test("assistant uses discovered evidence, not the hidden answer; drafts persist"
   const known = engine.assistantReply(data, state, "Сравним серийные эпизоды", game.availableEvidence());
   assert.ok(known.includes("Эпизоды"));
   state.chatDraft = "Проверь эту версию";
+  state.readEvidenceIds = ["ev-scene"];
   state.reportDraft = { suspect: "person-1", reasoning: "Черновик", evidence: ["field-trace"] };
   game.saveCase();
   assert.equal(game.loadCase(), true);
   assert.equal(game.current().state.chatDraft, "Проверь эту версию");
   assert.equal(game.current().state.reportDraft.reasoning, "Черновик");
+  assert.deepEqual(game.current().state.readEvidenceIds, ["ev-scene"]);
 });
 
 // Регрессия: стартовый обработчик не должен читать старую ссылку на дело после loadCase().
@@ -185,6 +187,7 @@ test("application startup restores the current case before displaying its number
   window.setInterval = () => 123;
   game.app.applySettings = () => {};
   game.app.initNotebook = () => {};
+  game.app.initExperience = () => {};
   game.app.renderCurrentView = () => {};
   game.app.tick = () => {};
   game.app.init();

@@ -1,5 +1,6 @@
 /** Ручные аналитические задачи и открытие результатов при верном решении. */
 import { escapeHtml, normalize, formatClock } from '../core/utils.js';
+import { materialLabel } from './labels.js';
 
 // Формирует представление из актуального состояния; данные пользователя экранируются.
 export function renderLab(_app) {
@@ -16,7 +17,7 @@ export function renderLab(_app) {
           const isSolved = state.solvedPuzzles.includes(puzzle.id);
           return `<article class="puzzle-card${isSolved ? " is-solved" : ""}">
             <span class="puzzle-index">${String(index + 1).padStart(2, "0")}</span>
-            <span class="tag ${isSolved ? "tag-success" : "tag-accent"}">${escapeHtml(puzzle.kind)}</span>
+            <span class="tag ${isSolved ? "tag-success" : "tag-accent"}">${escapeHtml(materialLabel(puzzle.kind))}</span>
             <h3>${escapeHtml(puzzle.title)}</h3>
             <p>${escapeHtml(isSolved ? puzzle.reveal : puzzle.summary)}</p>
             <div class="puzzle-footer">
@@ -71,7 +72,7 @@ export function renderPuzzleDetail(_app, puzzle) {
   const displayBody = puzzle.visibleBody || puzzle.body;
   dom.detailContent.innerHTML = `
     <button class="modal-close" type="button" data-action="close-detail" aria-label="Закрыть">×</button>
-    <div class="modal-kicker">${escapeHtml(puzzle.kind)} / аналитическая задача</div>
+    <div class="modal-kicker">${escapeHtml(materialLabel(puzzle.kind))} / аналитическая задача</div>
     <h2>${escapeHtml(puzzle.title)}</h2>
     <div class="document-sheet${["cipher", "password", "digital"].includes(puzzle.kind) ? " is-code" : ""}">${escapeHtml(displayBody)}</div>
     <div class="puzzle-prompt">${escapeHtml(puzzle.prompt)}</div>
