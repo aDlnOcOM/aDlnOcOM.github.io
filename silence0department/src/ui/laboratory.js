@@ -78,6 +78,7 @@ export function renderPuzzleDetail(_app, puzzle) {
     <div class="puzzle-prompt">${escapeHtml(puzzle.prompt)}</div>
     ${interaction}
     <div class="modal-actions">
+      <button class="button button-ghost" type="button" data-guide-open="laboratory">Справочник</button>
       ${hintUsed ? "" : `<button class="button button-ghost" type="button" data-action="show-hint" data-puzzle="${puzzle.id}">Взять подсказку</button>`}
       <button class="button button-ghost" type="button" data-action="close-detail">Закрыть</button>
     </div>

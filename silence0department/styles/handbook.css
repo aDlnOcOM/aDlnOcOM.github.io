@@ -1,0 +1,63 @@
+/* Отдельный лист справочника использует общие цвета всех пяти тем. */
+.guide-modal { width: min(900px, calc(100vw - 40px)); overflow: hidden; }
+.guide-card { display: flex; flex-direction: column; width: 100%; height: min(800px, calc(100dvh - 64px)); min-height: 0; }
+.guide-header { position: relative; padding: 28px 32px 16px; flex: none; }
+.guide-header .modal-kicker { padding-right: 28px; }
+.guide-header h2 { margin: 8px 0; font-size: 30px; }
+.guide-header > p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+#help-button kbd { padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; font: inherit; opacity: .65; }
+
+/* Поиск и категории закреплены над прокручиваемыми статьями. */
+.guide-search-row { position: relative; }
+#guide-search { width: 100%; padding: 12px 44px 12px 14px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--cream); background: var(--panel); font: inherit; font-size: 16px; }
+#guide-search::-webkit-search-cancel-button { display: none; }
+#guide-clear { position: absolute; right: 3px; top: 3px; width: 40px; height: 40px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
+.guide-categories { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.guide-categories .filter-button { font-size: 12px; min-height: 34px; }
+.guide-categories [aria-pressed="true"] { background: var(--accent-soft); color: var(--brass-light); border-color: var(--brass); }
+.guide-header > .guide-timed { margin: 12px 0 0; padding: 9px 12px; border-left: 3px solid var(--brass); background: var(--accent-soft); color: var(--cream); font-size: 12px; }
+.guide-list-heading { display: flex; justify-content: space-between; gap: 16px; padding: 12px 32px; border-block: 1px solid var(--line); background: var(--panel); font-size: 11px; color: var(--muted); }
+#guide-count { white-space: nowrap; }
+.guide-results { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 32px 20px; flex: 1; }
+
+/* Нативные details поддерживают клавиатуру и сообщают состояние раскрытия скринридеру. */
+.guide-article { border-bottom: 1px solid var(--line); scroll-margin-top: 10px; }
+.guide-article summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; cursor: pointer; list-style: none; }
+.guide-article summary::-webkit-details-marker { display: none; }
+.guide-article summary strong { display: block; font-size: 15px; font-weight: 600; color: var(--cream); }
+.guide-article summary span span { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.guide-chevron { display: grid; place-items: center; flex: 0 0 26px; height: 26px; background: var(--accent-soft); color: var(--brass-light); border-radius: 50%; font-size: 20px; }
+.guide-article[open] .guide-chevron { transform: rotate(45deg); }
+.guide-body { padding: 0 0 22px; color: var(--cream); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.guide-body p { margin: 0 0 12px; }
+.guide-body ol { margin: 0 0 16px; padding-left: 23px; }
+.guide-body li { padding-left: 5px; margin-bottom: 9px; }
+.guide-body li::marker { color: var(--brass-light); font-weight: 600; }
+.guide-tip { padding: 14px 18px; border-radius: 8px; background: var(--accent-soft); }
+.guide-tip > strong { display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--brass-light); }
+.guide-tip p { margin: 0; }
+.guide-related { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 14px; margin-top: 16px; font-size: 12px; }
+.guide-related > span { color: var(--muted); }
+.guide-related button { border: 0; padding: 4px 0; background: none; color: var(--brass-light); font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.guide-empty { padding: 30px 0; font-size: 14px; color: var(--muted); }
+.guide-empty h3 { color: var(--cream); }
+.guide-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 32px; border-top: 1px solid var(--line); flex: none; }
+.guide-footer > span { color: var(--muted); font-size: 11px; }
+
+/* На узких и низких экранах сохраняем место для чтения; категории можно листать. */
+@media (max-width: 600px), (max-height: 550px) {
+  .guide-modal { width: calc(100vw - 20px); }
+  .guide-card { height: calc(100dvh - 32px); }
+  .guide-header { padding: 20px 20px 12px; }
+  .guide-header h2 { font-size: 24px; }
+  .guide-header > p:not(.guide-timed) { display: none; }
+  .guide-header .modal-kicker { font-size: 9px; }
+  .guide-categories { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .guide-categories .filter-button { flex: none; }
+  .guide-list-heading { padding: 10px 20px; }
+  #guide-context { display: none; }
+  .guide-results { padding-inline: 20px; }
+  .guide-footer { padding: 12px 20px; }
+  .guide-footer > span { display: none; }
+  .guide-footer .button { width: 100%; font-size: 12px; }
+}

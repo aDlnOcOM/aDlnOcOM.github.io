@@ -1,5 +1,6 @@
 /** Композиционный корень. Модули получают один явный контекст; глобального состояния и циклических импортов нет. */
 import { initExperience, toggleNotebook } from './ui/experience.js';
+import { initHandbook, openHandbook } from './ui/handbook.js';
 import { bindDom } from './core/dom.js';
 import {
   createInitialState, getEvidence, getSuspect, isEvidenceUnlocked, availableEvidence, saveCase, loadCase
@@ -56,6 +57,8 @@ export function createApplication() {
   const features = [
     // Общая оболочка и доступные выдвижные панели.
     { initExperience, toggleNotebook },
+    // Справочник независим от прогресса и скрытого решения дела.
+    { initHandbook, openHandbook },
     // session: явно перечисленный публичный интерфейс раздела.
     { createInitialState, getEvidence, getSuspect, isEvidenceUnlocked, availableEvidence, saveCase, loadCase },
     // feedback: явно перечисленный публичный интерфейс раздела.

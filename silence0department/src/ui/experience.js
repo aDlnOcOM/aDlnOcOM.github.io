@@ -42,12 +42,13 @@ export function toggleNotebook(_app) {
 }
 
 export function initExperience(_app) {
+  _app.initHandbook();
   document.querySelectorAll('[data-icon]').forEach(node => { node.innerHTML = icon(node.dataset.icon); });
   const menu = document.querySelector('#mobile-menu');
   menu.innerHTML = document.querySelector('#case-nav').innerHTML.replaceAll(/ id="[^"]+"/g, '');
   document.querySelector('#menu-help-button').addEventListener('click', () => {
     document.querySelector('#menu-dialog').close();
-    _app.showDialog(_app.dom.helpDialog);
+    _app.openHandbook();
   });
   document.querySelector('#notebook-button').addEventListener('click', _app.toggleNotebook);
   document.querySelector('#menu-button').addEventListener('click', () => document.querySelector('#menu-dialog').showModal());

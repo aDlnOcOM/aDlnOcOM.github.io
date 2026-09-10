@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles/workspace.css" />
     <link rel="stylesheet" href="styles/investigation.css" />
     <link rel="stylesheet" href="styles/responsive.css" />
+    <link rel="stylesheet" href="styles/handbook.css" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Перейти к делу</a>
@@ -38,7 +39,7 @@
           <button class="icon-button" id="settings-button" type="button" title="Настройки">
             <span aria-hidden="true">⚙</span><span class="button-label">Настройки</span>
           </button>
-          <button class="button button-ghost" id="help-button" type="button">Как играть</button>
+          <button class="button button-ghost" id="help-button" type="button">Справочник <kbd>?</kbd></button>
           <button class="button button-primary" id="new-case-button" type="button">Новое дело</button>
         </div>
       </header>
@@ -99,7 +100,7 @@
       <button type="button" data-view="archive"><span data-icon="archive" aria-hidden="true"></span><span>Материалы</span></button>
       <button type="button" id="menu-button" aria-haspopup="dialog"><span data-icon="menu" aria-hidden="true"></span><span>Ещё</span></button>
     </nav>
-    <dialog class="drawer" id="menu-dialog" aria-labelledby="menu-title"><button class="modal-close" type="button" data-close-drawer="menu-dialog" aria-label="Закрыть меню">×</button><h2 id="menu-title">Рабочее место</h2><nav id="mobile-menu" aria-label="Все разделы"></nav><button class="button button-ghost" id="menu-help-button" type="button">Как играть</button></dialog>
+    <dialog class="drawer" id="menu-dialog" aria-labelledby="menu-title"><button class="modal-close" type="button" data-close-drawer="menu-dialog" aria-label="Закрыть меню">×</button><h2 id="menu-title">Рабочее место</h2><nav id="mobile-menu" aria-label="Все разделы"></nav><button class="button button-ghost" id="menu-help-button" type="button">Справочник</button></dialog>
     <dialog class="drawer notebook-drawer" id="notebook-dialog" aria-label="Личный блокнот">
         <aside class="notebook" aria-label="Личный блокнот">
           <button class="modal-close" type="button" data-close-drawer="notebook-dialog" aria-label="Закрыть блокнот">×</button>
@@ -197,23 +198,25 @@
       <article class="modal-card detail-card" id="detail-content"></article>
     </dialog>
 
-    <dialog class="modal" id="help-dialog">
-      <article class="modal-card help-card">
-        <button class="modal-close" type="button" data-action="close-help" aria-label="Закрыть">×</button>
-        <div class="modal-kicker">Памятка частного детектива</div>
-        <h2>Думайте связями, не галочками</h2>
-        <div class="help-grid">
-          <section><b>01</b><h3>Читайте выборочно</h3><p>Архив содержит шум. Ищите имена, время, алиби и повторяющиеся детали.</p></section>
-          <section><b>02</b><h3>Решайте руками</h3><p>Лаборатория даёт инструменты, но выводы и ответы остаются за вами.</p></section>
-          <section><b>03</b><h3>Давите фактами</h3><p>Новые вопросы на допросах открываются после найденных противоречий.</p></section>
-          <section><b>04</b><h3>Делегируйте рутину</h3><p>Напарник обрабатывает массивы в реальном времени, пока вы работаете дальше.</p></section>
-          <section><b>05</b><h3>Выезжайте в поле</h3><p>Выберите точку на плане и инструмент: осмотр, снимок, образец или сопоставление. След открывает следующий адрес. Кажущиеся улики тоже проверяются.</p></section>
-          <section><b>06</b><h3>Берегите источники</h3><p>Тон беседы влияет на доверие. Предъявляйте реальные материалы. Кира обсуждает найденные факты и помогает проверить версии.</p></section>
-          <section><b>07</b><h3>Не закройте дело слишком рано</h3><p>Ошибочная версия не раскрывает ответ. Полная цепь связывает след, получателя и независимую запись; мотив подтверждается отдельно. Текст объяснения сохраняется как ваша заметка.</p></section>
-          <section><b>08</b><h3>Встречная охота</h3><p>Наёмник ищет вас. Истечение срока или заметность 100 означают гибель. Таймер идёт и вне игры; две смены маршрута дают отсрочку. В обычных делах отсчёта нет.</p></section>
-        </div>
-        <p class="fine-print">Сигналы поведения не являются доказательством сами по себе. Финальная версия должна опираться на совокупность фактов.</p>
-        <div class="modal-actions"><button class="button button-primary" type="button" data-action="close-help">Понятно</button></div>
+    <!-- Справочник остаётся поверх документа: закрытие возвращает к прежнему месту работы. -->
+    <dialog class="modal guide-modal" id="help-dialog" aria-labelledby="guide-title">
+      <article class="guide-card">
+        <header class="guide-header">
+          <button class="modal-close" type="button" data-action="close-help" aria-label="Закрыть справочник">×</button>
+          <div class="modal-kicker">Настольная книга детектива</div>
+          <h2 id="guide-title" tabindex="-1" autofocus>Справочник</h2>
+          <p>Правила, приёмы и подсказки по работе. Решение дела остаётся за вами.</p>
+          <div class="guide-search-row">
+            <label class="sr-only" for="guide-search">Найти тему в справочнике</label>
+            <input id="guide-search" type="search" placeholder="Найти: алиби, улики, таймер…" autocomplete="off" />
+            <button id="guide-clear" type="button" aria-label="Очистить поиск" hidden>×</button>
+          </div>
+          <div class="guide-categories" id="guide-categories" role="group" aria-label="Темы справочника"></div>
+          <p class="guide-timed" id="guide-timed" hidden>В этом деле время продолжает идти, пока открыт справочник.</p>
+        </header>
+        <div class="guide-list-heading"><span id="guide-context"></span><span id="guide-count" role="status" aria-live="polite"></span></div>
+        <div class="guide-results" id="guide-results" aria-label="Статьи справочника"></div>
+        <footer class="guide-footer"><span>Можно читать в любом порядке</span><button class="button button-primary" type="button" data-action="close-help">Вернуться к расследованию</button></footer>
       </article>
     </dialog>
 

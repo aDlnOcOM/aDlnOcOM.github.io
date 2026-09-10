@@ -344,8 +344,8 @@ export function handleSubmit(_app, event) {
 
 // Обрабатывает отдельный шаг этого раздела через общий контекст приложения.
 export function handleKeyboard(_app, event) {
-  const { dom, caseData } = _app;
-  const { showDialog, navigate } = _app;
+  const { caseData } = _app;
+  const { navigate } = _app;
   const tag = event.target.tagName;
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable;
   // Карточки архива открываются клавиатурой так же, как обычные кнопки.
@@ -361,7 +361,10 @@ export function handleKeyboard(_app, event) {
     event.preventDefault();
     _app.toggleNotebook();
   }
-  if (!typing && event.key === "?" && !document.querySelector("dialog[open]")) showDialog(dom.helpDialog);
+  if (!typing && event.key === "?") {
+    event.preventDefault();
+    _app.openHandbook();
+  }
 }
 
 
@@ -431,7 +434,7 @@ export function init(_app) {
   dom.newCaseForm.addEventListener("change", _app.updateCasePreview);
   _app.updateCasePreview();
   document.querySelector("#new-case-button").addEventListener("click", openNewCaseDialog);
-  document.querySelector("#help-button").addEventListener("click", () => showDialog(dom.helpDialog));
+  document.querySelector("#help-button").addEventListener("click", () => _app.openHandbook());
   dom.settingsButton.addEventListener("click", () => showDialog(dom.settingsDialog));
   document.querySelector("#random-seed").addEventListener("click", () => {
     document.querySelector("#case-seed").value = randomCaseCode();
