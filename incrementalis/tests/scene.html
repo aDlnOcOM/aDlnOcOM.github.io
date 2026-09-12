@@ -1,0 +1,24 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Incrementalis · Стенд генератора</title>
+<style>body{margin:0;background:#17212a;color:#ddd;font:13px system-ui}canvas{display:block;width:100vw;height:100vh}aside{position:fixed;left:16px;top:16px;background:#12202de8;padding:18px;width:220px;line-height:1.7}label{display:block;margin:8px 0}select{padding:5px;width:100%}output{display:block;margin-top:12px}</style>
+<canvas id="scene"></canvas><aside>Проверка без сохранений<label>Область<select id="region"><option value="0">Начало</option><option value="2">Древние культуры</option><option value="6">Средневековые формы</option><option value="15">Индустриальный слой</option><option value="50">Дальняя эпоха</option><option value="10000">За пределами эпох</option></select></label><label>Форма<select id="shape"><option value="network">Связная сеть</option><option>colonnade</option><option>torii</option><option>pyramid</option><option>pagoda</option><option>vault</option><option>terraces</option><option>hyperboloid</option><option>hypercube</option><option>menger</option></select></label><label>Вид<select id="view"><option value="outer">Снаружи</option><option value="inside">Изнутри</option></select></label><output id="stats"></output></aside>
+<script type="module">
+import {Renderer} from '../engine.js';
+import {structurePlan} from '../structure-space.mjs';
+import {STRUCTURE_FAMILIES,ASSEMBLIES} from '../structure-catalog.mjs';
+import {structureGeometry} from '../structure-geometry.mjs';
+import {StructureStream} from '../structure-stream.mjs';
+import {createGeometryWorker} from '../structure-worker-client.mjs';
+const $=id=>document.getElementById(id),renderer=new Renderer($('scene'));renderer.atmosphere('structure',0,true);renderer.motion=true;renderer.fogVertical=1;
+let stream=null,plan,last=0,clock=0,frames=0,fps=0;
+$('shape').replaceChildren(new Option('Связная сеть','network'),...STRUCTURE_FAMILIES.map(f=>new Option(f.id,f.id)));
+for(const [id,label,options] of [['layout','Сборка',ASSEMBLIES.map((a,i)=>[a.id,String(i)])],['range','Дальность',[['Средняя','3'],['Максимальная','6']]]]){
+ const l=document.createElement('label'),s=document.createElement('select');l.textContent=label;s.id=id;for(const [name,value]of options)s.add(new Option(name,value));l.append(s);$('stats').before(l);
+}
+function rebuild(){stream?.worker?.terminate();for(const name of [...renderer.meshes.keys()])renderer.removeMesh(name);plan=structurePlan([Number($('region').value),0,0],731927);renderer.origin=plan.origin;renderer.farDistance=2200*plan.scale;renderer.fogDensity=2.1/(240*Number($('range').value)*plan.scale);
+ if($('shape').value==='network'){stream=new StructureStream(renderer,731927,createGeometryWorker());stream.update(plan.origin,1,Number($('range').value)*240);}else{stream=null;const m=structureGeometry({...plan,type:$('shape').value,layout:Number($('layout').value)});renderer.setMesh('preview',m.geometry,false,false);renderer.meshOrigin('preview',m.origin);}
+ const inside=$('view').value==='inside',eye=(inside?[0,0,62]:stream?[-10,80,0]:[-190,105,-215]).map(v=>v*plan.scale);renderer.camera(eye,(inside?[0,8,0]:stream?[60,30,65]:[0,10,0]).map(v=>v*plan.scale));}
+for(const id of ['region','shape','view','layout','range'])$(id).onchange=rebuild;
+rebuild();window.onresize=()=>renderer.resize();
+function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-(last||now))/1000);last=now;if(document.hidden)return;if(stream)stream.update(plan.origin,1);renderer.render(now/1000,[],0,dt);frames++;clock+=dt;if(clock>1){fps=Math.round(frames/clock);clock=frames=0;const vertices=[...renderer.meshes.values()].reduce((n,m)=>n+m.count,0);$('stats').textContent=`Эпоха ${plan.epoch.toFixed(2)} · порядок ${plan.order.toFixed(2)} · масштаб ${plan.scale.toFixed(2)} · ${vertices.toLocaleString()} вершин · ${fps} кадр/с`;}}
+requestAnimationFrame(frame);
+</script></html>
