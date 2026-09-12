@@ -1,0 +1,83 @@
+/* Shared shipyard catalogue: game and enemy editor use the same component. */
+.part-categories { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; padding:10px; border-bottom:1px solid #2c404d; }
+.part-categories button { display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; border:1px solid transparent; border-radius:5px; padding:7px 0; background:transparent; color:#8da6b3; font-size:14px; }
+.part-categories button span { color:#b0c7ce; font-size:18px; line-height:1; }
+.part-categories button[aria-pressed="true"] { color:#d7f9ec; background:#22403e; border-color:#668f83; }
+.part-categories button:hover { background:#213440; }
+.build-panel header { padding:12px 16px; }
+.build-panel .catalog-toolbar { padding:10px 10px 0; }
+.build-filter { display:flex; align-items:center; gap:8px; margin:10px 14px 0; color:#a8bdc5; font-size:14px; }
+.build-filter input { accent-color:#9ad8bd; width:16px; height:16px; }
+.build-navigation { margin:8px 0; line-height:1.5; }
+.build-modules, .editor-part-catalog { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; align-content:start; }
+.part-tile { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:start; min-width:0; padding:9px; border:1px solid #304653; border-radius:7px; color:#d7e4e8; background:radial-gradient(ellipse at 50% 40%,#243d4c,#101e29 75%); text-align:center; cursor:pointer; }
+.part-tile .part-top { display:flex; justify-content:space-between; width:100%; font-size:14px; color:#9db4bf; }
+.part-tile .part-top span:last-child { color:#e0be89; }
+.part-tile .module-sprite { width:64px; height:46px; margin:3px auto; }
+.part-tile b { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font-size:14px; line-height:1.3; font-weight:600; }
+.part-variants { display:block; font-size:14px; color:#91b4b2; margin-top:4px; }
+.part-tile:hover { border-color:#91b6b6; background-color:#29424c; }
+.part-tile.selected { border-color:#a4e3c7; box-shadow:inset 0 0 0 1px #a4e3c74d; background:radial-gradient(ellipse,#2c5650,#152c30); }
+.part-tile.locked .module-sprite { opacity:.45; filter:saturate(.3); }
+.part-tile.locked { border-style:dashed; }
+.part-tile:focus-visible, .part-categories button:focus-visible, .part-variant-list button:focus-visible { outline:2px solid #b9f8dd; outline-offset:2px; }
+.build-edit-tools, .build-view-tools { display:flex; align-items:center; gap:5px; padding:7px 10px; }
+.build-edit-tools button, .build-view-tools button { border:1px solid #385261; border-radius:5px; background:#182b38; color:#c4d8df; padding:8px; font-size:14px; }
+.build-edit-tools button { flex:1; }
+.build-edit-tools button:disabled { opacity:.35; }
+.build-edit-tools button[aria-pressed="true"] { color:#ceffdf; border-color:#acdfbd; }
+.build-actions { padding:7px 10px 0; border-top:1px solid #304551; }
+.build-actions button { flex-direction:row; justify-content:center; }
+.build-actions .key { padding:2px 4px; min-width:20px; }
+#build-hint { max-height:62px; overflow:auto; padding:4px 12px 10px; font-size:14px; }
+.build-panel .eyebrow { display:none; }
+.build-panel .part-categories button span { display:none; }
+.build-inspector { position:absolute; right:16px; top:112px; z-index:13; width:282px; max-height:calc(100% - 200px); overflow:auto; background:#101e29f5; border:1px solid #3d5563; border-radius:9px; box-shadow:0 16px 45px #0005; font-size:14px; }
+.build-inspector summary { padding:12px 14px; color:#9cb7c4; letter-spacing:1px; font:14px var(--font-cyber); cursor:pointer; border-bottom:1px solid #2b434f; }
+#build-details { padding:12px; }
+.part-detail-head { display:flex; align-items:center; gap:10px; }
+.part-detail-head .module-sprite { flex:none; width:62px; height:62px; }
+.part-detail-head h3 { font-size:18px; line-height:1.25; margin:5px 0 0; }
+.part-detail-head .eyebrow { font-size:14px; letter-spacing:0; }
+.part-variant-list { display:flex; flex-wrap:wrap; gap:5px; margin:12px 0; }
+.part-variant-list button { display:flex; align-items:center; flex:1 1 42%; gap:5px; font-size:14px; min-width:0; padding:6px; color:#a9c0c9; border:1px solid #35505d; border-radius:4px; background:#142631; }
+.part-variant-list .module-art { position:relative; display:block; width:28px; height:28px; flex:none; }
+.part-variant-list button[aria-pressed="true"] { border-color:#94d8bc; color:#dcf7e9; background:#27483f; }
+.part-metrics { display:grid; grid-template-columns:repeat(3,1fr); margin:12px 0; border:1px solid #314754; border-radius:5px; padding:9px 4px; gap:6px; }
+.part-metrics span { text-align:center; color:#91a9b6; font-size:14px; }
+.part-metrics b { display:block; margin-top:5px; color:#e6f2f3; font-weight:600; }
+#build-details p { font-size:14px; color:#afc1ca; line-height:1.45; }
+.part-resource { font-size:14px; color:#dac59f; line-height:1.4; border-top:1px solid #2c424e; padding-top:9px; }
+.part-advice { border-left:2px solid #5da8a4; padding-left:8px; }
+.part-locked { color:#edbf87!important; }
+.part-ready { display:block; font-size:14px; color:#9cdabb; margin-top:10px; }
+.build-view-tools { border-top:1px solid #2c424e; justify-content:center; }
+.build-view-tools output { min-width:44px; text-align:center; color:#bad7dd; }
+.build-inspector .build-navigation { font-size:14px; }
+.editor-part-catalog { max-height:370px; overflow:auto; padding:3px; margin:12px 0; }
+.editor-controls .part-tile { padding:8px; }
+.editor-controls .part-categories { padding:0 0 10px; }
+.editor-controls .part-categories button { padding:6px 0; border-color:transparent; }
+.editor-controls .part-categories button[aria-pressed="true"] { border-color:#668f83; }
+.editor-part-details { margin-top:10px; }
+.editor-controls .editor-native-selector { display:none; }
+.editor-settings summary, .editor-part-details summary { cursor:pointer; color:#abc7c8; font:14px var(--font-cyber); padding:12px 0; }
+.editor-settings { border-bottom:1px solid #36505d; margin-bottom:14px; }
+.editor-part-details { margin-bottom:14px; }
+.editor-controls { padding:14px; }
+@media (min-width:761px) {
+  .editor-controls { max-height:calc(100dvh - 160px); overflow:auto; }
+  #blueprint-canvas { width:min(100%,calc(100dvh - 300px)); min-width:240px; margin:auto; }
+}
+.build-panel .part-categories { padding:5px 10px; }
+.build-panel .part-categories button { padding:5px 0; }
+.build-panel .catalog-toolbar { padding-top:7px; }
+.build-panel .search-field input { min-height:34px; }
+.build-panel .part-tile { padding:6px; }
+.build-panel .part-tile .module-sprite { height:40px; margin:0 auto; }
+.build-filter input { min-height:16px; padding:0; }
+.editor-part-details .part-detail-head { display:none; }
+.editor-part-details p, .editor-part-details .part-resource { font-size:14px; line-height:1.5; }
+@media (max-width:1150px) { .build-inspector { width:238px; } }
+@media (max-width:850px) { .build-panel { width:300px; } .part-categories button { font-size:14px; } .build-inspector { top:auto; bottom:86px; max-height:48%; width:220px; right:10px; } }
+@media (max-width:600px) { .build-panel { width:calc(100% - 24px); bottom:210px; } .build-inspector { bottom:78px; left:12px; right:12px; width:auto; max-height:122px; } .build-inspector details[open] { max-height:70px; overflow:auto; } .build-inspector .build-navigation { display:none; } .part-categories { grid-template-columns:repeat(4,1fr); } }

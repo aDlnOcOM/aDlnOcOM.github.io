@@ -887,13 +887,21 @@
 
       if (buildMode) {
         ctx.save();
-        ctx.strokeStyle = "rgba(92, 232, 255, 0.16)";
-        ctx.setLineDash([2, 3]);
-        for (let x = -24; x <= 24; x += 1) {
-          for (let y = -24; y <= 24; y += 1) {
-            ctx.strokeRect(x * MODULE_SIZE - MODULE_SIZE / 2, y * MODULE_SIZE - MODULE_SIZE / 2, MODULE_SIZE, MODULE_SIZE);
-          }
+        ctx.strokeStyle = "rgba(92, 190, 210, 0.12)"; ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        for (let i = -24; i <= 25; i++) {
+          const position = i * MODULE_SIZE - MODULE_SIZE / 2;
+          ctx.moveTo(position, -735); ctx.lineTo(position, 735);
+          ctx.moveTo(-735, position); ctx.lineTo(735, position);
         }
+        ctx.stroke();
+        for (const module of this.modules) for (const cell of ModuleSystem.reservedCellsForModule(module)) {
+          ctx.fillStyle = cell.kind === 'exhaust' ? 'rgba(235,163,75,0.10)' : 'rgba(100,198,224,0.12)';
+          ctx.fillRect(cell.gx * 30 - 14, cell.gy * 30 - 14, 28, 28);
+        }
+        ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(164,217,224,0.25)';
+        const core = this.modules.find(m => m.type === 'core');
+        if (core) { ctx.beginPath(); ctx.moveTo(-735, core.gy * 30); ctx.lineTo(735, core.gy * 30); ctx.stroke(); }
         ctx.restore();
       }
 

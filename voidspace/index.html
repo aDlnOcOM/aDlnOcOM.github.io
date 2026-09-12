@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#080e16">
   <meta name="description" content="VOIDSPACE — космическая экспедиция, модульные корабли, добыча и инженерия.">
   <title>VOIDSPACE // Flight console</title>
-  <link rel="stylesheet" href="css/style.css?v=20260910-03">
+  <link rel="stylesheet" href="css/style.css?v=20260912-01">
+  <link rel="stylesheet" href="css/builder.css?v=20260912-01">
 </head>
 <body>
 <main id="game-shell" aria-label="VOIDSPACE — браузерная игра">
@@ -80,12 +81,16 @@
   </section>
   <section id="build-panel" class="build-panel hidden" aria-label="Режим строительства">
     <header><div><span class="eyebrow">ВЕРФЬ / СИМУЛЯЦИЯ НА ПАУЗЕ</span><h2>Конструктор</h2></div><button id="exit-build" class="icon-button" aria-label="Закрыть конструктор">×</button></header>
-    <div class="catalog-toolbar"><label class="search-field"><span>⌕</span><input id="build-search" type="search" placeholder="Найти модуль…" aria-label="Найти модуль"></label><select id="build-category" aria-label="Категория модулей"></select></div>
-    <p class="build-navigation">Стрелки / зажатое колёсико — сдвиг обзора</p>
+    <nav id="build-categories" class="part-categories" aria-label="Категории блоков"></nav>
+    <div class="catalog-toolbar"><label class="search-field"><span>⌕</span><input id="build-search" type="search" placeholder="Название, материал, назначение…" aria-label="Найти модуль"></label><select id="build-category" aria-label="Категория модулей" hidden></select></div>
+    <label class="build-filter"><input id="build-available" type="checkbox"> Только открытые чертежи</label>
+    <p id="build-summary" class="build-navigation"></p>
     <div id="build-modules" class="build-modules"></div>
     <div class="build-actions"><button id="rotate-module"><span class="key">R</span>Поворот</button><button id="delete-module"><span class="key">X</span>Демонтаж</button><button id="overclock-module"><span class="key">O</span>Разгон</button></div>
+    <div class="build-edit-tools"><button id="build-undo" title="Ctrl+Z" disabled>↶ Отмена</button><button id="build-redo" title="Ctrl+Y" disabled>↷ Повтор</button><button id="build-copy" aria-pressed="false" title="C — взять блок под указателем">⌖ Копия</button></div>
     <p id="build-hint">Перед инструментом — 1 свободная клетка; позади двигателя — 5 клеток.</p>
   </section>
+  <aside id="build-inspector" class="build-inspector hidden" aria-label="Характеристики выбранного блока"><details open><summary>ПАСПОРТ МОДУЛЯ</summary><div id="build-details"></div></details><div class="build-view-tools"><button id="build-zoom-out" aria-label="Уменьшить масштаб">−</button><output id="build-scale">100%</output><button id="build-zoom-in" aria-label="Увеличить масштаб">+</button><button id="build-fit" title="Home">Весь корабль</button></div><p class="build-navigation">Стрелки / колёсико — сдвиг · +/− — масштаб</p></aside>
   <section id="pause-panel" class="overlay panel-overlay hidden" role="dialog" aria-modal="true" aria-label="Пауза">
     <div class="panel pause-panel"><span class="eyebrow">ПОЛЁТ ПРИОСТАНОВЛЕН</span><h2>Пауза</h2><p>Космос подождёт.<br>Экспедиция сохранена автоматически.</p><button id="resume-button" class="primary-button">ПРОДОЛЖИТЬ →</button><a class="editor-link" href="enemy-editor.html" target="_blank" rel="noopener">Конструктор врагов ↗</a><div class="danger-zone"><button id="reset-button" class="danger-button">Сбросить прогресс</button></div></div>
   </section>
@@ -94,20 +99,21 @@
   </section>
   <div id="loading" class="loading-screen"><div class="loader-mark"></div><span class="brand-word">VOIDSPACE</span><span>Подготовка корабля и сектора…</span></div>
 </main>
-<script src="js/utils.js?v=20260910-03" defer></script>
-<script src="js/modules.js?v=20260910-03" defer></script>
-<script src="js/content.js?v=20260910-03" defer></script>
-<script src="js/engineering-content.js?v=20260910-03" defer></script>
-<script src="js/visuals.js?v=20260910-03" defer></script>
-<script src="js/engineering.js?v=20260910-03" defer></script>
-<script src="js/inventory.js?v=20260910-03" defer></script>
-<script src="js/collisions.js?v=20260910-03" defer></script>
-<script src="js/entities.js?v=20260910-03" defer></script>
-<script src="js/station.js?v=20260910-03" defer></script>
-<script src="js/ship.js?v=20260910-03" defer></script>
-<script src="js/world.js?v=20260910-03" defer></script>
-<script src="js/weapons.js?v=20260910-03" defer></script>
-<script src="js/game.js?v=20260910-03" defer></script>
-<script src="js/main.js?v=20260910-03" defer></script>
+<script src="js/utils.js?v=20260912-01" defer></script>
+<script src="js/modules.js?v=20260912-01" defer></script>
+<script src="js/content.js?v=20260912-01" defer></script>
+<script src="js/engineering-content.js?v=20260912-01" defer></script>
+<script src="js/visuals.js?v=20260912-01" defer></script>
+<script src="js/builder.js?v=20260912-01" defer></script>
+<script src="js/engineering.js?v=20260912-01" defer></script>
+<script src="js/inventory.js?v=20260912-01" defer></script>
+<script src="js/collisions.js?v=20260912-01" defer></script>
+<script src="js/entities.js?v=20260912-01" defer></script>
+<script src="js/station.js?v=20260912-01" defer></script>
+<script src="js/ship.js?v=20260912-01" defer></script>
+<script src="js/world.js?v=20260912-01" defer></script>
+<script src="js/weapons.js?v=20260912-01" defer></script>
+<script src="js/game.js?v=20260912-01" defer></script>
+<script src="js/main.js?v=20260912-01" defer></script>
 </body>
 </html>

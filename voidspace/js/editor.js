@@ -7,6 +7,8 @@
   let rotation = 0, erase = false, blueprintId = `custom-${Date.now()}`, images = {};
   let zoom = 1;
   let hover = null;
+  let catalogCategory = 'all';
+  let history = new VS.Builder.History();
   let templates = [];
   const canvas = $("blueprint-canvas");
   const ctx = canvas.getContext("2d");
@@ -21,6 +23,7 @@
   function load(raw) {
     const blueprint = VS.Content.validateBlueprint(raw);
     modules = blueprint.modules;
+    history = new VS.Builder.History();
     blueprintId = blueprint.id;
     $("enemy-name").value = blueprint.name;
     $("enemy-behaviour").value = blueprint.behaviour;
@@ -29,6 +32,7 @@
     render(); status("Чертёж открыт. Изменения стандартного врага сохранятся отдельной копией.");
   }
   function render() {
+    $('editor-undo').disabled = !history.undoStack.length; $('editor-redo').disabled = !history.redoStack.length;
     const ratio = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = 680 * ratio; canvas.height = 680 * ratio;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -78,6 +82,7 @@
     const gy = Math.round(((event.clientY - bounds.top) / bounds.height * 680 - 340) / (30 * zoom));
     if (Math.abs(gx) > 24 || Math.abs(gy) > 24) return;
     const index = modules.findIndex((m) => m.gx === gx && m.gy === gy);
+    const before = JSON.parse(JSON.stringify(modules));
     if (erase || event.button === 2) { if (index !== -1) { const chosen = modules[index]; modules = modules.filter((m) => chosen.assembly ? m.assembly !== chosen.assembly : m !== chosen); } }
     else if (index !== -1) { status("Клетка занята. Сначала удалите блок.", true); return; }
     else {
@@ -86,6 +91,7 @@
       if (modules.length + cells.length > 256 || cells.some((c) => Math.abs(c.gx) > 24 || Math.abs(c.gy) > 24 || modules.some((m) => c.gx === m.gx && c.gy === m.gy))) { status("Сборка выходит за границы или перекрывает блоки", true); return; }
       modules.push(...cells);
     }
+    if (JSON.stringify(before) !== JSON.stringify(modules)) history.record(before);
     render();
   });
   $("module-type").replaceChildren(...Object.entries(MODULES).filter(([, d]) => !d.internal).map(([id, definition]) => { const option = document.createElement("option"); option.value = id; option.textContent = definition.name; return option; }));
@@ -96,23 +102,43 @@
     if (!def) return;
     $("module-description").textContent = def.description;
     $("editor-module-preview").innerHTML = `<span class="module-sprite">${VS.Visuals.iconMarkup(def)}</span><div><b>${def.name}</b><small>${VS.Visuals.CATEGORIES[VS.Visuals.category(def.visualType)]} · ${def.assemblyHp || def.hp} прочности${def.footprint ? ` · ${def.footprint.width}×${def.footprint.height} кл.` : ""}</small></div>`;
+    renderCatalog();
   }
+  function renderCatalog() {
+    const selected = $('module-type').value, list = $('editor-part-catalog'), scroll = list.scrollTop;
+    list.innerHTML = VS.Builder.cards({ category: catalogCategory, query: $('editor-module-search').value, includeCore: true, selected }); list.scrollTop = scroll;
+    $('editor-part-details').innerHTML = VS.Builder.detail(selected);
+    for (const container of [list, $('editor-part-details')]) container.querySelectorAll('[data-module]').forEach(button => button.addEventListener('click', () => {
+      $('module-type').value = button.dataset.module; erase = false; $('erase').setAttribute('aria-pressed', 'false'); previewModule(); render();
+      if (VS.Builder.family(button.dataset.module).types.length > 1) document.querySelector('.editor-part-details').open = true;
+    }));
+    document.querySelectorAll('#editor-categories button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === catalogCategory)));
+  }
+  $('editor-categories').innerHTML = Object.entries(VS.Visuals.CATEGORIES).map(([id, name]) => `<button data-category="${id}" aria-pressed="${id === 'all'}"><span>${VS.Builder.symbols[id]}</span>${id === "industry" ? "Заводы" : id === "all" ? "Все" : name}</button>`).join('');
+  $('editor-categories').querySelectorAll('button').forEach(button => button.addEventListener('click', () => { catalogCategory = button.dataset.category; renderCatalog(); }));
   $("module-type").addEventListener("change", () => { previewModule(); render(); });
   $("editor-module-search").addEventListener("input", () => {
-    const chosen = $("module-type").value;
-    const options = Object.entries(MODULES).filter(([type, def]) => !def.internal && VS.Visuals.matches(type, "all", $("editor-module-search").value));
-    $("module-type").replaceChildren(...options.map(([id, def]) => { const option = document.createElement("option"); option.value = id; option.textContent = def.name; return option; }));
-    if (options.some(([id]) => id === chosen)) $("module-type").value = chosen;
-    if (!options.length) { $("editor-module-preview").textContent = "Модуль не найден"; $("module-description").textContent = "Измените поисковый запрос"; }
-    else previewModule();
+    renderCatalog();
   });
   $("rotate").addEventListener("click", rotate);
-  window.addEventListener("keydown", (event) => { if (event.code === "KeyR" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) rotate(); });
+  function travelHistory(redo = false) { const value = history.travel(modules, redo); if (value) { modules = value; render(); } }
+  $('editor-undo').addEventListener('click', () => travelHistory());
+  $('editor-redo').addEventListener('click', () => travelHistory(true));
+  window.addEventListener("keydown", (event) => {
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+    if ((event.ctrlKey || event.metaKey) && ['KeyZ', 'KeyY'].includes(event.code)) { event.preventDefault(); travelHistory(event.code === 'KeyY' || event.shiftKey); return; }
+    if (event.code === "KeyR" && !event.repeat) rotate();
+    if (event.code === 'KeyC' && hover) {
+      let m = modules.find(m => m.gx === hover.gx && m.gy === hover.gy);
+      if (m?.assembly) m = modules.find(n => n.assembly === m.assembly && MODULES[n.type].footprint);
+      if (m) { $('module-type').value = m.type; rotation = m.rotation; erase = false; $('erase').setAttribute('aria-pressed', 'false'); $('rotate').textContent = `ПОВОРОТ · ${rotation * 90}°`; previewModule(); render(); }
+    }
+  });
   $("erase").addEventListener("click", () => { erase = !erase; $("erase").setAttribute("aria-pressed", String(erase)); });
   $("load-blueprint").addEventListener("click", () => { try { load(templates[Number($("blueprint-list").value)]); } catch (error) { status(error.message, true); } });
   $("new-blueprint").addEventListener("click", () => {
     if (!window.confirm("Начать новый чертёж? Несохранённые изменения будут потеряны.")) return;
-    modules = [{ type: "core", gx: 0, gy: 0, rotation: 0 }]; blueprintId = `custom-${Date.now()}`; $("enemy-name").value = "Мой противник"; render();
+    modules = [{ type: "core", gx: 0, gy: 0, rotation: 0 }]; history = new VS.Builder.History(); blueprintId = `custom-${Date.now()}`; $("enemy-name").value = "Мой противник"; render();
   });
   $("register").addEventListener("click", () => {
     try {

@@ -92,8 +92,8 @@
       if (this.canvas.width !== width) this.canvas.width = width;
       if (this.canvas.height !== height) this.canvas.height = height;
       // Keep square modules square on ultrawide and non-16:9 displays.
-      this.viewport.height = 540;
-      this.viewport.width = 540 * width / height;
+      this.viewport.height = 540 / (this.buildMode ? this.buildZoom || 1 : 1);
+      this.viewport.width = this.viewport.height * width / height;
       this.renderScale.x = width / this.viewport.width;
       this.renderScale.y = height / this.viewport.height;
       this.configureRenderer();
@@ -116,6 +116,18 @@
         category.addEventListener("change", () => this.renderBuildPalette());
         document.getElementById("build-search").addEventListener("input", () => this.renderBuildPalette());
       }
+      const categories = document.getElementById("build-categories");
+      if (categories && VS.Builder) {
+        categories.innerHTML = Object.entries(VS.Visuals.CATEGORIES).map(([id, name]) => `<button data-category="${id}" aria-pressed="${id === 'all'}"><span>${VS.Builder.symbols[id]}</span>${id === "industry" ? "Заводы" : id === "all" ? "Все" : name}</button>`).join('');
+        categories.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { category.value = button.dataset.category; this.renderBuildPalette(); }));
+      }
+      document.getElementById('build-available')?.addEventListener('change', () => this.renderBuildPalette());
+      document.getElementById('build-undo')?.addEventListener('click', () => this.travelBuildHistory());
+      document.getElementById('build-redo')?.addEventListener('click', () => this.travelBuildHistory(true));
+      document.getElementById('build-copy')?.addEventListener('click', () => { this.buildPicking = !this.buildPicking; this.updateBuildTools(); });
+      document.getElementById('build-fit')?.addEventListener('click', () => this.fitBuild());
+      document.getElementById('build-zoom-in')?.addEventListener('click', () => this.zoomBuild(1.25));
+      document.getElementById('build-zoom-out')?.addEventListener('click', () => this.zoomBuild(0.8));
       window.addEventListener("storage", (event) => { if (event.key === "voidspace-enemies-v1") this.expedition.reloadTemplates(); });
       this.dom["inertia-toggle"].addEventListener("click", () => {
         if (!this.ship.canStabilize()) return;
@@ -211,6 +223,11 @@
         return;
       }
       if (event.code !== "Escape" && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
+      if (this.buildMode && (event.ctrlKey || event.metaKey) && ['KeyZ', 'KeyY'].includes(event.code)) { event.preventDefault(); this.travelBuildHistory(event.code === 'KeyY' || event.shiftKey); return; }
+      if (this.buildMode && !event.repeat && event.code === 'KeyC') { this.pickBuildModule(); return; }
+      if (this.buildMode && ['Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract', 'Home'].includes(event.code)) {
+        event.preventDefault(); if (event.code === 'Home') this.fitBuild(); else this.zoomBuild(['Equal', 'NumpadAdd'].includes(event.code) ? 1.25 : 0.8); return;
+      }
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
       if (event.repeat && ["KeyB", "KeyI", "KeyF", "Escape", "KeyR", "KeyX", "KeyO"].includes(event.code)) return;
       if (this.buildMode && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
@@ -497,7 +514,12 @@
     toggleBuild(force) {
       if (!this.started || this.ship.hp <= 0) return;
       if (force && this.expedition.enemies.some((enemy) => !enemy.dead && Utils.distance(enemy.ship, this.ship) < 900) && !this.expedition.safeAt(this.ship)) { this.notify("Строительство недоступно во время боя", true); return; }
+      const entering = force && !this.buildMode;
       this.buildMode = force;
+      if (entering && VS.Builder) this.buildHistory = new VS.Builder.History();
+      this.buildPicking = false;
+      this.resizeCanvas();
+      document.getElementById('build-inspector')?.classList.toggle('hidden', !force);
       document.getElementById("game-shell")?.classList.toggle("building", force);
       document.getElementById("hud-build")?.setAttribute("aria-pressed", String(force));
       this.deleteMode = false;
@@ -510,6 +532,7 @@
         this.camera.x = this.ship.x;
         this.camera.y = this.ship.y;
         this.renderBuildPalette();
+        this.fitBuild();
         this.updateBuildHover();
         this.notify("Режим строительства: симуляция приостановлена");
       } else {
@@ -529,7 +552,7 @@
       const cells = ModuleSystem.assemblyCells(candidate);
       const occupied = cells.some((cell) => this.ship.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy));
       const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell)) || VS.Physics.placementBlocked(this.ship, cells, this.expedition);
-      const valid = this.deleteMode ? occupied : !occupied && this.ship.modules.length + cells.length <= 256 && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy, cell)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
+      const valid = this.deleteMode ? occupied : this.ship.unlocked.has(this.buildSelected) && this.ship.credits >= MODULES[this.buildSelected].cost && !occupied && this.ship.modules.length + cells.length <= 256 && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy, cell)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
       this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
       this.inspectedModule = this.ship.modules.find((m) => m.gx === gx && m.gy === gy) || null;
       if (this.inspectedModule?.assembly) this.inspectedModule = this.ship.modules.find((m) => m.assembly === this.inspectedModule.assembly && MODULES[m.type].footprint) || this.inspectedModule;
@@ -541,11 +564,13 @@
 
     handleBuildClick(forceDelete) {
       if (!this.buildHover) return;
+      if (this.buildPicking && !forceDelete) { this.pickBuildModule(); return; }
       const deleting = forceDelete || this.deleteMode;
       const candidate = { type: this.buildSelected, gx: this.buildHover.gx, gy: this.buildHover.gy, rotation: this.buildRotation };
       if (!deleting && VS.Physics.placementBlocked(this.ship, ModuleSystem.assemblyCells(candidate), this.expedition)) {
         this.notify("Модуль пересекает станцию, астероид или другой корабль", true); return;
       }
+      const before = this.captureBuild();
       const result = deleting
         ? this.ship.removeModule(this.buildHover.gx, this.buildHover.gy)
         : this.ship.addModule(this.buildSelected, this.buildHover.gx, this.buildHover.gy, this.buildRotation);
@@ -553,25 +578,30 @@
       this.updateBuildHover();
       this.renderBuildPalette();
       this.updateHud();
-      if (result.ok) this.save();
+      if (result.ok) { this.buildHistory?.record(before); this.updateBuildTools(); this.save(); }
     }
 
     rotateBuildModule() {
       this.buildRotation = (this.buildRotation + 1) % 4;
       this.updateBuildHover();
+      this.updateBuildTools();
     }
 
     toggleModuleOverclock() {
       const module = this.inspectedModule;
       if (!module || !this.ship.modules.includes(module) || !MODULES[module.type].overclockable) { this.notify("Наведите указатель на модуль с поддержкой разгона", true); return; }
       if (!this.ship.research.has(module.type)) { this.notify("Сначала исследуйте разгон этого типа на станции", true); return; }
+      this.buildHistory?.record(this.captureBuild());
       module.overclock = !module.overclock;
+      this.updateBuildTools();
       this.notify(`Разгон ${MODULES[module.type].name}: ${module.overclock ? "включён" : "выключен"}`);
       this.save();
     }
 
     toggleDeleteMode() {
+      this.buildPicking = false;
       this.deleteMode = !this.deleteMode;
+      this.updateBuildTools();
       document.getElementById("delete-module").classList.toggle("active", this.deleteMode);
       this.dom["build-hint"].textContent = this.deleteMode
         ? "Выберите модуль для демонтажа. Возвращается 50% стоимости."
@@ -579,31 +609,83 @@
       this.updateBuildHover();
     }
 
-    renderBuildPalette() {
-      const category = document.getElementById("build-category")?.value || "all";
-      const query = document.getElementById("build-search")?.value || "";
-      this.dom["build-modules"].innerHTML = Object.entries(MODULES)
-        .filter(([type, definition]) => type !== "core" && !definition.internal && (!definition.shipClass || definition.shipClass === this.ship.shipClass))
-        .filter(([type]) => !VS.Visuals || VS.Visuals.matches(type, category, query))
-        .map(([type, definition]) => {
-          const unlocked = this.ship.unlocked.has(type);
-          return `<button class="module-option ${type === this.buildSelected ? "selected" : ""} ${unlocked ? "" : "locked"}" data-module="${type}" ${unlocked ? "" : "disabled"}>
-            <span class="module-sprite"><img src="assets/modules/frame.png" alt="">${moduleArtMarkup(definition)}</span>
-            <span><b>${definition.name}</b><small>${VS.EngineeringData ? VS.EngineeringData.consumption(definition) : definition.description}</small></span>
-            <strong>${definition.cost} ¤</strong>
-          </button>`;
-        }).join("") || '<div class="empty-state">Модули не найдены.<br>Измените запрос или категорию.</div>';
-      this.dom["build-modules"].querySelectorAll("[data-module]").forEach((button) => {
-        button.addEventListener("click", () => {
-          this.buildSelected = button.dataset.module;
-          this.deleteMode = false;
-          document.getElementById("delete-module").classList.remove("active");
-          this.renderBuildPalette();
-          this.updateBuildHover();
-        });
-      });
+    captureBuild() {
+      return { ship: this.ship.serialize(), motion: { vx: this.ship.vx, vy: this.ship.vy, angularVelocity: this.ship.angularVelocity } };
     }
 
+    travelBuildHistory(redo = false) {
+      if (!this.buildMode || !this.buildHistory) return;
+      const snapshot = this.buildHistory.travel(this.captureBuild(), redo);
+      if (!snapshot) return;
+      const heatView = this.ship.heatView;
+      this.ship = new VS.Ship(snapshot.ship); Object.assign(this.ship, snapshot.motion, { heatView });
+      this.renderBuildPalette(); this.updateBuildHover(); this.updateHud(); this.save();
+      this.notify(redo ? "Действие повторено" : "Действие отменено");
+    }
+
+    pickBuildModule() {
+      const target = this.inspectedModule;
+      if (!target || target.type === 'core') { this.notify("Наведите указатель на установленный блок"); return; }
+      this.buildSelected = target.type; this.buildRotation = target.rotation || 0;
+      this.buildPicking = false; this.deleteMode = false;
+      document.getElementById('delete-module')?.classList.remove('active');
+      this.renderBuildPalette(); this.updateBuildHover();
+      this.notify("Выбран " + MODULES[target.type].name);
+    }
+
+    zoomBuild(factor) {
+      if (!this.buildMode) return;
+      this.buildZoom = Utils.clamp((this.buildZoom || 1) * factor, 0.3, 2.5);
+      this.resizeCanvas(); this.updateBuildHover(); this.updateBuildTools();
+    }
+
+    fitBuild() {
+      if (!this.buildMode) return;
+      const bounds = this.canvas.getBoundingClientRect();
+      const points = VS.Physics.shapes(this.ship).flatMap(shape => shape.points || []);
+      if (!points.length) return;
+      const left = Math.min(...points.map(p => p.x)), right = Math.max(...points.map(p => p.x));
+      const top = Math.min(...points.map(p => p.y)), bottom = Math.max(...points.map(p => p.y));
+      const panel = this.dom['build-panel'].getBoundingClientRect();
+      const occupied = Math.min(bounds.width * 0.5, Math.max(0, panel.right - bounds.left) + 20);
+      const inspector = document.getElementById('build-inspector')?.getBoundingClientRect();
+      const rightInset = bounds.width > 850 && inspector ? bounds.right - inspector.left + 20 : 0;
+      this.buildZoom = Utils.clamp(Math.min((bounds.width - occupied - rightInset - 50) / (right - left + 90), (bounds.height - 190) / (bottom - top + 90)) * 540 / bounds.height, 0.3, 1.4);
+      this.resizeCanvas();
+      this.camera.x = (left + right) / 2 - (occupied - rightInset) / 2 * this.viewport.width / bounds.width;
+      this.camera.y = (top + bottom) / 2;
+      this.updateBuildHover(); this.updateBuildTools();
+    }
+
+    updateBuildTools() {
+      const undo = document.getElementById('build-undo'), redo = document.getElementById('build-redo');
+      if (undo) undo.disabled = !this.buildHistory?.undoStack.length;
+      if (redo) redo.disabled = !this.buildHistory?.redoStack.length;
+      document.getElementById('build-copy')?.setAttribute('aria-pressed', String(Boolean(this.buildPicking)));
+      const scale = document.getElementById('build-scale'); if (scale) scale.textContent = Math.round((this.buildZoom || 1) * 100) + '%';
+      const summary = document.getElementById('build-summary');
+      if (summary) summary.textContent = this.ship.modules.length + '/256 клеток · корпус ' + Math.round(this.ship.hp) + ' · R ' + this.buildRotation * 90 + '°';
+    }
+
+    renderBuildPalette() {
+      if (!VS.Builder) return;
+      const category = document.getElementById("build-category")?.value || "all";
+      const options = { category, query: document.getElementById("build-search")?.value || "", shipClass: this.ship.shipClass,
+        unlocked: this.ship.unlocked, availableOnly: document.getElementById('build-available')?.checked, selected: this.buildSelected };
+      const list = this.dom['build-modules'], scroll = list.scrollTop;
+      list.innerHTML = VS.Builder.cards(options); list.scrollTop = scroll;
+      const detail = document.getElementById('build-details');
+      if (detail) detail.innerHTML = VS.Builder.detail(this.buildSelected, options);
+      document.querySelectorAll('#build-categories button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
+      for (const container of [list, detail].filter(Boolean)) container.querySelectorAll('[data-module]').forEach(button => {
+        button.addEventListener('click', () => {
+          this.buildSelected = button.dataset.module; this.deleteMode = false; this.buildPicking = false;
+          document.getElementById('delete-module').classList.remove('active');
+          this.renderBuildPalette(); this.updateBuildHover();
+        });
+      });
+      this.updateBuildTools();
+    }
     openDock() {
       if (!this.expedition.dockAt(this.ship)) return;
       this.paused = true;
@@ -793,7 +875,7 @@
 
     syncInterface(focusPanel = null) {
       const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
-      for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel"]) {
+      for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel", "#build-inspector"]) {
         const element = document.querySelector(selector); if (element) element.inert = Boolean(modal);
       }
       if (modal) { this.input.clear(); this.mouse.down = false; }

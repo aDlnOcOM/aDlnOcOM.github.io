@@ -148,7 +148,7 @@ a { color: var(--cyan); text-underline-offset: 4px; }
 .pause-panel button { display: block; width: 100%; }
 .danger-zone { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 22px; }
 .editor-link { display: block; font-size: 14px; margin-top: 20px; color: #b1c5cc; }
-.build-panel { position: absolute; left: 24px; top: 20px; bottom: 88px; width: 360px; z-index: 14; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #405462; border-radius: 10px; background: #0d1824f5; box-shadow: 14px 0 60px #0005; backdrop-filter: blur(14px); }
+.build-panel { position: absolute; left: 16px; top: 16px; bottom: 88px; width: 348px; z-index: 14; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #405462; border-radius: 10px; background: #0d1824fa; box-shadow: 14px 0 60px #0005; }
 .build-panel header { padding: 18px; }
 .build-panel h2 { font-size: 24px; }
 .build-panel .eyebrow { letter-spacing: 0; }
