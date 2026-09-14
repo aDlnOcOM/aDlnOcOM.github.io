@@ -166,6 +166,8 @@ body:not([data-screen=run]) .masthead { display:none; }
 .gear-node.locked { color:#a8b7b4; }
 .gear-node.excluded { color:#c3a4aa; }
 /* Compact tactical HUD: health and ammo first, route stays secondary. */
+.navigation-strip { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:9px 12px; margin-bottom:8px; border-left:3px solid #c5c99c; background:#1b2925; color:#d0ddb9; font:11px/1.5 var(--ui-mono); }
+.navigation-strip span { color:#a9bfb2; }
 .run-screen { grid-template-columns:200px minmax(0,1fr); gap:18px; padding-top:18px; }
 .run-sidebar { gap:10px; }
 .run-card { background:#142022; border-color:#3c5049; padding:14px; border-radius:3px; box-shadow:none; }

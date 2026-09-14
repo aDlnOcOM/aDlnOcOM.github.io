@@ -1186,6 +1186,10 @@
     element("armor-label").textContent = String(Math.ceil(player.armor)).padStart(2, "0");
     element("armor-bar").style.width = (player.armor / player.maxArmor) * 100 + "%";
 
+    if (window.Wayfinding) {
+      element("navigation-goal").textContent = window.Wayfinding.objective(map, player).label;
+      element("navigation-bearing").textContent = window.Wayfinding.bearing(playerAimAngle());
+    }
     const knife = player.weapon === "knife";
     element("weapon-name").textContent = currentLoadout().find(item => item.id === (knife ? "knife" : "smg")).name;
     element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " " + ({ energy: 'ЭН', ballistic: 'БЛ', elemental: 'ЭЛ', mechanical: 'МХ' }[state.powerInventory.type] || 'ЭН') + "</small>";
@@ -1777,9 +1781,11 @@
     context.save();
     context.translate(-state.cameraX, 0);
     window.SectorGenerator.draw(context, map, state.cameraX, WIDTH, HEIGHT, state.alarm);
+    window.WorldArt?.floor(context, map, state.cameraX, WIDTH, state.alarm);
+    for (const wall of map.walls) if (wall.x + wall.width >= state.cameraX && wall.x <= state.cameraX + WIDTH) window.WorldArt?.shadow(context, wall);
     for (const wall of map.walls) {
       if (wall.x + wall.width < state.cameraX || wall.x > state.cameraX + WIDTH) continue;
-      if (window.GameAssets?.wall(context, wall)) continue;
+      if (window.GameAssets?.wall(context, wall)) { window.WorldArt?.edge(context, wall, state.alarm); continue; }
       context.fillStyle = wall.outer ? "#080b0d" : wall.console ? "#15191c" : "#0b0e10";
       context.fillRect(wall.x, wall.y, wall.width, wall.height);
       context.strokeStyle = wall.outer ? "#242a2d" : "#2c3438";
@@ -1986,6 +1992,7 @@
   function drawPlayer() {
     const player = state.player;
     const angle = playerAimAngle();
+    window.Wayfinding?.draw(context, player, angle, state.cameraX, player.handling?.ads > .6);
     window.PlayerDash?.draw(context, player, state.cameraX, isPointVisible);
     context.save();
     context.translate(player.x - state.cameraX, player.y);
