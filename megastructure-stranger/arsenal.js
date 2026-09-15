@@ -14,6 +14,14 @@
     ['dart','Дротикомёт','mechanical',18,25,.26,790,1,'ДР',60]
   ].map(([id,name,type,magazine,damage,delay,velocity,pellets,caliber,box])=>({id,name,type,magazine,damage,delay,velocity,pellets,caliber,box}));
   const series=['Сектор','Заслон','Контур','Рубеж','Призрак','Каскад','Вектор','Предел','Спектр','Монолит'];
+  const handling={
+    pistol:[82,.9,.18,['semi'],.15],smg:[72,2.3,.13,['auto','semi'],.12],
+    carbine:[62,3.2,.23,['semi','auto'],.32],rifle:[43,4.6,.38,['semi'],.5],
+    shotgun:[48,3.9,.46,['semi'],.08],lmg:[29,7.2,.24,['auto','semi'],.37],
+    plasma:[45,4.5,.3,['semi'],.18],rail:[24,6.8,.65,['semi'],.7],
+    arc:[55,3.7,.16,['semi','auto'],.22],dart:[76,1.8,.12,['semi'],.4]
+  };
+  const builds=[['Штатный',0,1,1],['Компактный',13,.8,1.18],['Длинноствольный',-9,1.15,.84],['Усиленный',-15,1.3,.72],['Облегчённый',8,.88,1.08]];
   const items=[];
   for(const family of families)for(let i=0;i<10;i++)items.push({
     id:`${family.id}-${i}`,name:family.id==='smg'&&i===0?'ПП Охраны':`${family.name} «${series[i]}-${i+1}»`,kind:'ranged',slot:'smg',family:family.id,type:family.type,
@@ -29,6 +37,10 @@
   for(let i=0;i<10;i++)items.push({id:`bag-${i}`,name:i===0?'Офисная сумка':`Сумка «${series[i]}»`,kind:'bag',slot:'bag',tier:1+Math.floor(i/2),capacity:4+i*2,retention:.4+i*.025,station:'forming',costs:{fabric:4+i,thread:3,buckle:2,polymerSheet:1}});
   for(const [material,label,resource,weight] of [['steel','Стальная','steel',1],['ceramic','Керамическая','ceramic',.7],['composite','Композитная','composite',.5],['polyethylene','Полиэтиленовая','polyethylene',.35]])for(let level=1;level<=6;level++)items.push({id:`plate-${material}-${level}`,name:`${label} бронеплита · класс ${level}`,kind:'plate',material,protection:level,weight,tier:Math.min(5,level),station:'forming',costs:{[resource]:level*3,plateBlank:1,resin:level}});
   const byId=Object.fromEntries(items.map(item=>[item.id,item]));
+  for(const def of items.filter(item=>item.kind==='ranged')){
+    const index=Number(def.id.split('-').at(-1)),[ergo,mass,recoil,modes,penetration]=handling[def.family],build=builds[index%5];
+    Object.assign(def,{build:build[0],ergonomics:Math.max(10,Math.min(95,ergo+build[1])),mass:Number((mass*build[2]).toFixed(2)),recoil:recoil*build[3],modes:[...modes],penetration});
+  }
   function profile(item){return byId[item?.defId];}
   function ammoInfo(def,type=def.type){return {key:`${def.family}:${type}`,type,magazine:`Магазин ${def.caliber} / ${type}`,box:`Боезапас ${def.caliber} / ${type}`,capacity:def.box,code:def.caliber};}
   function drawMelee(ctx,player,angle,definition){

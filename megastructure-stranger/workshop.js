@@ -110,6 +110,14 @@
   function stats(p,base){
     const gun=equipped(p,'smg'),gd=definition(gun),knife=equipped(p,'knife'),kd=definition(knife);
     const factor=item=>item&&item.condition>0?[.8,.9,1,1.12,1.25][item.quality]*(.65+.35*item.condition/100):0;
+    if(gd?.ergonomics){
+      const mods=p.equipment?.smg||{},stock=mods.stock?.choice,muzzle=mods.muzzle?.choice;
+      base.weaponProfile={ergonomics:Math.min(95,gd.ergonomics+(stock==='servo-stock'?10:0)),mass:gd.mass,
+        recoil:gd.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...gd.modes],condition:gun.condition,
+        penetration:Math.min(.9,gd.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0))};
+      base.speed*=Math.max(.86,Math.min(1.02,1-(gd.mass-2)*.018));
+      base.reload*=1+(60-base.weaponProfile.ergonomics)*.006;
+    }
     if(gd){base.damage=(gd.damage+base.damage-9)*factor(gun);base.magazine=Math.max(1,gd.magazine+base.magazine-32);base.fireDelay=gd.delay;base.bulletSpeed=gd.velocity*base.bulletSpeed/680;base.spread=Math.max(.003,gd.spread+base.spread-.055);base.pellets=gd.pellets;base.projectileRange=gd.range;base.reload*=.75+gd.magazine/128;}
     if(kd){base.knifeDamage=(kd.damage+base.knifeDamage-34)*factor(knife);base.knifeDelay=Math.max(.15,kd.delay+base.knifeDelay-.42);base.meleeRange=kd.range;base.meleeArc=kd.arc;}
     let armor=0;for(const slot of ['chest','helmet','pants','boots']){const item=equipped(p,slot);armor+=(definition(item)?.armor||0)*factor(item);}
