@@ -129,6 +129,7 @@ body:not([data-screen=run]) .masthead { display:none; }
 .inventory-container h4 { color:#c0ccb3; font-size:11px; }
 .tactical-grid { background-color:#232c22; }
 .tactical-item { border-radius:2px; }
+.tactical-item.selected-magazine { outline:2px solid #d6ddaf; outline-offset:-3px; background:#43513a; }
 .tactical-item small { font-size:9px; color:#e1e1cc; }
 .item-inspector { border:1px solid #4d624d; background:#1c2920; color:#bcc9b1; border-radius:3px; }
 .resource-cost { border-color:#4b6151; background:#17231d; color:#d2dbbf; border-radius:3px; }

@@ -51,15 +51,28 @@
   function cancelRefill(stock) {
     stock.refilling = null;
   }
+  function compatible(stock,magazine){return Boolean(magazine)&&(!stock.ammoKey||magazine.ammoKey===stock.ammoKey)&&(magazine.type||'energy')===(stock.type||'energy');}
+  function swapTarget(stock){
+    const current=stock.magazines[stock.loaded];
+    const preferred=stock.magazines.find(m=>m.id===stock.nextMagazine&&m.id!==current.id&&m.energy>0&&compatible(stock,m));
+    if(preferred)return preferred;
+    return stock.magazines.filter(m=>m.id!==current.id&&compatible(stock,m)&&m.energy>current.energy).sort((a,b)=>b.energy-a.energy)[0];
+  }
+  function selectMagazine(stock,id){
+    const magazine=stock.magazines.find(m=>m.id===id);
+    if(stock.reloadTarget!==undefined||stock.refilling||!compatible(stock,magazine)||magazine.id===stock.loaded||magazine.energy<=0)return false;
+    stock.nextMagazine=id;return true;
+  }
+  function prepareReload(stock){const next=swapTarget(stock);if(!next||stock.refilling)return false;stock.reloadTarget=next.id;return true;}
   function reload(stock) {
-    const current = stock.magazines[stock.loaded];
-    const next = stock.magazines.reduce((best, item) => (!stock.ammoKey || item.ammoKey === stock.ammoKey) && (item.type || 'energy') === (stock.type || 'energy') && item.energy > best.energy ? item : best, current);
-    if (next.id !== current.id) stock.loaded = next.id;
+    const next=stock.reloadTarget!==undefined?stock.magazines.find(m=>m.id===stock.reloadTarget):swapTarget(stock);
+    if(compatible(stock,next)&&next.energy>0)stock.loaded=stock.magazines.indexOf(next);
+    delete stock.reloadTarget;delete stock.nextMagazine;
     return stock.magazines[stock.loaded].energy;
   }
   function canReload(stock) {
     const current = stock.magazines[stock.loaded];
-    return current.energy < current.capacity && (stock.battery > 0 || stock.magazines.some(item => (!stock.ammoKey || item.ammoKey === stock.ammoKey) && (item.type || 'energy') === (stock.type || 'energy') && item.energy > current.energy));
+    return Boolean(swapTarget(stock)) || (current.energy < current.capacity && stock.battery > 0);
   }
   function render(container, stock, onRefill) {
     const info = stock.supply || supplies[stock.type] || supplies.energy;
@@ -91,6 +104,12 @@
         ? '<small>ЗАПАС БОЕПРИПАСОВ</small><h4>' + info.box + '</h4><p>Всего ' + stock.battery + ' ед. · Ёмкость упаковки ' + info.capacity + ' · Совместимость: ' + info.code + '</p>'
         : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.id === stock.loaded ? 'Установлен в оружии' : 'Запасной в подсумке') + '</p>';
       if (magazine && onRefill) {
+        if(magazine.id!==stock.loaded){
+          const choose=document.createElement('button');choose.type='button';choose.className='quiet-button';
+          choose.textContent=stock.nextMagazine===magazine.id?'Выбран для следующей R':'Выбрать для перезарядки · R';
+          choose.disabled=Boolean(stock.refilling)||stock.reloadTarget!==undefined||magazine.energy<=0||!compatible(stock,magazine);
+          choose.onclick=()=>{if(selectMagazine(stock,magazine.id))render(container,stock,onRefill);};details.appendChild(choose);
+        }
         const button = document.createElement('button'); button.className = 'quiet-button'; button.textContent = 'Пополнить из Мк I';
         button.disabled = Boolean(stock.refilling) || !stock.battery || magazine.energy === magazine.capacity;
         button.textContent = 'Пополнить · ' + Math.max(10, Math.min(magazine.capacity - magazine.energy, stock.battery) / 3.2).toFixed(1) + ' с';
@@ -104,6 +123,7 @@
       cell.style.gridRow = '1 / span 2';
       cell.setAttribute('aria-label', info.magazine + ': ' + magazine.variant + ', ' + magazine.energy + ' из ' + magazine.capacity);
       cell.title = info.magazine + ' / ' + magazine.variant;
+      if(stock.nextMagazine===magazine.id){cell.title+=' · выбран для R';cell.classList.add('selected-magazine');}
       cell.dataset.ammoType = stock.type || 'energy';
       cell.innerHTML = '<small>' + info.code + '-' + magazine.capacity + '</small><span class="mag-drawing" aria-hidden="true"></span><strong>' + magazine.energy + '/' + magazine.capacity + '</strong>';
       cell.onclick = () => { stock.inspectId = magazine.id; inspect(magazine); };
@@ -157,5 +177,5 @@
     dialog.onclose = () => { window.clearInterval(refreshTimer); cancelRefill(stock); dialog.remove(); onClose(); if (opener?.isConnected) opener.focus(); };
     document.body.appendChild(dialog); dialog.showModal();
   }
-  window.PowerInventory = { create, fire, startRefill, tickRefill, cancelRefill, reload, canReload, render, show };
+  window.PowerInventory = { create, fire, startRefill, tickRefill, cancelRefill, reload, canReload, render, show, compatible, swapTarget, selectMagazine, prepareReload };
 })();

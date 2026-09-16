@@ -1472,15 +1472,16 @@
 
   function reloadSmg() {
     const player = state.player;
-    if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
+    if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || (player.ammo === player.magazine && state.powerInventory.nextMagazine === undefined)) return;
     if (!window.PowerInventory.canReload(state.powerInventory)) return;
     if (state.powerInventory.refilling) return;
     const stock = state.powerInventory;
-    if (!stock.magazines.some(item => item.energy > stock.magazines[stock.loaded].energy)) {
+    if (!window.PowerInventory.swapTarget(stock)) {
       window.PowerInventory.startRefill(stock, stock.loaded);
       emitNoise(player.x, player.y, 105, "пополнение магазина");
       return;
     }
+    if (!window.PowerInventory.prepareReload(stock)) return;
     player.reload = playerStats().reload;
     window.GameAnimation?.trigger(player, "reload", player.reload);
     emitNoise(player.x, player.y, 105, "звук перезарядки");
