@@ -1376,6 +1376,7 @@
 
   function updatePlayer(delta) {
     const player = state.player;
+    const handlingStats = playerStats(), movementStart = {x:player.x,y:player.y};
     let horizontal = 0;
     let vertical = 0;
     if (state.input.keys.has("KeyA") || state.input.keys.has("ArrowLeft")) horizontal -= 1;
@@ -1386,13 +1387,15 @@
     if (!dashing && (horizontal || vertical)) {
       const length = Math.hypot(horizontal, vertical);
       const before = { x: player.x, y: player.y };
-      moveCircle(player, horizontal / length * player.speed * delta, vertical / length * player.speed * delta);
+      const speed = player.speed * (window.WeaponHandling?.speed(player) || 1);
+      moveCircle(player, horizontal / length * speed * delta, vertical / length * speed * delta);
       player.stepDistance = (player.stepDistance || 0) + distance(before, player);
       if (player.stepDistance >= 72) {
         player.stepDistance %= 72;
         emitNoise(player.x, player.y, 145, "шаги в коридоре");
       }
     }
+    window.WeaponHandling?.tick(player, handlingStats, delta, {aim:state.input.aimDown,fire:state.input.mouseDown,refilling:Boolean(state.powerInventory.refilling),moving:Math.min(1,distance(movementStart,player)/Math.max(1,player.speed*delta))});
     player.invulnerability = Math.max(0, player.invulnerability - delta);
     player.fireCooldown = Math.max(0, player.fireCooldown - delta);
     player.knifeCooldown = Math.max(0, player.knifeCooldown - delta);
@@ -1440,6 +1443,7 @@
   function fireSmg() {
     const player = state.player;
     if (!state.active || !player || player.reload > 0 || state.powerInventory.refilling) return;
+    if (window.WeaponHandling && !window.WeaponHandling.canFire(player, playerStats())) return;
     if (!player.ammo) {
       reloadSmg();
       return;
@@ -1448,10 +1452,13 @@
     if (stats.damage <= 0) { element("signal-text").textContent = "Оружие сломано. Нужен ремонт в убежище."; return; }
     const damageType = state.powerInventory.type || "energy";
     if (!window.PowerInventory.fire(state.powerInventory)) return;
-    const aim = playerAimAngle() + randomBetween(-stats.spread, stats.spread);
+    const handlingSpread = player.handling?.spread ?? stats.spread;
+    const aimSpread = (stats.pellets || 1) > 1 ? handlingSpread * .18 : handlingSpread;
+    const aim = playerAimAngle() + randomBetween(-aimSpread, aimSpread);
+    window.WeaponHandling?.fired(player, stats);
     for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
     const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * stats.bulletSpeed, vy: Math.sin(shotAngle) * stats.bulletSpeed, radius: 3, damage: stats.damage, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / stats.bulletSpeed });
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * stats.bulletSpeed, vy: Math.sin(shotAngle) * stats.bulletSpeed, radius: 3, damage: stats.damage, penetration:stats.weaponProfile?.penetration || 0, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / stats.bulletSpeed });
     }
     window.Workshop?.wear(progression, "smg", .07);
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
@@ -2101,6 +2108,7 @@
     drawDynamicWorld();
     drawPlayer();
     drawRoomLabel();
+    if (state.active && state.player.weapon !== "knife") window.Wayfinding?.reticle(context, state.input.mouseX, state.input.mouseY, state.player.handling?.spread || .04, state.player.handling?.ads > .7, state.player.handling?.overheated || state.player.reload > 0);
   }
 
   function frame(time) {
@@ -2147,6 +2155,7 @@
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR" && !event.repeat) reloadSmg();
+    if (event.code === "KeyB" && !event.repeat && state.active && state.player.weapon !== "knife") window.WeaponHandling?.cycle(state.player, playerStats());
     if (event.code === "KeyQ") knifeAttack();
     if (event.code === "Digit1") switchWeapon("smg");
     if (event.code === "Digit2") switchWeapon("knife");
@@ -2159,10 +2168,13 @@
   });
   canvas.addEventListener("mousedown", event => {
     if (event.button === 0) state.input.mouseDown = true;
+    if (event.button === 2 && state.active) state.input.aimDown = true;
   });
   window.addEventListener("mouseup", event => {
     if (event.button === 0) state.input.mouseDown = false;
+    if (event.button === 2) state.input.aimDown = false;
   });
+  window.addEventListener("blur", () => { state.input.mouseDown = false; state.input.aimDown = false; state.input.keys.clear(); });
   canvas.addEventListener("contextmenu", event => event.preventDefault());
 
   updateHome();
