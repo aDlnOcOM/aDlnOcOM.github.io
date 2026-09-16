@@ -9,6 +9,7 @@
   }
   function tick(player,stats,delta,input={}){
     const p=profile(stats),h=init(player,stats),dt=clamp(Number.isFinite(delta)?delta:0,0,.1);
+    h.visual=p;
     h.aiming=Boolean(input.aim&&player.weapon!=='knife'&&!player.reload&&!input.refilling&&!(player.dash?.remaining>0));
     const adsTime=.16+(100-p.ergonomics)*.006;
     h.ads=clamp(h.ads+(h.aiming?1:-1)*dt/adsTime,0,1);

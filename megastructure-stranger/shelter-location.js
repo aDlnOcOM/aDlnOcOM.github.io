@@ -80,6 +80,7 @@
         if(point.id==='mill'||point.id==='forming'){context.strokeRect(-25,-5,26,15);}
       }
       context.globalAlpha=1;context.fillStyle='#b4c9c6';context.fillText(point.name,0,49);
+      if(near===point){context.fillStyle='#d6dfb4';context.fillRect(-11,-59,22,20);context.fillStyle='#172a24';context.fillText('E',0,-45);}
       if(facility){context.fillStyle=level?'#91b9a3':'#708387';context.fillText(level?'УРОВЕНЬ '+level:'МЕСТО ПОД УСТАНОВКУ',0,65);}
       context.restore();
     }

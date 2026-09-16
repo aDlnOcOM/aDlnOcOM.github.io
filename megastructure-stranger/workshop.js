@@ -112,7 +112,7 @@
     const factor=item=>item&&item.condition>0?[.8,.9,1,1.12,1.25][item.quality]*(.65+.35*item.condition/100):0;
     if(gd?.ergonomics){
       const mods=p.equipment?.smg||{},stock=mods.stock?.choice,muzzle=mods.muzzle?.choice;
-      base.weaponProfile={ergonomics:Math.min(95,gd.ergonomics+(stock==='servo-stock'?10:0)),mass:gd.mass,
+      base.weaponProfile={build:gd.build,optic:mods.optic?.choice,muzzle,stock,ergonomics:Math.min(95,gd.ergonomics+(stock==='servo-stock'?10:0)),mass:gd.mass,
         recoil:gd.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...gd.modes],condition:gun.condition,
         penetration:Math.min(.9,gd.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0))};
       base.speed*=Math.max(.86,Math.min(1.02,1-(gd.mass-2)*.018));

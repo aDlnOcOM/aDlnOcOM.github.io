@@ -1614,7 +1614,7 @@
       if (bullet.owner === "player") {
         const target = state.enemies.find(enemy => distance(bullet, enemy) < bullet.radius + enemy.radius);
         if (target) {
-          damageEnemy(target, bullet.damage, bullet.damageType);
+          damageEnemy(target, bullet.damage, bullet.damageType, bullet.penetration || 0);
           return false;
         }
       } else if (distance(bullet, state.player) < bullet.radius + state.player.radius) {
@@ -1625,9 +1625,9 @@
     });
   }
 
-  function damageEnemy(enemy, amount, damageType = "energy") {
+  function damageEnemy(enemy, amount, damageType = "energy", penetration = 0) {
     if (enemy.health <= 0) return;
-    amount = window.DamageTypes.resolve(amount, enemy.type, damageType);
+    amount = window.DamageTypes.resolve(amount, enemy.type, damageType, penetration);
     enemy.health -= amount;
     enemy.hitFlash = .12;
     createImpact(enemy.x, enemy.y, damageType);

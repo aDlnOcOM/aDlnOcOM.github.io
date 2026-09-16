@@ -92,12 +92,18 @@
   function weapon(ctx,entity,family,meleeId=0,color='#b3fff0') {
     const p=pose(entity);
     const kick={pistol:3,smg:3,carbine:4,rifle:5,shotgun:7,lmg:5,plasma:4,rail:8,arc:2,dart:2}[family]||4;
+    const visual=entity.handling?.visual,ads=entity.handling?.ads||0;
     ctx.save();ctx.translate(17-p.recoil*kick,p.reload*7);ctx.rotate(-p.recoil*kick*.018+p.reload*.8);
+    ctx.translate(-ads*2,0);
     if(entity.weapon==='knife'||entity.knifeFlash>0) {
       ctx.rotate(-.45+p.swing*1.7);
       window.GameAssets?.sprite(ctx,'weapons/melee-'+meleeId,7,-4,30,25);
     } else {
       window.GameAssets?.sprite(ctx,'weapons/'+family,0,0,32,22);
+      if(visual?.build==='Длинноствольный'){ctx.fillStyle='#96a79c';ctx.fillRect(11,-1.5,10,3);}
+      if(visual?.build==='Усиленный'){ctx.fillStyle='#718576';ctx.fillRect(-10,-5,15,3);}
+      if(visual?.optic){ctx.strokeStyle='#b8cba9';ctx.lineWidth=1;ctx.strokeRect(-3,-6,7,5);ctx.fillStyle='#89bbb0';ctx.fillRect(0,-5,2,3);}
+      if(visual?.muzzle==='suppressor'){ctx.fillStyle='#586762';ctx.fillRect(12,-3,11,6);}
       if(p.reload>.1){ctx.fillStyle='#6e8a80';ctx.fillRect(-6,5+p.reload*5,6,9);}
       if(p.flash)muzzle(ctx,15,color,p.recoil);
     }

@@ -20,6 +20,9 @@
     const index = Object.keys(types).indexOf(type);
     return index < 0 ? 1 : (profiles[enemy]?.[index] ?? 1);
   }
-  function resolve(amount, enemy, type) { return Math.max(0, amount) * multiplier(enemy, type); }
+  function resolve(amount, enemy, type, penetration=0) {
+    const resistance=multiplier(enemy,type),pierce=Number.isFinite(penetration)?Math.max(0,Math.min(.9,penetration)):0;
+    return Math.max(0,amount)*(resistance<1?resistance+(1-resistance)*pierce:resistance);
+  }
   window.DamageTypes = { types, profiles, attacks, get, multiplier, resolve };
 })();

@@ -28,7 +28,7 @@
     magazine.energy--; return true;
   }
   function startRefill(stock, id) {
-    if (stock.refilling) return false;
+    if (stock.refilling || stock.reloadTarget!==undefined) return false;
     const magazine = stock.magazines.find(item => item.id === id);
     if (!magazine) return false;
     if (stock.ammoKey && magazine.ammoKey !== stock.ammoKey) return false;
