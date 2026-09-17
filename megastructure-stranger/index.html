@@ -71,6 +71,8 @@
         <dl id="menu-help" class="menu-help control-grid" hidden>
           <div><dt><kbd>WASD</kbd></dt><dd>Передвижение</dd></div>
           <div><dt><kbd>ЛКМ</kbd></dt><dd>Огонь · мышь — прицел</dd></div>
+          <div><dt><kbd>ПКМ</kbd></dt><dd>Точное прицеливание</dd></div>
+          <div><dt><kbd>B</kbd></dt><dd>Режим огня</dd></div>
           <div><dt><kbd>Ctrl</kbd></dt><dd>Рывок</dd></div>
           <div><dt><kbd>R</kbd> / <kbd>Q</kbd></dt><dd>Перезарядка / ближний удар</dd></div>
           <div><dt><kbd>1</kbd> / <kbd>2</kbd></dt><dd>Смена оружия</dd></div>
@@ -176,6 +178,7 @@
             <span id="weapon-name">ПП ОХРАНЫ</span>
             <strong id="ammo-label">32 <small>/ 32</small></strong>
             <em id="weapon-hint">ЛКМ — огонь · R — перезарядка · 1/2 — смена</em>
+            <small id="weapon-telemetry"></small>
           </div>
           <div class="combat-readout">
             <span>ЛОМ <b id="run-salvage">000</b></span>
@@ -185,7 +188,7 @@
         <div class="canvas-frame">
           <canvas id="game-canvas" width="960" height="600" aria-label="Поле боя. Передвижение WASD, прицеливание мышью, огонь левой кнопкой."></canvas>
           <div id="room-overlay" class="room-overlay" aria-live="polite"></div>
-          <div class="control-note">WASD / стрелки — движение · Ctrl — рывок · мышь — прицел · ЛКМ — огонь · Q — нож · E — шлюз/лифт · F — фонарь (заметен охране)</div>
+          <div class="control-note">WASD — движение · Ctrl — рывок · ЛКМ — огонь · ПКМ — прицел · B — режим огня · R — магазин · I — инвентарь · Q — удар · E — взаимодействие · F — фонарь</div>
         </div>
       </section>
     </section>

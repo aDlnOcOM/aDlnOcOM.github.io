@@ -1129,6 +1129,8 @@
 
   function resetPlayer() {
     const stats = playerStats();
+    delete state.powerInventory.reloadTarget;
+    state.input.aimDown=false;state.input.mouseDown=false;
     state.player = {
       x: 84,
       y: HEIGHT * .72,
@@ -1141,7 +1143,7 @@
       invulnerability: 0,
       weapon: "smg",
       ammo: state.powerInventory.magazines[state.powerInventory.loaded].energy,
-      magazine: stats.magazine,
+      magazine: state.powerInventory.magazines[state.powerInventory.loaded].capacity,
       fireCooldown: 0,
       reload: 0,
       knifeCooldown: 0,
@@ -1195,6 +1197,12 @@
     element("ammo-label").innerHTML = knife ? "БЛИЖНИЙ <small>/ УДАР</small>" : player.ammo + " <small>/ " + player.magazine + " " + ({ energy: 'ЭН', ballistic: 'БЛ', elemental: 'ЭЛ', mechanical: 'МХ' }[state.powerInventory.type] || 'ЭН') + "</small>";
     const lightStatus = " · F — ФОНАРЬ " + (state.flashlight ? "ВКЛ / ЗАМЕТЕН" : "ВЫКЛ");
     element("weapon-hint").textContent = knife ? "Q — удар · 1 — основное оружие" + lightStatus : player.reload ? "ПЕРЕЗАРЯДКА…" : "ЛКМ — огонь · R — перезарядка · E — шлюз" + lightStatus;
+    if (window.WeaponHandling) {
+      const telemetry=element("weapon-telemetry"), h=window.WeaponHandling.init(player,playerStats());
+      telemetry.textContent=knife?"":window.WeaponHandling.label(player)+" · "+(state.powerInventory.supply?.code||"НН")+" · НАГРЕВ "+Math.round(h.heat*100)+"%";
+      telemetry.dataset.state=h.overheated?"hot":"normal";
+      if(!knife&&!player.reload)element("weapon-hint").textContent="ПКМ — прицел · B — режим · R — магазин"+(state.powerInventory.nextMagazine!==undefined?" №"+(state.powerInventory.nextMagazine+1):"")+lightStatus;
+    }
     element("run-salvage").textContent = String(state.runSalvage).padStart(3, "0");
 
     const threat = map.bossStarted && !map.bossDefeated ? "БОСС / ШЛЮЗ" : state.alarm ? "ТРЕВОГА" : "ТИШИНА";
@@ -1405,6 +1413,7 @@
       if (player.reload <= 0) {
         player.reload = 0;
         player.ammo = window.PowerInventory.reload(state.powerInventory);
+        player.magazine = state.powerInventory.magazines[state.powerInventory.loaded].capacity;
       }
       return;
     }

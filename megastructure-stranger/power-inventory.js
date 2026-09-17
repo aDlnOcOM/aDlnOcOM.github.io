@@ -125,6 +125,7 @@
       cell.title = info.magazine + ' / ' + magazine.variant;
       if(stock.nextMagazine===magazine.id){cell.title+=' · выбран для R';cell.classList.add('selected-magazine');}
       cell.dataset.ammoType = stock.type || 'energy';
+      cell.dataset.platform = stock.ammoKey?.split(':')[0] || 'smg';
       cell.innerHTML = '<small>' + info.code + '-' + magazine.capacity + '</small><span class="mag-drawing" aria-hidden="true"></span><strong>' + magazine.energy + '/' + magazine.capacity + '</strong>';
       cell.onclick = () => { stock.inspectId = magazine.id; inspect(magazine); };
       (magazine.id === stock.loaded ? weapon : rig).appendChild(cell);

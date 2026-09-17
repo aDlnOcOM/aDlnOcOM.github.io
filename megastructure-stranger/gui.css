@@ -194,6 +194,12 @@ body:not([data-screen=run]) .masthead { display:none; }
 .weapon-hud>span { font-size:11px; color:#d4ddb5; }
 .weapon-hud strong { display:block; font:34px/1.1 var(--ui-mono); font-variant-numeric:tabular-nums; }
 .weapon-hud em { font-size:10px; color:#b1bfb0; line-height:1.5; margin-top:4px; }
+#weapon-telemetry { display:block; color:#cfcea7; font:10px/1.5 var(--ui-mono); margin-top:8px; }
+#weapon-telemetry[data-state=hot] { color:#ffc09c; }
+.tactical-item[data-platform=shotgun] .mag-drawing { width:34px; border-radius:8px 8px 2px 2px; background:repeating-linear-gradient(90deg,#95634b 0 7px,#423b2c 8px 11px); }
+.tactical-item[data-platform=rail] .mag-drawing,.tactical-item[data-platform=dart] .mag-drawing { width:32px; background:repeating-linear-gradient(90deg,#a6b6b2 0 3px,#35474c 4px 7px); }
+.tactical-item[data-platform=lmg] .mag-drawing { width:38px; height:38px; border-radius:50%; }
+.tactical-item[data-platform=pistol] .mag-drawing { width:16px; height:44px; }
 .combat-readout { gap:10px; font-size:10px; text-align:right; }
 .combat-readout b { display:block; font-size:13px; margin-top:2px; color:#d3dfaf; }
 .canvas-frame { border-color:#4a6455; box-shadow:0 10px 30px #0004; border-radius:3px; }
