@@ -13,7 +13,8 @@
         // Wide boundary vestibules provide reachable fallback alcoves.
         point ||= { x: sector.x + 64, y: sector.lane + (slot ? 195 : -195) };
         const ammoType = ['energy', 'ballistic', 'elemental', 'mechanical'][Math.floor(random() * 4)];
-        const ammoFamilies = window.Arsenal?.families.filter(family => family.type === ammoType);
+        // Guard-SMG converter ammunition must also exist in loot, not only native platforms.
+        const ammoFamilies = window.Arsenal?.families.filter(family => family.type === ammoType || family.id === 'smg');
         const ammoKey = ammoFamilies ? ammoFamilies[Math.floor(random() * ammoFamilies.length)].id + ':' + ammoType : undefined;
         const kind = random() < .45 ? 'salvage' : 'supply';
         containers.push({ id: `${sector.index}-${slot}`, ...point, radius: 15, kind,

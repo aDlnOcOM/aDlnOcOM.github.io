@@ -59,3 +59,27 @@ test('live empty or overheated weapon cannot consume rounds or produce projectil
   const ammo=p.ammo;g.fireSmg();assert.equal(p.ammo,ammo);assert.equal(s.bullets.length,0);
   p.handling.overheated=false;p.ammo=0;s.powerInventory.magazines.forEach(m=>m.energy=0);g.fireSmg();assert.equal(s.bullets.length,0);
 });
+test('floor transition cancels stale reload locks and held mouse buttons without spending rounds',()=>{
+  const {g,P}=game(),s=g.state;s.powerInventory.magazines[0].energy=2;P.prepareReload(s.powerInventory);
+  s.input.mouseDown=true;s.input.aimDown=true;g.resetPlayer();
+  assert.equal(s.powerInventory.reloadTarget,undefined);assert.equal(s.powerInventory.magazines[0].energy,2);
+  assert.equal(s.input.mouseDown,false);assert.equal(s.input.aimDown,false);
+});
+test('different compatible magazine capacities update the live ammo readout',()=>{
+  const {g,P}=game(),s=g.state;s.powerInventory.magazines[1].capacity=20;s.powerInventory.magazines[1].energy=17;
+  P.selectMagazine(s.powerInventory,1);g.reloadSmg();g.updatePlayer(3);assert.equal(s.player.ammo,17);assert.equal(s.player.magazine,20);
+});
+test('generated supply pool includes ammunition for all guard-SMG converter types',()=>{
+  const scope=vm.createContext({window:{}});for(const f of ['arsenal.js','sectors.js','loot-containers.js'])vm.runInContext(read(f),scope);
+  const W=scope.window,seen=new Set();
+  const sectors=[{index:0,id:'industrial',x:0,width:1000,lane:300}];
+  for(let seed=0;seed<100;seed++)for(const crate of W.LootContainers.generate(sectors,[],seed,W.SectorGenerator.seeded,()=>true,()=>[{}]))seen.add(crate.ammoKey);
+  for(const type of ['energy','ballistic','elemental','mechanical'])assert.ok(seen.has('smg:'+type));
+});
+test('installed weapon profiles and crafted attachment choices reach runtime stats',()=>{
+  const scope=vm.createContext({window:{}});for(const f of ['resources.js','arsenal.js','workshop.js'])vm.runInContext(read(f),scope);
+  const W=scope.window.Workshop,p={salvage:0,resources:{},equipment:{},hideout:{}};W.init(p);
+  p.equipment.smg={muzzle:{choice:'compensator'},stock:{choice:'frame-stock'},ammo:{choice:'armor-piercing'}};
+  const stats=W.stats(p,{damage:9,magazine:32,bulletSpeed:680,spread:.055,reload:1.22,speed:245,knifeDamage:34,knifeDelay:.42,armor:4,deathRetention:.4,salvageMultiplier:1});
+  assert.ok(stats.weaponProfile.recoil<.13);assert.ok(stats.weaponProfile.penetration>.12);assert.ok(Number.isFinite(stats.speed));assert.equal(stats.weaponProfile.mass,2.3);
+});
