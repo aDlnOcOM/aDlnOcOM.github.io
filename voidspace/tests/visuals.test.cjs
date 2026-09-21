@@ -16,7 +16,7 @@ const { Visuals, Content, ModuleSystem } = VS;
 test('every module has either a distinct body or its own weapon overlay', () => {
   for (const [type, def] of Object.entries(ModuleSystem.MODULES)) {
     assert.equal(def.visualType, type);
-    assert.ok(Visuals.BODY_TYPES.includes(type) || Visuals.TURRET_TYPES.includes(type) || (def.armorPanel && def.polygon.length >= 3 && Visuals.BODY_TYPES.includes(def.visualBase)), type);
+    assert.ok(Visuals.BODY_TYPES.includes(type) || Visuals.TURRET_TYPES.includes(type) || ((def.industrial || def.industrialSection) && Visuals.BODY_TYPES.includes(def.visualBase)) || (def.armorPanel && def.polygon.length >= 3 && Visuals.BODY_TYPES.includes(def.visualBase)), type);
     if (def.weapon || type === 'laser') assert.ok(Visuals.TURRET_TYPES.includes(type), `Missing turret: ${type}`);
   }
   assert.equal(new Set(Visuals.BODY_TYPES).size, 36);
@@ -124,6 +124,25 @@ test('canvas keeps module cells square on portrait, standard and ultrawide scree
 let canvasLibrary;
 try { canvasLibrary = require('@napi-rs/canvas'); }
 catch { try { canvasLibrary = require(path.join(path.dirname(process.execPath), '..', 'node_modules', '@napi-rs/canvas')); } catch { /* Optional raster verification; no project dependency. */ } }
+
+test('industrial silhouettes are distinct, fit their footprints and preserve ghost transparency', { skip: !canvasLibrary }, () => {
+  const fingerprints = new Set();
+  for (const [type, def] of Object.entries(ModuleSystem.MODULES).filter(([, def]) => def.industrial)) {
+    const canvas = canvasLibrary.createCanvas(380, 380), ctx = canvas.getContext('2d');
+    ctx.translate(190, 190); ctx.globalAlpha = 0.4;
+    const modules = ModuleSystem.assemblyCells({ type, gx: 0, gy: 0, rotation: 1, mirrored: true });
+    Visuals.drawAssemblies(ctx, {}, { ship: { modules } }, 0);
+    assert.ok(Math.abs(ctx.globalAlpha - 0.4) < 0.01);
+    const pixels = ctx.getImageData(0, 0, 380, 380).data;
+    assert.ok(pixels.some((v, i) => i % 4 === 3 && v > 0), type);
+    const points = modules.flatMap(m => ModuleSystem.localPolygon(m));
+    const left = Math.min(...points.map(p => p.x)) + 190, right = Math.max(...points.map(p => p.x)) + 190;
+    const top = Math.min(...points.map(p => p.y)) + 190, bottom = Math.max(...points.map(p => p.y)) + 190;
+    for (let y = 0; y < 380; y++) for (let x = 0; x < 380; x++) if (x < left || x > right || y < top || y > bottom) assert.equal(pixels[(y * 380 + x) * 4 + 3], 0, type);
+    fingerprints.add(canvas.toBuffer('image/png').toString('base64'));
+  }
+  assert.equal(fingerprints.size, 9);
+});
 test('real raster sheets decode with clear margins and valid uncropped turret pivots', { skip: !canvasLibrary }, async () => {
   sandbox.document = { createElement: () => canvasLibrary.createCanvas(1, 1) };
   const images = {};

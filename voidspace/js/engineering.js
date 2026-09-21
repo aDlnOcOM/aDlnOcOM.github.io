@@ -50,8 +50,8 @@
         const saved = this.savedNodes[key(m)];
         const state = saved?.type === m.type ? saved : {};
         this.nodes.set(key(m), { type: m.type, maxIntegrity: this.maxIntegrity(m), temperature: clamp(number(state.temperature, 20), 20, 1500), charge: clamp(number(state.charge, m.type === "core" ? 6 : 0), 0, this.electricCapacity(m)), integrity: clamp(number(state.integrity, this.maxIntegrity(m)), 0, this.maxIntegrity(m)), emp: clamp(number(state.emp), 0, 15), running: Boolean(state.running), decay: clamp(number(state.decay), 0, 1), powered: false,
-          recipe: RECIPES[state.recipe]?.factory === MODULES[m.type].factory ? state.recipe : Object.keys(RECIPES).find((id) => RECIPES[id].factory === MODULES[m.type].factory),
-          job: state.job && RECIPES[state.job.recipe]?.factory === MODULES[m.type].factory ? { recipe: state.job.recipe, progress: clamp(number(state.job.progress), 0, RECIPES[state.job.recipe].time) } : null });
+          recipe: VS.EngineeringData.supportsRecipe(MODULES[m.type], state.recipe) ? state.recipe : Object.keys(RECIPES).find((id) => VS.EngineeringData.supportsRecipe(MODULES[m.type], id)),
+          job: state.job && VS.EngineeringData.supportsRecipe(MODULES[m.type], state.job.recipe) ? { recipe: state.job.recipe, progress: clamp(number(state.job.progress), 0, RECIPES[state.job.recipe].time) } : null });
       }
       for (const id of this.nodes.keys()) if (!this.byCell.has(id)) this.nodes.delete(id);
       this.savedNodes = {};
@@ -205,14 +205,14 @@
       if (!this.online(m)) return;
       if (!state.job) {
         const recipe = RECIPES[state.recipe];
-        if (!recipe || this.stockUsed() + recipe.output > this.stockCapacity()) return;
+        if (!VS.EngineeringData.supportsRecipe(MODULES[m.type], state.recipe) || !recipe || this.stockUsed() + recipe.output > this.stockCapacity()) return;
         if (Object.entries(recipe.ore || {}).some(([id, count]) => (this.ship.inventory.contents[id] || 0) < count) || Object.entries(recipe.stock || {}).some(([id, count]) => this.stock[id] < count)) return;
         for (const [id, count] of Object.entries(recipe.ore || {})) this.ship.inventory.contents[id] -= count;
         for (const [id, count] of Object.entries(recipe.stock || {})) this.stock[id] -= count;
         state.job = { recipe: state.recipe, progress: 0 };
       }
       const recipe = RECIPES[state.job.recipe];
-      state.job.progress += dt * this.continuous(m, dt);
+      state.job.progress += dt * this.continuous(m, dt) * (MODULES[m.type].productionSpeed || 1);
       if (state.job.progress >= recipe.time && this.stockUsed() + recipe.output <= this.stockCapacity()) { this.stock[state.job.recipe] += recipe.output; state.job = null; }
     }
     step(dt) {

@@ -218,6 +218,36 @@
     return true;
   }
   function drawAssemblies(ctx, images, engineering, time) {
+    for (const module of engineering?.ship.modules || []) {
+      const def = MODULES[module.type]; if (!def.industrial) continue;
+      const width = def.footprint.width * 30, height = def.footprint.height * 30;
+      const top = -Math.floor(def.footprint.height / 2) * 30 - 15;
+      const node = engineering.nodes?.get(`${module.gx},${module.gy}`);
+      ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2);
+      if (module.mirrored) ctx.scale(1, -1);
+      ctx.fillStyle = '#142637'; ctx.fillRect(-11, top + 4, width - 8, height - 8);
+      ctx.strokeStyle = '#718996'; ctx.lineWidth = 2; ctx.strokeRect(-12, top + 3, width - 6, height - 6);
+      for (let x = 0; x < def.footprint.width; x++) for (let y = 0; y < def.footprint.height; y++) {
+        const cx = x * 30, cy = top + 15 + y * 30;
+        ctx.fillStyle = '#2f4658'; ctx.fillRect(cx - 9, cy - 9, 18, 18);
+        ctx.strokeStyle = def.accent; ctx.lineWidth = 1;
+        if (['chemical_plant', 'nuclear_foundry', 'electronics_lab'].includes(module.type)) {
+          ctx.beginPath(); ctx.arc(cx, cy, module.type === 'nuclear_foundry' ? 8 : 6, 0, Math.PI * 2); ctx.stroke();
+          ctx.save(); ctx.fillStyle = def.accent; ctx.globalAlpha *= node?.job ? 0.65 + Math.sin(time * 3 + x + y) * 0.2 : 0.3;
+          ctx.fillRect(cx - 3, cy - 3, 6, 6); ctx.restore();
+        } else {
+          for (let line = -6; line <= 6; line += 4) { ctx.beginPath(); ctx.moveTo(cx - 6, cy + line); ctx.lineTo(cx + 6, cy + line); ctx.stroke(); }
+        }
+      }
+      if (def.factory) {
+        const lane = top + height / 2;
+        ctx.fillStyle = '#09141e'; ctx.fillRect(-9, lane - 3, width - 12, 6);
+        ctx.fillStyle = def.accent;
+        const shift = node?.job && node.powered ? (time * 9 * (def.productionSpeed || 1)) % 12 : 0;
+        for (let x = -7 + shift; x < width - 21; x += 12) ctx.fillRect(x, lane - 1, 4, 2);
+      }
+      ctx.restore();
+    }
     if (!images?.visualTurrets || !engineering) return false;
     for (const module of engineering.ship.modules) {
       const def = MODULES[module.type]; if (!def.footprint || !def.weapon) continue;

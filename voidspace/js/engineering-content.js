@@ -61,6 +61,29 @@
     }
     MODULES[id].layout = layout;
   }
+  // Larger installations are one functional root plus passive, destructible sections.
+  function installation(id, name, width, height, extra) {
+    const section = `${id}_section`, colour = extra.accent || '#d4b784';
+    block(section, 'hull', { name: `Секция: ${name}`, cost: 0, hp: 65, unlock: 0, internal: true, industrialSection: true, glyph: 'section', visualBase: 'assembly_section', heatCapacity: 10, conductivity: 3, accent: colour });
+    block(id, 'cargo', { name, short: id.toUpperCase(), hp: 100, unlock: 140, cost: 260,
+      footprint: { width, height }, industrial: true, visualBase: 'ammo_factory', glyph: 'factory',
+      heatCapacity: 16, conductivity: 3, accent: colour, ...extra });
+    MODULES[id].layout = [];
+    for (let x = 0; x < width; x++) for (let row = 0; row < height; row++) {
+      const y = row - Math.floor(height / 2);
+      MODULES[id].layout.push({ x, y, type: x === 0 && y === 0 ? id : section });
+    }
+  }
+  installation('casing_press', 'Штамповочный пресс · 2×1', 2, 1, { factory: 'missile', factoryRecipes: ['casing'], productionSpeed: 2, energyUse: 5, accent: '#d4ae75', description: 'Только ракетные корпуса. Скорость ×2; 5 энергии/с. Компактная линия штамповки.' });
+  installation('electronics_lab', 'Цех электроники · 1×2', 1, 2, { factory: 'missile', factoryRecipes: ['guidance', 'emp_core'], productionSpeed: 1.8, energyUse: 7, cost: 300, accent: '#84c9ec', description: 'Блоки наведения и ЭМИ-наконечники. Скорость ×1,8; 7 энергии/с.' });
+  installation('chemical_plant', 'Химический комбинат · 2×2', 2, 2, { factory: 'missile', factoryRecipes: ['explosive'], productionSpeed: 3, energyUse: 8, cost: 340, accent: '#b5d67d', description: 'Фугасные наконечники из серы и углерода. Скорость ×3; 8 энергии/с.' });
+  installation('ammo_line', 'Линия боеприпасов · 2×3', 2, 3, { factory: 'ammo', productionSpeed: 3, energyUse: 10, cost: 460, unlock: 240, ammoCapacity: 120, accent: '#dfae7b', description: 'Все три калибра патронов. Скорость ×3; 10 энергии/с; буфер 120 боеприпасов.' });
+  installation('rocket_complex', 'Ракетный комплекс · 3×3', 3, 3, { factory: 'missile', productionSpeed: 3.5, energyUse: 17, cost: 720, unlock: 360, ammoCapacity: 180, accent: '#83cbbb', description: 'Компоненты и неядерные ракеты. Скорость ×3,5; 17 энергии/с; буфер 180.' });
+  installation('nuclear_foundry', 'Ядерный производственный комплекс · 5×5', 5, 5, { factory: 'nuclear', productionSpeed: 4, energyUse: 42, cost: 1800, unlock: 800, ammoCapacity: 120, heatCapacity: 45, accent: '#d9a3ef', description: 'Боеголовки и ядерные ракеты. Скорость ×4; 42 энергии/с. Нужны мощная энергосеть и охлаждение.' });
+  installation('battery_bank', 'Батарейный банк · 2×2', 2, 2, { battery: 900, cost: 320, glyph: 'battery', visualBase: 'battery', accent: '#8ed2af', description: '900 энергии в четырёх клетках. Запас питания для производственных линий.' });
+  installation('industrial_store', 'Промышленный склад · 3×2', 3, 2, { ammoCapacity: 1800, cargo: 100, cost: 420, glyph: 'magazine', visualBase: 'ammo_store', accent: '#d9bd87', description: '1800 мест для боеприпасов и компонентов, 100 единиц руды. Общий склад производственных цепочек.' });
+  installation('radiator_array', 'Радиаторная секция · 3×1', 3, 1, { radiator: 0.65, loop: true, conductivity: 8, cost: 200, glyph: 'radiator', visualBase: 'radiator', accent: '#83c8e0', description: 'Три охлаждающие секции; свободные внешние грани рассеивают тепло. Подключайте теплопроводом.' });
+  Object.assign(MODULES.radiator_array_section, { radiator: 0.65, loop: true, conductivity: 8, glyph: 'radiator', visualBase: 'radiator' });
   for (const [id, def] of Object.entries(MODULES)) {
     def.heatCapacity ??= 4 + (def.hp || 0) / 30;
     def.conductivity ??= 0.04;
@@ -100,5 +123,9 @@
     if (w.heatCost) return `${w.heatCost.toLocaleString("ru-RU")} тепла / выстрел`;
     return `${w.energy || 0} энергии / выстрел`;
   }
-  VS.EngineeringData = { STOCK, RECIPES, consumption };
+  function supportsRecipe(def, id) {
+    return Boolean(def?.factory && RECIPES[id]?.factory === def.factory && (!def.factoryRecipes || def.factoryRecipes.includes(id)));
+  }
+  function productionTime(def, recipe) { return recipe.time / (def.productionSpeed || 1); }
+  VS.EngineeringData = { STOCK, RECIPES, consumption, supportsRecipe, productionTime };
 })();

@@ -13,6 +13,57 @@ const advance = (ship, seconds) => { for (let i = 0; i < seconds * 40; i++) ship
 function loop() {
   return makeShip([m('nuclear_reactor', 0, 0), m('heat_pipe', 1, 0), m('turbine', 2, 0), m('radiator', 2, 1), m('heat_pipe', 2, 2), m('turbine', 1, 2), m('radiator', 0, 2), m('coolant_pump', 0, 1), m('battery', -1, 1)]);
 }
+
+test('industrial installations have exact footprints in all rotations and reflections, with one factory root', () => {
+  const types = Object.keys(MODULES).filter(type => MODULES[type].industrial);
+  assert.equal(types.length, 9);
+  for (const type of types) for (let rotation = 0; rotation < 4; rotation++) for (const mirrored of [false, true]) {
+    const def = MODULES[type], cells = assemblyCells({ ...m(type, 0, 0, rotation), mirrored });
+    assert.equal(cells.length, def.footprint.width * def.footprint.height);
+    assert.equal(new Set(cells.map(c => `${c.gx},${c.gy}`)).size, cells.length);
+    assert.equal(cells.filter(c => MODULES[c.type].factory).length, def.factory ? 1 : 0);
+    const ship = new VS.Ship({ modules: [m('core', -10, 0), ...cells] }), restored = new VS.Ship(ship.serialize());
+    assert.equal(restored.modules.length, cells.length + 1);
+    assert.equal(restored.modules.find(c => c.type === type).mirrored, mirrored || undefined);
+    assert.equal(cells.reduce((sum, c) => sum + (MODULES[c.type].energyUse || 0), 0), def.energyUse);
+  }
+});
+
+test('specialized press produces casings twice as fast using real energy and heat', () => {
+  const ship = makeShip(assemblyCells(m('casing_press', 0, 0)));
+  ship.engineering.stock.casing = 0; ship.inventory.contents.feNi = 2;
+  advance(ship, 2.15);
+  assert.equal(ship.engineering.stock.casing, 3);
+  assert.equal(ship.inventory.contents.feNi, 0);
+  assert.ok(ship.engineering.temperature(ship.modules.find(c => c.type === 'casing_press')) > 20);
+  assert.equal(ship.engineering.nodes.get('0,0').job, null);
+  assert.equal(VS.EngineeringData.productionTime(MODULES.ammo_line, VS.EngineeringData.RECIPES.heavy_ammo), 7 / 3);
+});
+
+test('specialists reject incompatible recipes and saved jobs, and large stores count only once', () => {
+  const { supportsRecipe } = VS.EngineeringData;
+  assert.ok(supportsRecipe(MODULES.electronics_lab, 'emp_core'));
+  assert.equal(supportsRecipe(MODULES.electronics_lab, 'casing'), false);
+  assert.equal(supportsRecipe(MODULES.chemical_plant, 'he_rocket'), false);
+  const ship = makeShip(assemblyCells(m('casing_press', 0, 0)));
+  const node = ship.engineering.nodes.get('0,0'); node.recipe = 'nuclear_core'; node.job = { recipe: 'nuclear_core', progress: 12 };
+  const restored = new VS.Ship(ship.serialize());
+  assert.equal(restored.engineering.nodes.get('0,0').recipe, 'casing');
+  assert.equal(restored.engineering.nodes.get('0,0').job, null);
+  const warehouse = makeShip(assemblyCells(m('industrial_store', 0, 0)));
+  assert.equal(warehouse.engineering.stockCapacity(), 1880);
+  assert.equal(VS.ModuleSystem.calculateStats(warehouse.modules).cargo, 108);
+});
+
+test('large factories install and remove as one paid assembly and section destruction stops production', () => {
+  const ship = makeShip([]); ship.unlocked.add('nuclear_foundry');
+  assert.ok(ship.addModule('nuclear_foundry', 0, 0, 0).ok);
+  assert.equal(ship.modules.length, 26); assert.equal(ship.credits, 8200);
+  assert.ok(ship.removeModule(4, 2).ok); assert.equal(ship.modules.length, 1);
+  const other = makeShip(assemblyCells(m('rocket_complex', 0, 0)));
+  other.engineering.damage(other.modules.find(c => c.type === 'rocket_complex_section'), 10000);
+  assert.equal(other.modules.filter(c => MODULES[c.type].factory).length, 0);
+});
 test('closed reactor loop starts only with turbines, cooling and powered pump', () => {
   const ship = loop(); advance(ship, 1);
   assert.equal(ship.engineering.reactorStatus(ship.modules[1]), 'Готов');
