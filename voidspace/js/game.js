@@ -126,6 +126,8 @@
       document.getElementById('build-redo')?.addEventListener('click', () => this.travelBuildHistory(true));
       document.getElementById('build-copy')?.addEventListener('click', () => { this.buildPicking = !this.buildPicking; this.updateBuildTools(); });
       document.getElementById('build-fit')?.addEventListener('click', () => this.fitBuild());
+      document.getElementById('build-flip-h')?.addEventListener('click', () => this.mirrorBuildModule('horizontal'));
+      document.getElementById('build-flip-v')?.addEventListener('click', () => this.mirrorBuildModule('vertical'));
       document.getElementById('build-zoom-in')?.addEventListener('click', () => this.zoomBuild(1.25));
       document.getElementById('build-zoom-out')?.addEventListener('click', () => this.zoomBuild(0.8));
       window.addEventListener("storage", (event) => { if (event.key === "voidspace-enemies-v1") this.expedition.reloadTemplates(); });
@@ -225,6 +227,7 @@
       if (event.code !== "Escape" && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
       if (this.buildMode && (event.ctrlKey || event.metaKey) && ['KeyZ', 'KeyY'].includes(event.code)) { event.preventDefault(); this.travelBuildHistory(event.code === 'KeyY' || event.shiftKey); return; }
       if (this.buildMode && !event.repeat && event.code === 'KeyC') { this.pickBuildModule(); return; }
+      if (this.buildMode && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && ['KeyH', 'KeyV'].includes(event.code)) { this.mirrorBuildModule(event.code === 'KeyH' ? 'horizontal' : 'vertical'); return; }
       if (this.buildMode && ['Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract', 'Home'].includes(event.code)) {
         event.preventDefault(); if (event.code === 'Home') this.fitBuild(); else this.zoomBuild(['Equal', 'NumpadAdd'].includes(event.code) ? 1.25 : 0.8); return;
       }
@@ -548,12 +551,12 @@
       const local = this.ship.worldToLocal(world.x, world.y);
       const gx = Math.round(local.x / MODULE_SIZE);
       const gy = Math.round(local.y / MODULE_SIZE);
-      const candidate = { type: this.buildSelected, gx, gy, rotation: this.buildRotation };
+      const candidate = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, mirrored: Boolean(this.buildMirrored) };
       const cells = ModuleSystem.assemblyCells(candidate);
       const occupied = cells.some((cell) => this.ship.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy));
       const conflict = cells.some((cell) => getPlacementConflict(this.ship.modules, cell)) || VS.Physics.placementBlocked(this.ship, cells, this.expedition);
       const valid = this.deleteMode ? occupied : this.ship.unlocked.has(this.buildSelected) && this.ship.credits >= MODULES[this.buildSelected].cost && !occupied && this.ship.modules.length + cells.length <= 256 && cells.some((cell) => isAdjacentToShip(this.ship.modules, cell.gx, cell.gy, cell)) && !conflict && cells.every((cell) => Math.abs(cell.gx) <= 24 && Math.abs(cell.gy) <= 24);
-      this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, valid };
+      this.buildHover = { type: this.buildSelected, gx, gy, rotation: this.buildRotation, mirrored: Boolean(this.buildMirrored), valid };
       this.inspectedModule = this.ship.modules.find((m) => m.gx === gx && m.gy === gy) || null;
       if (this.inspectedModule?.assembly) this.inspectedModule = this.ship.modules.find((m) => m.assembly === this.inspectedModule.assembly && MODULES[m.type].footprint) || this.inspectedModule;
       if (this.inspectedModule && this.ship.engineering) {
@@ -566,14 +569,14 @@
       if (!this.buildHover) return;
       if (this.buildPicking && !forceDelete) { this.pickBuildModule(); return; }
       const deleting = forceDelete || this.deleteMode;
-      const candidate = { type: this.buildSelected, gx: this.buildHover.gx, gy: this.buildHover.gy, rotation: this.buildRotation };
+      const candidate = { type: this.buildSelected, gx: this.buildHover.gx, gy: this.buildHover.gy, rotation: this.buildRotation, mirrored: Boolean(this.buildMirrored) };
       if (!deleting && VS.Physics.placementBlocked(this.ship, ModuleSystem.assemblyCells(candidate), this.expedition)) {
         this.notify("Модуль пересекает станцию, астероид или другой корабль", true); return;
       }
       const before = this.captureBuild();
       const result = deleting
         ? this.ship.removeModule(this.buildHover.gx, this.buildHover.gy)
-        : this.ship.addModule(this.buildSelected, this.buildHover.gx, this.buildHover.gy, this.buildRotation);
+        : this.ship.addModule(this.buildSelected, this.buildHover.gx, this.buildHover.gy, this.buildRotation, Boolean(this.buildMirrored));
       this.notify(result.reason, !result.ok);
       this.updateBuildHover();
       this.renderBuildPalette();
@@ -585,6 +588,12 @@
       this.buildRotation = (this.buildRotation + 1) % 4;
       this.updateBuildHover();
       this.updateBuildTools();
+    }
+
+    mirrorBuildModule(axis) {
+      this.buildRotation = ((axis === 'horizontal' ? 2 : 0) - this.buildRotation + 4) % 4;
+      this.buildMirrored = !this.buildMirrored;
+      this.updateBuildHover(); this.updateBuildTools();
     }
 
     toggleModuleOverclock() {
@@ -626,7 +635,7 @@
     pickBuildModule() {
       const target = this.inspectedModule;
       if (!target || target.type === 'core') { this.notify("Наведите указатель на установленный блок"); return; }
-      this.buildSelected = target.type; this.buildRotation = target.rotation || 0;
+      this.buildSelected = target.type; this.buildRotation = target.rotation || 0; this.buildMirrored = Boolean(target.mirrored);
       this.buildPicking = false; this.deleteMode = false;
       document.getElementById('delete-module')?.classList.remove('active');
       this.renderBuildPalette(); this.updateBuildHover();
@@ -648,8 +657,7 @@
       const top = Math.min(...points.map(p => p.y)), bottom = Math.max(...points.map(p => p.y));
       const panel = this.dom['build-panel'].getBoundingClientRect();
       const occupied = Math.min(bounds.width * 0.5, Math.max(0, panel.right - bounds.left) + 20);
-      const inspector = document.getElementById('build-inspector')?.getBoundingClientRect();
-      const rightInset = bounds.width > 850 && inspector ? bounds.right - inspector.left + 20 : 0;
+      const rightInset = 20;
       this.buildZoom = Utils.clamp(Math.min((bounds.width - occupied - rightInset - 50) / (right - left + 90), (bounds.height - 190) / (bottom - top + 90)) * 540 / bounds.height, 0.3, 1.4);
       this.resizeCanvas();
       this.camera.x = (left + right) / 2 - (occupied - rightInset) / 2 * this.viewport.width / bounds.width;
@@ -665,6 +673,9 @@
       const scale = document.getElementById('build-scale'); if (scale) scale.textContent = Math.round((this.buildZoom || 1) * 100) + '%';
       const summary = document.getElementById('build-summary');
       if (summary) summary.textContent = this.ship.modules.length + '/256 клеток · корпус ' + Math.round(this.ship.hp) + ' · R ' + this.buildRotation * 90 + '°';
+      const orientation = document.getElementById('build-orientation');
+      if (orientation) orientation.textContent = this.buildRotation * 90 + '°' + (this.buildMirrored ? ' · отражён' : '');
+      const funds = document.getElementById('build-funds'); if (funds) funds.textContent = Math.round(this.ship.credits).toLocaleString('ru-RU') + ' ¤';
     }
 
     renderBuildPalette() {
@@ -875,7 +886,7 @@
 
     syncInterface(focusPanel = null) {
       const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
-      for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel", "#build-inspector"]) {
+      for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel", "#build-inspector", ".build-topbar", ".build-toolbar"]) {
         const element = document.querySelector(selector); if (element) element.inert = Boolean(modal);
       }
       if (modal) { this.input.clear(); this.mouse.down = false; }

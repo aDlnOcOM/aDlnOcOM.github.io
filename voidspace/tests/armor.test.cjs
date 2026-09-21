@@ -146,8 +146,8 @@ let canvasLibrary;
 try { canvasLibrary = require('@napi-rs/canvas'); }
 catch { try { canvasLibrary = require(path.join(path.dirname(process.execPath), '..', 'node_modules', '@napi-rs/canvas')); } catch { /* Optional, no new dependency. */ } }
 test('armor pixels and heated damage overlays follow the collision silhouette in all orientations', { skip: !canvasLibrary }, () => {
-  for (const [width, height] of variants) for (let rotation = 0; rotation < 4; rotation++) {
-    const modules = M.assemblyCells(cell(`corner_armor_${width}x${height}`, 0, 0, rotation));
+  for (const [width, height] of variants) for (let rotation = 0; rotation < 4; rotation++) for (const mirrored of [false, true]) {
+    const modules = M.assemblyCells({ ...cell(`corner_armor_${width}x${height}`, 0, 0, rotation), mirrored });
     const canvas = canvasLibrary.createCanvas(240, 240), ctx = canvas.getContext('2d'); ctx.translate(120, 120);
     const ship = new VS.Ship({ modules: [cell('core', -5), ...modules] });
     for (const m of modules) {

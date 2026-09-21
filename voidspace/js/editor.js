@@ -4,7 +4,7 @@
   const { MODULES, reservedCellsForModule } = VS.ModuleSystem;
   const $ = (id) => document.getElementById(id);
   let modules = [{ type: "core", gx: 0, gy: 0, rotation: 0 }];
-  let rotation = 0, erase = false, blueprintId = `custom-${Date.now()}`, images = {};
+  let rotation = 0, mirrored = false, erase = false, blueprintId = `custom-${Date.now()}`, images = {};
   let zoom = 1;
   let hover = null;
   let catalogCategory = 'all';
@@ -50,7 +50,7 @@
       ship.engineering?.sync();
       let buildHover = null;
       if (hover && !erase && MODULES[$("module-type").value]) {
-        buildHover = { type: $("module-type").value, ...hover, rotation };
+        buildHover = { type: $("module-type").value, ...hover, rotation, mirrored };
         const cells = VS.ModuleSystem.assemblyCells(buildHover);
         buildHover.valid = modules.length + cells.length <= 256 && cells.every(c => Math.abs(c.gx) <= 24 && Math.abs(c.gy) <= 24 && !modules.some(m => c.gx === m.gx && c.gy === m.gy));
       }
@@ -87,7 +87,7 @@
     else if (index !== -1) { status("Клетка занята. Сначала удалите блок.", true); return; }
     else {
       if (!MODULES[$("module-type").value]) { status("Выберите модуль из каталога", true); return; }
-      const cells = VS.ModuleSystem.assemblyCells({ type: $("module-type").value, gx, gy, rotation });
+      const cells = VS.ModuleSystem.assemblyCells({ type: $("module-type").value, gx, gy, rotation, mirrored });
       if (modules.length + cells.length > 256 || cells.some((c) => Math.abs(c.gx) > 24 || Math.abs(c.gy) > 24 || modules.some((m) => c.gx === m.gx && c.gy === m.gy))) { status("Сборка выходит за границы или перекрывает блоки", true); return; }
       modules.push(...cells);
     }
@@ -131,7 +131,7 @@
     if (event.code === 'KeyC' && hover) {
       let m = modules.find(m => m.gx === hover.gx && m.gy === hover.gy);
       if (m?.assembly) m = modules.find(n => n.assembly === m.assembly && MODULES[n.type].footprint);
-      if (m) { $('module-type').value = m.type; rotation = m.rotation; erase = false; $('erase').setAttribute('aria-pressed', 'false'); $('rotate').textContent = `ПОВОРОТ · ${rotation * 90}°`; previewModule(); render(); }
+      if (m) { $('module-type').value = m.type; rotation = m.rotation; mirrored = Boolean(m.mirrored); erase = false; $('erase').setAttribute('aria-pressed', 'false'); $('rotate').textContent = `ПОВОРОТ · ${rotation * 90}°`; previewModule(); render(); }
     }
   });
   $("erase").addEventListener("click", () => { erase = !erase; $("erase").setAttribute("aria-pressed", String(erase)); });

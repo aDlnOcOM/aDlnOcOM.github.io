@@ -27,8 +27,8 @@
   function cards(options) {
     return groups(options).map(group => {
       const type = group.type, def = MODULES[type], size = metrics(type), locked = options.unlocked && !options.unlocked.has(type);
-      return `<button class="part-tile ${group.types.includes(options.selected) ? 'selected' : ''} ${locked ? 'locked' : ''}" data-module="${type}" aria-pressed="${group.types.includes(options.selected)}" title="${escape(def.name)}${locked ? ' · Чертёж не открыт' : ''}">
-        <span class="part-top"><span>${size.width}×${size.height}</span><span>${locked ? 'ЗАКРЫТО' : def.cost + ' ¤'}</span></span>
+      return `<button class="part-tile ${group.types.includes(options.selected) ? 'selected' : ''} ${locked ? 'locked' : ''}" data-module="${type}" data-variants="${group.types.length}" aria-pressed="${group.types.includes(options.selected)}" title="${escape(def.name)}${locked ? ' · Чертёж не открыт' : ''}">
+        <span class="part-top"><span>${size.width}×${size.height}</span><span>${locked ? '<span aria-label="Чертёж закрыт">🔒</span>' : def.cost + ' ¤'}</span></span>
         <span class="module-sprite">${VS.Visuals.iconMarkup(def)}</span><b>${escape(group.name)}</b><span class="part-variants">${group.types.length > 1 ? group.types.length + (group.types.length < 5 ? ' варианта ›' : ' вариантов ›') : escape(VS.Visuals.CATEGORIES[VS.Visuals.category(type)])}</span></button>`;
     }).join('') || '<p class="empty-state">Ничего не найдено. Измените поиск или фильтр.</p>';
   }

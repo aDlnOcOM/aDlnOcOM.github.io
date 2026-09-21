@@ -341,6 +341,7 @@
       for (const m of this.ship.modules) {
         const def = MODULES[m.type]; if (!def.footprint || !def.weapon) continue;
         ctx.save(); ctx.translate(m.gx * 30, m.gy * 30); ctx.rotate((m.rotation || 0) * Math.PI / 2);
+        if (m.mirrored) ctx.scale(1, -1);
         ctx.strokeStyle = def.accent; ctx.fillStyle = "#142334"; ctx.lineWidth = 2;
         if (m.type === "tesla_coil") {
           const charge = Math.min(1, this.available(m) / def.weapon.energy);

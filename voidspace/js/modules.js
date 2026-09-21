@@ -149,7 +149,9 @@
     const w = (module.hitWidth || MODULE_SIZE) / 2, h = (module.hitHeight || MODULE_SIZE) / 2;
     const points = MODULES[module.type]?.polygon || [{ x: -w, y: -h }, { x: w, y: -h }, { x: w, y: h }, { x: -w, y: h }];
     const [dx, dy] = moduleDirection(module);
-    return points.map(p => ({ x: module.gx * MODULE_SIZE + p.x * dx - p.y * dy, y: module.gy * MODULE_SIZE + p.x * dy + p.y * dx }));
+    const sign = module.mirrored ? -1 : 1;
+    const result = points.map(p => ({ x: module.gx * MODULE_SIZE + p.x * dx - p.y * sign * dy, y: module.gy * MODULE_SIZE + p.x * dy + p.y * sign * dx }));
+    return module.mirrored ? result.reverse() : result;
   }
 
   function polygonArea(points) {
@@ -233,7 +235,8 @@
       const y = row - Math.floor(footprint.height / 2);
       layout.push({ x, y, type: x === 0 && y === 0 ? module.type : "assembly_section" });
     }
-    return layout.map(cell => ({ type: cell.type, gx: module.gx + dx * cell.x - dy * cell.y, gy: module.gy + dy * cell.x + dx * cell.y, rotation: module.rotation || 0, assembly: group }));
+    const sign = module.mirrored ? -1 : 1;
+    return layout.map(cell => ({ type: cell.type, gx: module.gx + dx * cell.x - dy * cell.y * sign, gy: module.gy + dy * cell.x + dx * cell.y * sign, rotation: module.rotation || 0, ...(module.mirrored ? { mirrored: true } : {}), assembly: group }));
   }
 
   function isAdjacentToShip(modules, gx, gy, candidate = { type: "hull", gx, gy }) {

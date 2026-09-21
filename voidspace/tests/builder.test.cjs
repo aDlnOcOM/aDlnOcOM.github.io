@@ -10,6 +10,61 @@ for (const file of ['utils', 'modules', 'content', 'engineering-content', 'visua
 const VS = sandbox.window.Voidspace, B = VS.Builder, M = VS.ModuleSystem.MODULES;
 const plain = value => JSON.parse(JSON.stringify(value));
 const m = (type, gx, gy = 0) => ({ type, gx, gy, rotation: 0 });
+
+test('horizontal and vertical reflection transform every assembly vertex in every rotation', () => {
+  const points = root => VS.ModuleSystem.assemblyCells(root).flatMap(c => VS.ModuleSystem.localPolygon(c));
+  const sorted = ps => ps.map(p => `${Math.round(p.x)},${Math.round(p.y)}`).sort();
+  for (const type of ['corner_armor_1x1', 'corner_armor_2x1', 'corner_armor_1x2', 'corner_armor_3x1', 'corner_armor_1x3', 'tesla_coil', 'thermo_resonator', 'thruster']) {
+    for (let rotation = 0; rotation < 4; rotation++) for (const mirrored of [false, true]) for (const axis of ['horizontal', 'vertical']) {
+      const game = { buildRotation: rotation, buildMirrored: mirrored, updateBuildHover() {}, updateBuildTools() {} };
+      const before = points({ type, gx: 0, gy: 0, rotation, mirrored });
+      VS.Game.prototype.mirrorBuildModule.call(game, axis);
+      const after = points({ type, gx: 0, gy: 0, rotation: game.buildRotation, mirrored: game.buildMirrored });
+      assert.deepEqual(plain(sorted(after)), plain(sorted(before.map(p => ({ x: axis === 'horizontal' ? -p.x : p.x, y: axis === 'vertical' ? -p.y : p.y })))));
+      VS.Game.prototype.mirrorBuildModule.call(game, axis);
+      assert.equal(game.buildRotation, rotation); assert.equal(game.buildMirrored, mirrored);
+    }
+  }
+});
+
+test('mirrored assemblies survive save and blueprint validation; mismatched sections are rejected', () => {
+  const modules = [m('core', -1), m('thruster', -2), m('pulse', -1, 1), ...VS.ModuleSystem.assemblyCells({ ...m('corner_armor_1x3', 0), mirrored: true })];
+  const blueprint = VS.Content.validateBlueprint({ modules });
+  assert.ok(blueprint.modules.find(c => c.type === 'corner_armor_1x3').mirrored);
+  const ship = new VS.Ship({ modules });
+  const restored = new VS.Ship(ship.serialize());
+  assert.deepEqual(plain(restored.modules), plain(ship.modules));
+  const corrupt = plain(modules); corrupt.at(-1).mirrored = false;
+  assert.throws(() => VS.Content.validateBlueprint({ modules: corrupt }));
+});
+
+test('mirrored armor installs with matching attachment and collision; reflected engines reserve the correct side', () => {
+  const ship = new VS.Ship({ modules: [m('core', -1)], credits: 1000 });
+  ship.unlocked.add('corner_armor_3x1');
+  assert.equal(ship.addModule('corner_armor_3x1', 0, 0, 0, true).ok, true);
+  assert.equal(ship.credits, 1000 - M.corner_armor_3x1.cost);
+  const body = { modules: ship.modules, localToWorld: (x, y) => ({ x, y }) };
+  assert.ok(VS.Physics.circleCollision(body, 65, -12, 1));
+  assert.equal(VS.Physics.circleCollision(body, 65, 12, 1), null);
+  for (const cell of ship.modules) {
+    const ps = VS.ModuleSystem.localPolygon(cell);
+    const winding = ps.reduce((sum, p, i) => { const q = ps[(i + 1) % ps.length]; return sum + p.x * q.y - p.y * q.x; }, 0);
+    assert.ok(winding > 0);
+  }
+  const engine = { ...m('thruster', 0), rotation: 2, mirrored: true };
+  assert.deepEqual(plain(VS.ModuleSystem.reservedCellsForModule(engine).map(c => [c.gx, c.gy])), [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]);
+});
+
+test('build arrows are pale, point with modules, and use one marker per assembly', () => {
+  const ship = new VS.Ship({ modules: [m('core', 0), { ...m('thruster', -1), rotation: 3 }, ...VS.ModuleSystem.assemblyCells(m('corner_armor_3x1', 1))] });
+  const rotations = [], strokes = [], dashes = []; let depth = 0;
+  const ctx = { save() { depth++; }, restore() { depth--; }, translate() {}, rotate(a) { rotations.push(a); }, beginPath() {}, moveTo() {}, lineTo() {}, setLineDash(v) { dashes.push(v); }, stroke() { strokes.push(this.strokeStyle); } };
+  ship.drawBuildDirections(ctx);
+  assert.equal(strokes.length, 4); assert.equal(rotations.length, 3);
+  assert.ok(rotations.includes(3 * Math.PI / 2)); assert.equal(depth, 0);
+  assert.match(strokes.at(-1), /0\.30/); assert.deepEqual(plain(dashes.at(-1)), [7, 6]);
+  strokes.length = 0; ship.drawBuildDirections(ctx, [m('hull', 0)], false); assert.equal(strokes.length, 1);
+});
 test('families preserve every public block without duplicates or hidden sections', () => {
   const types = B.groups({ includeCore: true }).flatMap(group => group.types);
   assert.equal(types.length, new Set(types).size);

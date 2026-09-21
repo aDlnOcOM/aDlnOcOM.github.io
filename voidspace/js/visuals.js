@@ -141,10 +141,10 @@
     const arc = module.type === "laser" ? def.attackArc : def.weapon?.arc || Math.PI / 2;
     return forward + clamp(angleDelta(forward, angle), -arc / 2, arc / 2);
   }
-  function turret(ctx, images, type, x, y, angle = 0, recoil = 0) {
+  function turret(ctx, images, type, x, y, angle = 0, recoil = 0, mirrored = false) {
     const art = images.visualTurrets?.[type]; if (!art) return false;
     const scale = 23 / Math.max(1, art.image.width - art.pivotX);
-    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle); if (mirrored) ctx.scale(1, -1);
     ctx.drawImage(art.image, -art.pivotX * scale - recoil, -art.pivotY * scale, art.image.width * scale, art.image.height * scale);
     ctx.restore(); return true;
   }
@@ -157,7 +157,7 @@
     const def = MODULES[module.type], body = images[`module_${module.type}`];
     if (!images.visualBodies && !def.armorPanel) return false;
     const x = module.gx * 30, y = module.gy * 30, angle = (module.rotation || 0) * Math.PI / 2;
-    ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle);
+    ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle); if (module.mirrored) ctx.scale(1, -1);
     if (def.armorPanel) {
       const points = def.polygon;
       ctx.beginPath(); points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
@@ -186,12 +186,12 @@
     }
     if (state && (def.battery || state.job)) {
       const amount = def.battery ? state.charge / Math.max(1, ship.engineering.electricCapacity(module)) : state.job.progress / VS.EngineeringData.RECIPES[state.job.recipe].time;
-      ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle);
+      ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle); if (module.mirrored) ctx.scale(1, -1);
       ctx.fillStyle = "#08121a"; ctx.fillRect(-9, 11, 18, 2);
       ctx.fillStyle = def.battery ? "#a5ddb0" : "#ebbe80"; ctx.fillRect(-9, 11, 18 * clamp(amount, 0, 1), 2); ctx.restore();
     }
     if (module.type === "drill" && images.visualDrill) {
-      ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle);
+      ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(angle); if (module.mirrored) ctx.scale(1, -1);
       // Preserve the existing 15×10 conical head; project axial rotation as moving helical flutes.
       ctx.rotate(-Math.PI / 2);
       ctx.drawImage(images.visualDrill, 21, 48, 21, 14, -7.5, 9, 15, 10);
@@ -210,7 +210,7 @@
       const shot = ship?.weaponAnimation?.get(`${module.gx},${module.gy}`), age = shot ? time - shot.time : Infinity;
       const recoil = def.weapon?.recoil ? Math.max(0, 1 - age / 0.18) * Math.min(3, 0.6 + def.weapon.recoil / 100) : 0;
       const direction = aimAngle(module, aim);
-      ctx.save(); ctx.globalAlpha *= alpha; turret(ctx, images, module.type, x, y, direction, recoil);
+      ctx.save(); ctx.globalAlpha *= alpha; turret(ctx, images, module.type, x, y, direction, recoil, module.mirrored);
       if (age >= 0 && age < 0.12 && def.weapon?.kind !== "missile") effect(ctx, images, def.weapon.kind === "ballistic" ? "spark" : "ion", x + Math.cos(direction) * 23, y + Math.sin(direction) * 23, 12, (1 - age / 0.12) * 0.8);
       ctx.restore();
     }
@@ -221,7 +221,7 @@
     if (!images?.visualTurrets || !engineering) return false;
     for (const module of engineering.ship.modules) {
       const def = MODULES[module.type]; if (!def.footprint || !def.weapon) continue;
-      ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2);
+      ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2); if (module.mirrored) ctx.scale(1, -1);
       if (module.type === "tesla_coil") {
         const art = images.visualTurrets.tesla_coil.image;
         ctx.drawImage(art, -10, -40, 80, 80);
@@ -253,11 +253,11 @@
       const state = ship.engineStates.get(`${module.gx},${module.gy}`);
       if (!state || state.throttle <= 0 || state.activation <= 0) continue;
       const activation = clamp(state.activation, 0, 1), length = exhaustLength(MODULES[module.type].thrust, activation);
-      ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2);
+      ctx.save(); ctx.translate(module.gx * 30, module.gy * 30); ctx.rotate((module.rotation || 0) * Math.PI / 2); if (module.mirrored) ctx.scale(1, -1);
       ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha *= 0.3 + activation * 0.7;
       config.offsets.forEach((offset, i) => {
         const frame = images.visualExhaust[config.family][frameAt(time, Math.abs(module.gx * 3 + module.gy * 5) + i * 3)];
-        ctx.save(); ctx.translate(config.attachment, offset); ctx.rotate(state.gimbal || 0);
+        ctx.save(); ctx.translate(config.attachment, offset); ctx.rotate((module.mirrored ? -1 : 1) * (state.gimbal || 0));
         const height = config.height * (0.6 + activation * 0.4);
         ctx.drawImage(frame, -length, -height / 2, length, height); ctx.restore();
       }); ctx.restore();

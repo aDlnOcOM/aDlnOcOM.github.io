@@ -81,3 +81,58 @@
 @media (max-width:1150px) { .build-inspector { width:238px; } }
 @media (max-width:850px) { .build-panel { width:300px; } .part-categories button { font-size:14px; } .build-inspector { top:auto; bottom:86px; max-height:48%; width:220px; right:10px; } }
 @media (max-width:600px) { .build-panel { width:calc(100% - 24px); bottom:210px; } .build-inspector { bottom:78px; left:12px; right:12px; width:auto; max-height:122px; } .build-inspector details[open] { max-height:70px; overflow:auto; } .build-inspector .build-navigation { display:none; } .part-categories { grid-template-columns:repeat(4,1fr); } }
+
+/* Dedicated shipyard workspace: palette rail, canvas, bottom tools. */
+.build-topbar, .build-toolbar, .build-statusbar { display:none; }
+.building .build-topbar, .building .build-toolbar, .building .build-statusbar { display:flex; }
+.building #hud, .building .control-strip, .building #mission { visibility:hidden; pointer-events:none; }
+.build-topbar { position:absolute; z-index:14; inset:0 0 auto; height:54px; align-items:center; gap:24px; padding:0 14px; background:#172733; border-bottom:1px solid #51616d; box-shadow:0 2px 8px #0005; }
+.build-topbar > div { display:flex; align-items:center; gap:18px; }
+.build-topbar strong { font:20px var(--font-cyber); color:#e1e7e8; }
+.build-topbar .build-paused { font-size:14px; color:#a6bbc3; }
+.build-topbar #build-summary { flex:1; font-size:14px; color:#a5bac5; margin:0; }
+.build-topbar #build-funds { color:#e1c27e; white-space:nowrap; font:18px var(--font-body); }
+.build-topbar #exit-build { background:#416051; border:1px solid #789784; color:#e6f3e8; padding:9px 14px; border-radius:3px; }
+.build-topbar kbd, .build-toolbar kbd { font:14px var(--font-body); border:1px solid #667680; color:#b4c6cf; border-radius:2px; padding:1px 4px; margin-left:3px; }
+.building .build-panel { inset:62px auto 98px 8px; width:366px; display:grid; grid-template-columns:72px minmax(0,1fr); grid-template-rows:38px 42px 32px minmax(90px,1fr) minmax(120px,27%); gap:0; border:1px solid #4b5b66; border-radius:3px; background:#182632f5; box-shadow:3px 4px 15px #0005; overflow:hidden; }
+.building .build-panel header { grid-column:1/-1; padding:8px 12px; background:#263642; border-bottom:1px solid #4a5a65; }
+.building .build-panel header h2 { font-size:18px; margin:0; }
+.building .build-panel header > span { font-size:14px; color:#92a7b4; }
+.building .build-panel .part-categories { grid-column:1; grid-row:2/5; display:flex; flex-direction:column; overflow:auto; padding:3px; gap:2px; border:0; border-right:1px solid #40515e; background:#101d27; }
+.building .part-categories button { flex:none; flex-direction:column; padding:5px 0; min-height:48px; gap:1px; font-size:14px; border-radius:2px; }
+.building .part-categories button span { display:block; font-size:20px; }
+.building .part-categories button[aria-pressed="true"] { background:#395462; border-color:#8bb3c5; color:#fff; box-shadow:inset 3px 0 #aeddeb; }
+.building .build-panel .catalog-toolbar { grid-column:2; grid-row:2; padding:5px 6px; }
+.building .build-panel .search-field { min-height:30px; border-radius:2px; }
+.building .build-panel .search-field input { min-height:28px; padding:4px; font-size:14px; }
+.building .build-filter { grid-column:2; grid-row:3; margin:0; padding:0 7px; font-size:14px; gap:5px; }
+.building .build-modules { grid-column:2; grid-row:4; min-height:0; padding:5px; gap:4px; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:auto; align-content:start; }
+.building .part-tile { border-radius:2px; padding:4px; min-height:92px; height:92px; background:linear-gradient(#314451,#233440); justify-content:center; }
+.building .part-tile .part-top { font-size:14px; gap:2px; }
+.building .part-tile .part-top span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.building .part-tile .module-sprite { width:48px; height:43px; flex:0 0 43px; margin:1px auto; }
+.building .part-tile b { font-size:14px; line-height:1.1; -webkit-line-clamp:1; }
+.building .part-tile .part-variants { display:none; }
+.building .part-tile:not([data-variants="1"])::after { content:attr(data-variants) " ▾"; position:absolute; right:3px; top:27px; font-size:14px; color:#d2e2ed; background:#142530dd; padding:1px 3px; border-radius:2px; }
+.building .part-tile.selected { background:linear-gradient(#4e6d7d,#334e5d); border-color:#b1d9ea; box-shadow:inset 0 0 0 1px #9dc5d875; }
+.building .part-tile.locked { background:#1b2832; }
+.building .build-inspector { position:static; grid-column:1/-1; grid-row:5; width:auto; max-height:none; min-height:0; overflow:auto; border:0; border-top:1px solid #53616a; border-radius:0; box-shadow:none; background:#10212c; }
+.building .build-inspector summary { padding:6px 10px; font-size:14px; letter-spacing:0; background:#233440; }
+.building #build-details { padding:8px 10px; }
+.building .part-detail-head .module-sprite { width:40px; height:40px; flex:0 0 40px; }
+.building .part-detail-head h3 { font-size:17px; margin:0; }
+.building .part-metrics { margin:8px 0; padding:5px 0; border-radius:2px; }
+.building .part-metrics b { margin-top:2px; }
+.building .part-variant-list { margin:7px 0; gap:3px; }
+.building .part-variant-list button { flex:1 1 28%; padding:3px; border-radius:2px; }
+.building .build-toolbar { position:absolute; z-index:14; left:8px; right:8px; bottom:37px; min-height:51px; align-items:center; gap:6px; padding:5px; overflow-x:auto; background:#1c2b37; border:1px solid #53616c; border-radius:3px; }
+.build-tool-group { display:flex; align-items:center; flex:none; gap:3px; border-right:1px solid #4a5b66; padding-right:6px; }
+.build-toolbar button { white-space:nowrap; background:linear-gradient(#354957,#293b48); border:1px solid #566875; border-radius:2px; color:#d7e2e9; padding:8px; min-height:36px; font-size:14px; }
+.build-toolbar button.active, .build-toolbar button[aria-pressed="true"] { background:#526e7d; border-color:#c1e3ee; }
+.build-toolbar .build-view-tools { border:0; margin-left:auto; padding:0; }
+.build-toolbar output { color:#a6c4d4; font-size:14px; white-space:nowrap; padding:0 4px; }
+.building .build-statusbar { position:absolute; z-index:13; bottom:0; left:0; right:0; height:32px; gap:20px; align-items:center; padding:0 12px; background:#111e28; border-top:1px solid #3c4e5b; color:#8fa7b6; font-size:14px; }
+.building #build-hint { flex:1; margin:0; padding:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; }
+@media (max-width:1150px) { .build-paused { display:none; } .build-toolbar kbd { display:none; } .build-statusbar > span { display:none; } }
+@media (max-width:850px) { .building .build-panel { width:300px; grid-template-columns:68px minmax(0,1fr); } .building .build-modules { grid-template-columns:repeat(2,minmax(0,1fr)); } .build-topbar #build-summary { display:none; } .build-topbar #build-funds { margin-left:auto; } }
+@media (max-width:600px) { .building .build-panel { width:230px; grid-template-columns:58px minmax(0,1fr); } .building .part-categories button { font-size:14px; } .building .build-inspector details[open] { max-height:none; } .build-topbar { gap:8px; } .build-topbar strong { font-size:17px; } .build-filter { flex-wrap:wrap; } }

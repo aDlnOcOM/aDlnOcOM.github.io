@@ -44,19 +44,19 @@
     if (raw.modules.length < 3 || raw.modules.length > 256) throw new Error("Чертёж должен содержать от 3 до 256 клеток");
     const modules = raw.modules.map((m) => {
       if (!m || !Object.hasOwn(MODULES, m.type) || !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 24 || Math.abs(m.gy) > 24 || !Number.isInteger(m.rotation) || m.rotation < 0 || m.rotation > 3) throw new Error("Неверный тип, координаты или поворот модуля");
-      return { ...cell(m.type, m.gx, m.gy, m.rotation), ...(typeof m.assembly === "string" && /^-?\d+,-?\d+$/.test(m.assembly) ? { assembly: m.assembly } : {}), ...(m.overclock ? { overclock: true } : {}) };
+      return { ...cell(m.type, m.gx, m.gy, m.rotation), ...(typeof m.assembly === "string" && /^-?\d+,-?\d+$/.test(m.assembly) ? { assembly: m.assembly } : {}), ...(m.overclock ? { overclock: true } : {}), ...(m.mirrored === true ? { mirrored: true } : {}) };
     });
     if (modules.filter((m) => m.type === "core").length !== 1) throw new Error("Нужна ровно одна командная капсула");
     if (new Set(modules.map((m) => `${m.gx},${m.gy}`)).size !== modules.length) throw new Error("Модули перекрываются");
     for (const module of modules) {
       if (MODULES[module.type].footprint) {
         const expected = VS.ModuleSystem.assemblyCells(module);
-        if (expected.some((cell) => !modules.some((m) => m.type === cell.type && m.gx === cell.gx && m.gy === cell.gy && m.rotation === cell.rotation && m.assembly === cell.assembly))) throw new Error("Составной модуль должен содержать все секции");
+        if (expected.some((cell) => !modules.some((m) => m.type === cell.type && m.gx === cell.gx && m.gy === cell.gy && m.rotation === cell.rotation && Boolean(m.mirrored) === Boolean(cell.mirrored) && m.assembly === cell.assembly))) throw new Error("Составной модуль должен содержать все секции");
       }
       if (MODULES[module.type].internal && !modules.some((m) => m.assembly === module.assembly && MODULES[m.type].footprint)) throw new Error("Секция не принадлежит составному модулю");
       if (module.assembly) {
         const root = modules.find((m) => m.assembly === module.assembly && MODULES[m.type].footprint);
-        if (!root || !VS.ModuleSystem.assemblyCells(root).some((m) => m.gx === module.gx && m.gy === module.gy && m.type === module.type && m.rotation === module.rotation)) throw new Error("Лишняя секция за пределами составного модуля");
+        if (!root || !VS.ModuleSystem.assemblyCells(root).some((m) => m.gx === module.gx && m.gy === module.gy && m.type === module.type && m.rotation === module.rotation && Boolean(m.mirrored) === Boolean(module.mirrored))) throw new Error("Лишняя секция за пределами составного модуля");
       }
     }
     if (!isConnected(modules)) throw new Error("Все модули должны быть соединены");

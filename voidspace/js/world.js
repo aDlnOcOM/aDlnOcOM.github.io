@@ -390,7 +390,7 @@
       }
       ctx.restore();
       VS.WeaponSystem?.draw(this, ctx);
-      this.drawRadar(ctx, ship);
+      if (!this.game.buildMode) this.drawRadar(ctx, ship);
     }
     drawRadar(ctx, ship) {
       const { viewport } = this.game;

@@ -335,8 +335,14 @@
     ctx.restore();
   }
 
-  function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1) {
+  function drawModuleSprite(ctx, image, definition, x, y, rotation, alpha = 1, mirrored = false) {
     if (!image) return;
+    if (mirrored) {
+      const facing = rotation - (definition.spriteRotation || 0) * Math.PI / 2;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(facing); ctx.scale(1, -1); ctx.rotate(-facing); ctx.translate(-x, -y);
+      drawModuleSprite(ctx, image, definition, x, y, rotation, alpha);
+      ctx.restore(); return;
+    }
     const crop = definition?.spriteCrop;
     if (!crop) {
       Utils.drawImage(ctx, image, x, y, MODULE_SIZE, MODULE_SIZE, rotation, alpha);
@@ -368,7 +374,7 @@
     const x = module.gx * MODULE_SIZE;
     const y = module.gy * MODULE_SIZE;
     const baseRotation = (module.rotation + (definition.spriteRotation || 0)) * (Math.PI / 2);
-    Utils.drawImage(ctx, layers.body, x, y, MODULE_SIZE, MODULE_SIZE, baseRotation, alpha);
+    drawModuleSprite(ctx, layers.body, { spriteRotation: definition.spriteRotation }, x, y, baseRotation, alpha, module.mirrored);
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -428,7 +434,7 @@
   class Ship {
     constructor(save = {}) {
       save = save && typeof save === "object" ? save : {};
-      const savedModules = Array.isArray(save.modules) ? save.modules.filter((module) => module && Object.hasOwn(MODULES, module.type) && Number.isInteger(module.gx) && Number.isInteger(module.gy) && Math.abs(module.gx) <= 24 && Math.abs(module.gy) <= 24).slice(0, 256).map((module) => ({ type: module.type, gx: module.gx, gy: module.gy, rotation: Number.isFinite(module.rotation) ? ((Math.round(module.rotation) % 4) + 4) % 4 : 0, ...(typeof module.assembly === "string" && /^-?\d+,-?\d+$/.test(module.assembly) ? { assembly: module.assembly } : {}), ...(module.overclock ? { overclock: true } : {}) })) : [];
+      const savedModules = Array.isArray(save.modules) ? save.modules.filter((module) => module && Object.hasOwn(MODULES, module.type) && Number.isInteger(module.gx) && Number.isInteger(module.gy) && Math.abs(module.gx) <= 24 && Math.abs(module.gy) <= 24).slice(0, 256).map((module) => ({ type: module.type, gx: module.gx, gy: module.gy, rotation: Number.isFinite(module.rotation) ? ((Math.round(module.rotation) % 4) + 4) % 4 : 0, ...(typeof module.assembly === "string" && /^-?\d+,-?\d+$/.test(module.assembly) ? { assembly: module.assembly } : {}), ...(module.overclock ? { overclock: true } : {}), ...(module.mirrored === true ? { mirrored: true } : {}) })) : [];
       const validLayout = savedModules.filter((m) => m.type === "core").length === 1 && new Set(savedModules.map((m) => `${m.gx},${m.gy}`)).size === savedModules.length;
       this.x = Number.isFinite(save.x) ? save.x : -175;
       this.y = Number.isFinite(save.y) ? save.y : 0;
@@ -767,11 +773,11 @@
         });
     }
 
-    addModule(type, gx, gy, rotation) {
+    addModule(type, gx, gy, rotation, mirrored = false) {
       if (!MODULES[type] || !this.unlocked.has(type)) return { ok: false, reason: "Чертёж модуля ещё не разблокирован" };
       if (MODULES[type].internal) return { ok: false, reason: "Секция устанавливается только в составе модуля" };
       if (MODULES[type].shipClass && MODULES[type].shipClass !== this.shipClass) return { ok: false, reason: "Модуль предназначен для другого класса корабля" };
-      const cells = ModuleSystem.assemblyCells({ type, gx, gy, rotation });
+      const cells = ModuleSystem.assemblyCells({ type, gx, gy, rotation, ...(mirrored ? { mirrored: true } : {}) });
       if (this.modules.length + cells.length > 256 || cells.some((m) => !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || Math.abs(m.gx) > 24 || Math.abs(m.gy) > 24)) return { ok: false, reason: "Предел конструкции: 256 клеток, сетка 49×49" };
       if (cells.some((cell) => this.modules.some((module) => module.gx === cell.gx && module.gy === cell.gy))) return { ok: false, reason: "Часть сборки перекрывает занятые клетки" };
       if (!cells.some((cell) => isAdjacentToShip(this.modules, cell.gx, cell.gy, cell))) return { ok: false, reason: "Нужна соседняя грань крепления (не остриё)" };
@@ -878,6 +884,38 @@
       ctx.restore();
     }
 
+    drawBuildDirections(ctx, modules = this.modules, showShip = true) {
+      const live = modules.filter(m => this.engineering?.nodes.get(engineKey(m))?.integrity !== 0);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(206, 239, 244, 0.42)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([]);
+      for (const module of live) {
+        if (MODULES[module.type]?.internal) continue;
+        // One marker per complete assembly, independent of its sprite orientation.
+        const cells = module.assembly ? live.filter(m => m.assembly === module.assembly) : [module];
+        const points = cells.flatMap(m => ModuleSystem.localPolygon(m));
+        const x = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+        const y = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+        ctx.save(); ctx.translate(x, y); ctx.rotate((module.rotation || 0) * Math.PI / 2);
+        ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(6, 0);
+        ctx.moveTo(2, -3); ctx.lineTo(6, 0); ctx.lineTo(2, 3); ctx.stroke();
+        ctx.restore();
+      }
+      const core = live.find(m => m.type === 'core');
+      if (showShip && core) {
+        const top = Math.min(...live.flatMap(m => ModuleSystem.localPolygon(m).map(p => p.y)));
+        const x = core.gx * MODULE_SIZE, y = top - MODULE_SIZE;
+        // The ship's forward axis is local +X, not the capsule's sprite rotation.
+        ctx.strokeStyle = 'rgba(177, 223, 233, 0.30)'; ctx.lineWidth = 2;
+        ctx.setLineDash([7, 6]);
+        ctx.beginPath(); ctx.moveTo(x - 45, y); ctx.lineTo(x + 75, y);
+        ctx.moveTo(x + 48, y - 19); ctx.lineTo(x + 75, y); ctx.lineTo(x + 48, y + 19);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     draw(ctx, camera, viewport, images, buildMode = false, buildHover = null, time = 0) {
       const center = Utils.worldToScreen(this, camera, viewport.width, viewport.height);
       const aimLocal = this.worldToLocal(this.aimWorld.x, this.aimWorld.y);
@@ -914,7 +952,7 @@
         if (!visual) Utils.drawImage(ctx, images.module_frame, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, MODULE_FRAME_SIZE, MODULE_FRAME_SIZE);
         const toolActive = module.type !== "drill" || this.activeDrills.has(engineKey(module));
         const animated = visual || drawAnimatedModule(ctx, image, module, definition, time, aimLocal, 1, toolActive);
-        if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2));
+        if (!animated) drawModuleSprite(ctx, image, definition, module.gx * MODULE_SIZE, module.gy * MODULE_SIZE, spriteRotation * (Math.PI / 2), 1, module.mirrored);
         if (!visual && definition.accent) {
           ctx.fillStyle = definition.accent;
           ctx.fillRect(module.gx * MODULE_SIZE - 9, module.gy * MODULE_SIZE + 11, 18, 2);
@@ -948,12 +986,13 @@
       }
 
       if (!VS.Visuals?.drawAssemblies(ctx, images, this.engineering, time)) this.engineering?.drawAssemblies(ctx, time);
+      if (buildMode) this.drawBuildDirections(ctx);
       if (buildMode && buildHover) {
         const cells = ModuleSystem.assemblyCells(buildHover);
         for (const cell of cells) {
           const definition = MODULES[cell.type], image = images[`module_${cell.type}`];
           const visual = VS.Visuals?.drawCell(ctx, images, cell, time, aimLocal, 0.52);
-          if (!visual) drawModuleSprite(ctx, image, definition, cell.gx * MODULE_SIZE, cell.gy * MODULE_SIZE, (cell.rotation + (definition.spriteRotation || 0)) * Math.PI / 2, 0.52);
+          if (!visual) drawModuleSprite(ctx, image, definition, cell.gx * MODULE_SIZE, cell.gy * MODULE_SIZE, (cell.rotation + (definition.spriteRotation || 0)) * Math.PI / 2, 0.52, cell.mirrored);
         }
         ctx.save(); ctx.globalAlpha *= 0.52;
         VS.Visuals?.drawAssemblies(ctx, images, { ship: { modules: cells }, available: () => 0, heatAvailable: () => 0 }, time);
@@ -962,6 +1001,7 @@
         for (const cell of cells) {
           ctx.beginPath(); ModuleSystem.localPolygon(cell).forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.stroke();
         }
+        this.drawBuildDirections(ctx, cells, false);
       }
 
       ctx.restore();
