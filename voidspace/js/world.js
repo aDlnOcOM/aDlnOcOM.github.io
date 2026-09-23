@@ -102,6 +102,7 @@
         if (Math.abs(delta) < 0.5 && (distance > preferredRange || protectedTarget)) controls.add("KeyW");
         else if (distance < preferredRange * 0.7) controls.add("KeyS");
         this.ship.update(dt, controls, target);
+        world.excludeFromHaven(this.ship);
         // Patrols never enter a friendly safety field.
         for (const station of world.friendlyStations()) {
           if (!station.powered) continue;
@@ -159,12 +160,22 @@
       try { custom = Content.customEnemies(window.localStorage); } catch { /* Storage may be blocked. */ }
       this.templates = [...Content.ENEMIES, ...(Content.PACKAGED_ENEMIES || []), ...custom];
     }
-    safeAt(point) { return this.friendlyStations().some((station) => station.isSafe(point)); }
+    safeAt(point) { return Math.hypot(point.x, point.y) < 1400 || this.friendlyStations().some((station) => station.isSafe(point)); }
+    excludeFromHaven(ship) {
+      const extent = Math.max(30, ...ship.modules.flatMap((m) => ModuleSystem.localPolygon(m).map((p) => Math.hypot(p.x, p.y))));
+      const radius = 1400 + extent + 10;
+      const distance = Math.hypot(ship.x, ship.y);
+      if (distance >= radius) return;
+      const nx = distance > 0 ? ship.x / distance : 1, ny = distance > 0 ? ship.y / distance : 0;
+      ship.x = nx * radius; ship.y = ny * radius;
+      const inward = Math.min(0, ship.vx * nx + ship.vy * ny);
+      ship.vx -= inward * nx; ship.vy -= inward * ny;
+    }
     dockAt(point) { return this.friendlyStations().find((station) => station.isDocked(point)); }
     biome(point = this.game.ship) { return Content.biomeAt(point.x, point.y, this.seed); }
     difficulty() { return Math.min(8, 1 + this.biome().danger + Math.floor(this.kills / 12) + Math.floor(this.contracts / 4)); }
     nextContract() {
-      const kind = ["mine", "travel", "hunt"][(this.contracts + this.seed % 3) % 3];
+      const kind = this.contracts === 0 ? "mine" : ["mine", "travel", "hunt"][(this.contracts + this.seed % 3) % 3];
       const count = kind === "mine" ? 5 + this.contracts * 2 : kind === "hunt" ? 2 + Math.floor(this.contracts / 3) : Math.min(10000, 1700 + this.contracts * 500);
       return { kind, target: count, start: kind === "mine" ? this.game.asteroidsMined : kind === "hunt" ? this.kills : 0, reward: 140 + Math.min(600, this.contracts * 45) };
     }

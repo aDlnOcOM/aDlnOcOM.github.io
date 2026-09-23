@@ -83,6 +83,22 @@ test('safe starting region never spawns enemies', () => {
   for (let i = 0; i < 300; i++) world.update(0.05, game.ship);
   assert.equal(world.enemies.length, 0);
 });
+
+test('haven protects beginners independently of station power and repels pursuing hulls', () => {
+  const { world, game } = fixture();
+  game.station.modules = [];
+  assert.ok(world.safeAt({ x: 1399, y: 0 }));
+  const enemy = new Combat.Enemy(Content.ENEMIES[0], 1300, 0);
+  enemy.ship.vx = -200;
+  world.excludeFromHaven(enemy.ship);
+  assert.ok(enemy.ship.x > 1430);
+  assert.equal(enemy.ship.vx, 0);
+  for (const m of enemy.ship.modules) for (const p of ModuleSystem.localPolygon(m)) {
+    const point = enemy.ship.localToWorld(p.x, p.y);
+    assert.ok(Math.hypot(point.x, point.y) >= 1400);
+  }
+  assert.equal(world.contract.kind, 'mine');
+});
 test('deep space spawns capped modular patrols and projectiles can damage the player', () => {
   const { world, game } = fixture(); game.ship.x = 1900; game.ship.y = 800;
   world.spawnTimer = 0;
