@@ -290,6 +290,7 @@
       }
       for (const station of this.stations) if (station.hostile && !this.defeated.has(station.id) && Utils.distance(ship, station) < 1500 && !this.enemies.some((e) => e.stationId === station.id)) this.enemies.push(this.spawnOutpost(station));
       for (const enemy of this.enemies) if (!enemy.dead) enemy.update(dt, this);
+      for (const station of this.friendlyStations()) station.updateDefense(dt, this);
       VS.Physics?.solve(this, dt);
       if (VS.WeaponSystem) VS.WeaponSystem.update(this, dt);
       else for (const bullet of this.bullets) {

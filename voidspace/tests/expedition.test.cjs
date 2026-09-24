@@ -99,6 +99,28 @@ test('haven protects beginners independently of station power and repels pursuin
   }
   assert.equal(world.contract.kind, 'mine');
 });
+
+test('station turrets fire at enemies, respect cover, lose power and remain destroyed after loading', () => {
+  const { world, game } = fixture();
+  const station = world.friendlyStations()[1];
+  const enemy = new Combat.Enemy(Content.ENEMIES[0], station.x + 700, station.y - 70);
+  world.enemies = [enemy];
+  const health = () => enemy.ship.modules.reduce((sum, m) => sum + m.combatHp, 0);
+  const before = health();
+  station.updateDefense(0.1, world);
+  assert.ok(health() < before);
+  const after = health(); station.updateDefense(0.1, world);
+  assert.equal(health(), after);
+  game.asteroids = [{ x: station.x + 450, y: station.y, radius: 180 }];
+  station.updateDefense(2, world); assert.equal(health(), after);
+  game.asteroids = [];
+  station.modules = station.modules.filter(m => m.type !== 'rtg');
+  station.updateDefense(2, world); assert.equal(health(), after);
+  const turret = station.modules.find(m => m.role === 'turret');
+  station.damage(turret, 10000, world);
+  const restored = new Station(station.serialize());
+  assert.ok(!restored.has(turret.id));
+});
 test('deep space spawns capped modular patrols and projectiles can damage the player', () => {
   const { world, game } = fixture(); game.ship.x = 1900; game.ship.y = 800;
   world.spawnTimer = 0;

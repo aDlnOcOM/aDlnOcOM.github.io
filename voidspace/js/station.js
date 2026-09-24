@@ -14,7 +14,7 @@
       this.dockZone = { x: -275, y: 0, width: 300, height: 220 };
       this.modules = [];
       const add = (id, type, x, y, width, height = width, role = "hull") => {
-        const maxHp = role === "command" ? 600 : type === "beam" ? 150 : type === "rtg" ? 260 : type === "cargo" ? 280 : 100;
+        const maxHp = role === "turret" ? 240 : role === "command" ? 600 : type === "beam" ? 150 : type === "rtg" ? 260 : type === "cargo" ? 280 : 100;
         this.modules.push({ id, type, gx: x / 30, gy: y / 30, hitWidth: width, hitHeight: height, rotation: 0, role, maxHp, integrity: maxHp });
       };
       for (const [index, connector] of this.getConnectors().entries()) {
@@ -26,6 +26,7 @@
         for (const dx of [-45, 45]) for (const dy of [-25, 0, 25]) add(`${id}:${dx}:${dy}`, "hull", x + dx, dy, 20);
       }
       for (const y of [-185, 185]) add(`rtg:${y}`, "rtg", 0, y, 74);
+      for (const y of [-70, 70]) add(`turret:${y}`, "hull", 165, y, 30, 30, "turret");
       for (let x = -425; x <= -125; x += 30) for (const y of [-125, 125]) add(`dock:${x}:${y}`, x === -425 || x === -125 ? "cargo" : "hull", x, y, 30, 30, "dock");
       for (let y = -95; y <= 115; y += 30) add(`dock:-125:${y}`, "hull", -125, y, 30, 30, "dock");
       this.template = this.modules.map((m) => ({ ...m }));
@@ -46,6 +47,34 @@
     get hp() { return this.modules.reduce((sum, m) => sum + m.integrity, 0); }
     get powered() { return !this.dead && this.modules.some((m) => m.type === "rtg"); }
     get dockOnline() { return this.powered && this.has("service") && this.has("connector-0") && this.modules.some((m) => m.role === "dock"); }
+
+    updateDefense(dt, world) {
+      if (this.hostile || !this.powered) return;
+      for (const turret of this.modules.filter((m) => m.role === "turret")) {
+        turret.cooldown = Math.max(0, (turret.cooldown || 0) - dt);
+        const center = this.localToWorld(turret.gx * 30, turret.gy * 30);
+        const targets = world.enemies.filter((e) => !e.dead && Utils.distance(center, e.ship) < 950)
+          .sort((a, b) => Utils.distance(center, a.ship) - Utils.distance(center, b.ship));
+        for (const enemy of targets) {
+          const aim = Math.atan2(enemy.ship.y - center.y, enemy.ship.x - center.x);
+          turret.aim = aim;
+          const direction = { x: Math.cos(aim), y: Math.sin(aim) };
+          const origin = { x: center.x + direction.x * 23, y: center.y + direction.y * 23 };
+          const hit = VS.Combat.rayModules(enemy.ship, origin, direction, 950);
+          if (!hit) continue;
+          // Station hulls, the player and asteroids all block the line of fire.
+          const blocked = [...world.friendlyStations(), world.game.ship].some((body) => VS.Combat.rayModules(body, origin, direction, hit.distance))
+            || world.game.asteroids.some((rock) => VS.Combat.rayCircle(origin, direction, hit.distance, rock) !== null);
+          if (blocked) continue;
+          if (turret.cooldown > 0) break;
+          enemy.damage(hit.module, 24, world, "energy");
+          world.weaponBeams ||= [];
+          world.weaponBeams.push({ origin, end: { x: origin.x + direction.x * hit.distance, y: origin.y + direction.y * hit.distance }, life: 0.16, colour: "#86eeff" });
+          turret.cooldown = 1;
+          break;
+        }
+      }
+    }
 
     damage(module, amount, world, kind = "kinetic", penetration = 0) {
       if (!this.modules.includes(module) || !Number.isFinite(amount) || amount <= 0) return;
@@ -96,7 +125,17 @@
       for (const module of this.modules) {
         if (module.role === "connector") continue;
         const x = module.gx * 30, y = module.gy * 30;
-        if (module.role === "command") { ctx.save(); ctx.translate(x, y); this.drawCommandCapsule(ctx, images); ctx.restore(); }
+        if (module.role === "turret") {
+          this.drawModule(ctx, images, "hull", x, y, 30);
+          ctx.save(); ctx.translate(x, y); ctx.rotate(module.aim || 0);
+          ctx.fillStyle = "#101e30"; ctx.fillRect(-10, -10, 20, 20);
+          ctx.strokeStyle = "#8ca2b8"; ctx.lineWidth = 2; ctx.strokeRect(-9, -9, 18, 18);
+          ctx.fillStyle = "#647d95"; ctx.fillRect(0, -5, 23, 10);
+          ctx.fillStyle = "#172c42"; ctx.fillRect(19, -6, 5, 12);
+          ctx.fillStyle = this.powered ? "#83efff" : "#354653"; ctx.fillRect(-5, -4, 6, 8);
+          ctx.restore();
+        }
+        else if (module.role === "command") { ctx.save(); ctx.translate(x, y); this.drawCommandCapsule(ctx, images); ctx.restore(); }
         else this.drawModule(ctx, images, module.type, x, y, module.hitWidth);
         if (module.integrity < module.maxHp) {
           ctx.fillStyle = `rgba(15,5,2,${0.2 + (1 - module.integrity / module.maxHp) * 0.5})`;
