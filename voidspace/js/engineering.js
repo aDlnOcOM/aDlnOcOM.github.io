@@ -48,7 +48,11 @@
           continue;
         }
         const saved = this.savedNodes[key(m)];
-        const state = saved?.type === m.type ? saved : {};
+        const state = saved?.type === m.type ? { ...saved } : {};
+        if (Number.isFinite(state.integrity) && Number.isFinite(state.maxIntegrity) && state.maxIntegrity > 0) {
+          state.integrity = clamp(state.integrity / state.maxIntegrity, 0, 1) * this.maxIntegrity(m);
+          state.maxIntegrity = this.maxIntegrity(m);
+        }
         this.nodes.set(key(m), { type: m.type, maxIntegrity: this.maxIntegrity(m), temperature: clamp(number(state.temperature, 20), 20, 1500), charge: clamp(number(state.charge, m.type === "core" ? 6 : 0), 0, this.electricCapacity(m)), integrity: clamp(number(state.integrity, this.maxIntegrity(m)), 0, this.maxIntegrity(m)), emp: clamp(number(state.emp), 0, 15), running: Boolean(state.running), decay: clamp(number(state.decay), 0, 1), powered: false,
           recipe: VS.EngineeringData.supportsRecipe(MODULES[m.type], state.recipe) ? state.recipe : Object.keys(RECIPES).find((id) => VS.EngineeringData.supportsRecipe(MODULES[m.type], id)),
           job: state.job && VS.EngineeringData.supportsRecipe(MODULES[m.type], state.job.recipe) ? { recipe: state.job.recipe, progress: clamp(number(state.job.progress), 0, RECIPES[state.job.recipe].time) } : null });

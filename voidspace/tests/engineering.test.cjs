@@ -10,6 +10,22 @@ const { MODULES, assemblyCells } = VS.ModuleSystem;
 const m = (type, gx, gy, rotation = 0) => ({ type, gx, gy, rotation });
 const makeShip = (modules) => new VS.Ship({ modules: [m('core', -1, 0), ...modules], credits: 10000 });
 const advance = (ship, seconds) => { for (let i = 0; i < seconds * 40; i++) ship.engineering.step(0.025); };
+
+test('hull rebalance preserves saved damage fractions without changing mass or resurrecting modules', () => {
+  const ship = makeShip([m('hull', 0, 0)]);
+  const save = ship.serialize();
+  save.engineering.nodes['-1,0'].maxIntegrity = 100;
+  save.engineering.nodes['-1,0'].integrity = 50;
+  const restored = new VS.Ship(save);
+  assert.equal(restored.engineering.nodes.get('-1,0').integrity, 90);
+  assert.equal(MODULES.core.massHp, 100);
+  assert.equal(MODULES.hull.massHp, 85);
+  assert.ok(MODULES.drill.hp > MODULES.laser.hp);
+  assert.ok(MODULES.tungsten_armor.hp > MODULES.hull.hp);
+  save.engineering.nodes['-1,0'].integrity = 0;
+  const dead = new VS.Ship(save);
+  assert.equal(dead.engineering.nodes.get('-1,0').integrity, 0);
+});
 function loop() {
   return makeShip([m('nuclear_reactor', 0, 0), m('heat_pipe', 1, 0), m('turbine', 2, 0), m('radiator', 2, 1), m('heat_pipe', 2, 2), m('turbine', 1, 2), m('radiator', 0, 2), m('coolant_pump', 0, 1), m('battery', -1, 1)]);
 }

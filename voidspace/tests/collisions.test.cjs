@@ -8,6 +8,16 @@ for (const file of ['utils', 'modules', 'content', 'engineering-content', 'engin
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', `${file}.js`), 'utf8'), sandbox);
 }
 const VS = sandbox.window.Voidspace, P = VS.Physics;
+
+test('impact damage has a docking deadzone, a smooth energy curve and a bounded heavy-hit maximum', () => {
+  const damage = P.impactDamage;
+  for (const speed of [-10, 0, 8, 20]) assert.equal(damage(speed, 1, 1), 0);
+  assert.ok(damage(21, 1, 1) < 0.01);
+  assert.ok(damage(60, 1, 1) < damage(120, 1, 1));
+  assert.ok(damage(80, 0.1, 0.1) > damage(80, 1, 1));
+  assert.equal(damage(10000, 0.01, 0), 90);
+  assert.equal(damage(NaN, 1, 1), 0);
+});
 const m = (type, gx = 0, gy = 0, rotation = 0) => ({ type, gx, gy, rotation });
 const ship = (x = 6000, y = 0, modules = [m('core')]) => new VS.Ship({ x, y, modules });
 const contact = (a, b) => P.findContact(P.shapes(a), P.shapes(b));

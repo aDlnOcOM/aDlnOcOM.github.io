@@ -64,7 +64,7 @@
           if (!hit) continue;
           // Station hulls, the player and asteroids all block the line of fire.
           const blocked = [...world.friendlyStations(), world.game.ship].some((body) => VS.Combat.rayModules(body, origin, direction, hit.distance))
-            || world.game.asteroids.some((rock) => VS.Combat.rayCircle(origin, direction, hit.distance, rock) !== null);
+            || world.game.asteroids.some((rock) => !rock.dead && VS.Combat.rayCircle(origin, direction, hit.distance, rock) !== null);
           if (blocked) continue;
           if (turret.cooldown > 0) break;
           enemy.damage(hit.module, 24, world, "energy");

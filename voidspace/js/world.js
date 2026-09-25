@@ -292,6 +292,7 @@
       for (const enemy of this.enemies) if (!enemy.dead) enemy.update(dt, this);
       for (const station of this.friendlyStations()) station.updateDefense(dt, this);
       VS.Physics?.solve(this, dt);
+      for (const enemy of this.enemies) if (!enemy.dead && !enemy.stationId) this.excludeFromHaven(enemy.ship);
       if (VS.WeaponSystem) VS.WeaponSystem.update(this, dt);
       else for (const bullet of this.bullets) {
         const speed = Math.hypot(bullet.vx, bullet.vy);

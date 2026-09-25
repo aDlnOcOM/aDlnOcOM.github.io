@@ -84,8 +84,17 @@
   installation('industrial_store', 'Промышленный склад · 3×2', 3, 2, { ammoCapacity: 1800, cargo: 100, cost: 420, glyph: 'magazine', visualBase: 'ammo_store', accent: '#d9bd87', description: '1800 мест для боеприпасов и компонентов, 100 единиц руды. Общий склад производственных цепочек.' });
   installation('radiator_array', 'Радиаторная секция · 3×1', 3, 1, { radiator: 0.65, loop: true, conductivity: 8, cost: 200, glyph: 'radiator', visualBase: 'radiator', accent: '#83c8e0', description: 'Три охлаждающие секции; свободные внешние грани рассеивают тепло. Подключайте теплопроводом.' });
   Object.assign(MODULES.radiator_array_section, { radiator: 0.65, loop: true, conductivity: 8, glyph: 'radiator', visualBase: 'radiator' });
+  const hullBalance = { core: 180, hull: 140, beam: 65, computer: 65, laser: 80, drill: 140,
+    thruster: 90, booster: 120, cargo: 110, rtg: 90, shield: 100,
+    miner_hold: 140, scout_drive: 75, scout_array: 65, hauler_hold: 170, hauler_reactor: 160,
+    corvette_armor: 260, corvette_shield: 140, ceramic_armor: 160, tungsten_armor: 320 };
   for (const [id, def] of Object.entries(MODULES)) {
+    // Keep handling and heat capacity independent of this durability rebalance.
+    def.massHp = def.hp;
     def.heatCapacity ??= 4 + (def.hp || 0) / 30;
+    def.hp = hullBalance[id] ?? (def.weapon ? Math.max(90, Math.round(def.hp * 1.35))
+      : def.industrialSection ? 90 : def.industrial || def.factory ? Math.round(def.hp * 1.4) : def.hp);
+    if (id === "corvette_armor") def.description = "Корвет · 260 прочности";
     def.conductivity ??= 0.04;
     def.density ??= 1;
     def.strength ??= id.includes("armor") ? 45 : 8;

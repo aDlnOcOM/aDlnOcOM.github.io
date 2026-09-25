@@ -178,7 +178,7 @@
     let mass = 0, inertia = 0;
     if (body.modules) for (const module of body.modules) {
       const def = MODULES[module.type];
-      const weight = ((def.materialArea ?? 1) + def.hp / 100 + (def.cargo || 0) / 40 + (def.energy || 0) / 50) * (def.density || 1) / 3;
+      const weight = ((def.materialArea ?? 1) + (def.massHp ?? def.hp) / 100 + (def.cargo || 0) / 40 + (def.energy || 0) / 50) * (def.density || 1) / 3;
       mass += weight; inertia += weight * ((module.gx * 30) ** 2 + (module.gy * 30) ** 2 + 150);
     }
     else mass = Math.max(4, (body.collisionRadius ?? body.radius) ** 2 / 90);
@@ -216,8 +216,14 @@
     for (const [item, sign] of [[a, 1], [b, -1]]) if (!item.fixed) { item.body.x += nx * correction * sign * item.inverseMass; item.body.y += ny * correction * sign * item.inverseMass; }
     return Math.max(0, -velocity);
   }
+  function impactDamage(speed, inverseMassA, inverseMassB) {
+    if (!Number.isFinite(speed) || speed <= 20) return 0;
+    const reducedMass = 1 / Math.max(0.001, inverseMassA + inverseMassB);
+    return Math.min(90, 0.0025 * (speed - 20) ** 2 * VS.Utils.clamp(Math.sqrt(reducedMass), 0.75, 2.5));
+  }
   function damageImpact(world, a, b, contact, speed) {
-    if (speed < 8) return;
+    const impact = impactDamage(speed, a.inverseMass, b.inverseMass);
+    if (impact <= 0) return;
     world.collisionCooldowns ||= new WeakMap();
     let cooldowns = world.collisionCooldowns.get(a.body);
     if (!cooldowns) { cooldowns = new WeakMap(); world.collisionCooldowns.set(a.body, cooldowns); }
@@ -227,9 +233,11 @@
     for (const [self, other, module, kind] of [[a, b, contact.module, contact.otherKind], [b, a, contact.otherModule, contact.kind]]) {
       if (!self.body.modules) {
         const maximum = kind === "drillTip" ? DRILL_MINING_POWER * 4 : LASER_MINING_POWER;
-        self.body.damage(maximum * VS.Utils.clamp(speed / (other.body.getMaxSpeed?.() || 173), 0, 1), contact.contactX, contact.contactY, world.game);
+        const ratio = VS.Utils.clamp((speed - 20) / Math.max(1, (other.body.getMaxSpeed?.() || 173) - 20), 0, 1);
+        self.body.damage(maximum * ratio ** 2, contact.contactX, contact.contactY, world.game);
       } else if (module && (self.fixed || !world.safeAt(self.body))) {
-        const amount = (other.body.modules ? 14 : 8 + other.body.size * 5) * VS.Utils.clamp(speed / 60, 0, 2);
+        const ownKind = self === a ? contact.kind : contact.otherKind;
+        const amount = impact * (ownKind === "drillTip" && !other.body.modules ? 0.35 : 1);
         if (self.owner) self.owner.damage(module, amount, world, "kinetic");
         else if (self.body.engineering) self.body.engineering.damage(module, amount, "kinetic");
         else self.body.takeDamage(amount);
@@ -281,5 +289,5 @@
     const candidate = shapes(ship, cells);
     return actors(world).some(a => a.body !== ship && findContact(candidate, shapes(a.body))?.penetration > EPSILON);
   }
-  VS.Physics = { LASER_MINING_POWER, DRILL_MINING_POWER, shapes, shapeContact, findContact, circleCollision, drillContact, rayAsteroid, actor, resolvePair, solve, stepCount, placementBlocked };
+  VS.Physics = { LASER_MINING_POWER, DRILL_MINING_POWER, impactDamage, shapes, shapeContact, findContact, circleCollision, drillContact, rayAsteroid, actor, resolvePair, solve, stepCount, placementBlocked };
 })();

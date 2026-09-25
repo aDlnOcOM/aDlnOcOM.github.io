@@ -34,7 +34,7 @@ test('partial damage stays local and repair restores only surviving modules', ()
   const { ship } = fixture();
   const before = ship.hp;
   ship.engineering.damage(ship.modules[2], 10, 'heat');
-  assert.equal(ship.engineering.nodes.get('0,0').integrity, 100);
+  assert.equal(ship.engineering.nodes.get('0,0').integrity, 180);
   assert.equal(ship.hp, before - 10);
   ship.engineering.repair(3); assert.equal(ship.hp, before - 7);
   ship.engineering.destroy(ship.modules[3]);
@@ -66,15 +66,15 @@ test('player destruction and local integrity survive saving', () => {
   ship.engineering.damage(ship.modules[0], 20, 'heat');
   ship.engineering.destroy(ship.modules[1]);
   const restored = new VS.Ship(ship.serialize());
-  assert.equal(restored.modules.length, 1); assert.equal(restored.hp, 80);
-  assert.equal(restored.engineering.nodes.get('0,0').integrity, 80);
+  assert.equal(restored.modules.length, 1); assert.equal(restored.hp, 160);
+  assert.equal(restored.engineering.nodes.get('0,0').integrity, 160);
 });
 
 test('frame upgrades keep HUD health equal to surviving module health', () => {
   const { ship } = fixture();
   ship.engineering.damage(ship.modules[0], 20, 'heat');
   ship.upgradeLevel++; ship.recalculateStats();
-  assert.equal(ship.engineering.nodes.get('0,0').integrity, 88);
+  assert.equal(ship.engineering.nodes.get('0,0').integrity, 174.4);
   const sum = [...ship.engineering.nodes.values()].reduce((total, n) => total + n.integrity, 0);
   assert.ok(Math.abs(ship.hp - sum) < 0.01);
 });

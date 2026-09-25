@@ -112,7 +112,7 @@
 
   function moduleMass(module) {
     const definition = MODULES[module.type];
-    return ((definition?.materialArea ?? 1) + (definition?.hp || 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50) * (definition?.density || 1);
+    return ((definition?.materialArea ?? 1) + (definition?.massHp ?? definition?.hp ?? 0) / 100 + (definition?.cargo || 0) / 40 + (definition?.energy || 0) / 50) * (definition?.density || 1);
   }
 
   function calculateMassProperties(modules) {

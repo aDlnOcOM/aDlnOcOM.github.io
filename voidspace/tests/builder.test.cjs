@@ -87,7 +87,7 @@ test('selected variant is shown on its family card; locked variants can be inspe
   assert.doesNotMatch(B.cards(options), / disabled/);
 });
 test('assembly metrics sum all sections, including heat capacity and hull', () => {
-  assert.equal(B.metrics('tesla_coil').cells, 9); assert.equal(B.metrics('tesla_coil').maxHp, 480);
+  assert.equal(B.metrics('tesla_coil').cells, 9); assert.equal(B.metrics('tesla_coil').maxHp, M.tesla_coil.hp + 8 * M.assembly_section.hp);
   assert.equal(B.metrics('thermo_resonator').cells, 48);
   assert.equal(B.metrics('corner_armor_1x3').maxHp, 180);
   for (const type of Object.keys(M)) assert.ok(Number.isFinite(B.metrics(type).heatCapacity));
