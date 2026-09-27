@@ -1,0 +1,189 @@
+/* Shared command-deck skin. Layout dimensions are CSS pixels, not world units. */
+:root { --panel:#172734f5; --panel-2:#213849; --line:#4c6679; --cyan:#71d4ff; --muted:#a8bece; --text:#e8f2fa; --amber:#f6d58a; --deck:#192d3e; --deck-light:#304c61; }
+button, input, select, textarea { border-radius:2px; }
+button:not(:disabled):hover { border-color:#94d7ff; filter:brightness(1.13); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid #f6d58a; outline-offset:2px; }
+.eyebrow { letter-spacing:.04em; }
+.hud-card, .panel, .mission-card, .control-strip, .interaction-prompt, .toast { border-radius:2px; backdrop-filter:none; background:linear-gradient(#203648f5,#132431f5); box-shadow:0 2px 8px #0008,inset 0 1px #7991a52b; border:1px solid #536f84; }
+.flight-header { inset:0 0 auto; min-height:44px; height:44px; padding:0 10px; gap:14px; border:0; border-bottom:1px solid #68869c; border-radius:0; background:linear-gradient(#304a60,#203447); backdrop-filter:none; }
+.brand-mark { font:18px var(--font-cyber); letter-spacing:0; padding-right:14px; color:#c7eaff; }
+.sector-heading { display:flex; align-items:center; gap:10px; }
+.sector-heading > .eyebrow { display:none; }
+.sector-status { font-size:14px; margin:0; }
+.resource-card { display:flex; gap:10px; align-items:center; }
+.resource-card strong { font-size:18px; }
+.command-button { pointer-events:auto; color:#d7eaff; border:1px solid #668499; padding:5px 10px; background:#304a60; }
+.ship-instruments { position:absolute; left:8px; bottom:54px; width:316px; display:flex; flex-direction:column; background:var(--deck); border:1px solid #57748a; pointer-events:auto; }
+.status-card { position:static; width:100%; padding:10px; border:0; box-shadow:none; }
+.card-heading { margin:-10px -10px 10px; padding:6px 10px; background:linear-gradient(#35536a,#243d50); border-bottom:1px solid #658197; }
+.card-heading > button { width:26px; height:24px; padding:0; color:var(--text); background:#1a3041; border:1px solid #6b8496; }
+.bar-row { margin:7px 0; grid-template-columns:62px 1fr 78px; gap:6px; }
+.meter { height:10px; border:1px solid #091522; border-radius:0; background:#091622; box-shadow:inset 0 1px 3px #000; }
+.meter i { background:linear-gradient(#83e6ff,#3897c7); }
+.meter.cargo i { background:linear-gradient(#ffde91,#b78b3d); }
+.meter.energy i { background:linear-gradient(#c5bbff,#7a79ca); }
+.telemetry { margin-top:9px; padding-top:7px; gap:4px; }
+.telemetry b { font-size:15px; }
+.engineering-status, .status-card > small { margin-top:7px; }
+.flight-switches { position:static; width:100%; padding:5px; gap:4px; border-top:1px solid #496477; }
+.flight-switches button { min-height:34px; border-radius:2px; padding:5px; background:#223d50; }
+.ship-instruments.collapsed .status-card > :not(.card-heading) { display:none; }
+.ship-instruments.collapsed .card-heading { margin-bottom:-10px; }
+.target-card { top:222px; right:8px; width:270px; padding:10px; }
+.target-card strong { margin:8px 0; }
+.mission-card { left:auto; right:8px; top:54px; width:270px; max-height:158px; overflow:auto; padding:10px 30px 10px 10px; border-top:3px solid #658da8; }
+.mission-card b { margin:7px 0; }
+.interaction-prompt { bottom:58px; left:50%; padding:8px 12px; }
+.interaction-prompt small { display:none; }
+.control-strip { bottom:0; left:0; right:0; min-height:46px; padding:4px 8px; gap:8px; border:0; border-top:1px solid #657f92; border-radius:0; }
+.flight-keys { gap:12px; }
+.flight-mode { color:#a3e2ff; border-right:1px solid #597186; padding-right:12px; }
+.quick-actions { gap:4px; }
+.quick-actions button { border:1px solid #5b758a; border-radius:2px; background:linear-gradient(#37566d,#263e51); padding:8px 12px; color:#e0f0fb; }
+.toast { top:54px; padding:8px 14px; max-width:min(540px,70vw); }
+.panel-overlay { background:#030a126b; backdrop-filter:none; padding:44px 18px 18px; }
+.panel { border:1px solid #7896ac; max-height:calc(100dvh - 62px); }
+.panel header { padding:10px 14px; background:linear-gradient(#36566e,#243e52); border-bottom:1px solid #6d8ba2; }
+.panel header h2 { font-size:23px; margin:2px 0 0; }
+.panel header .eyebrow { color:#9dbbd0; }
+.icon-button { border-radius:1px; width:30px; height:30px; background:#1b3143; border-color:#6b889e; color:#dceaf4; }
+.terminal-panel { width:min(1180px,100%); height:min(780px,calc(100dvh - 62px)); }
+.terminal-workspace { display:flex; flex-direction:column; }
+.tabs { flex-direction:row; flex-shrink:0; gap:3px; padding:5px; border:0; border-bottom:1px solid #526f84; background:#142839; overflow-x:auto; }
+.tab { flex:1 0 auto; justify-content:center; padding:9px 12px; border:1px solid #4c697e; border-radius:1px; background:linear-gradient(#2d485d,#213a4e); color:#bfd1df; }
+.tab span { display:none; }
+.tab.active { background:linear-gradient(#40708b,#2b526d); border-color:#8ecfee; color:#fff; box-shadow:inset 0 -3px #76d3ff; }
+.panel-content { padding:16px; min-height:0; }
+.terminal-summary { padding-bottom:12px; margin-bottom:12px; }
+.manifest-grid, .shop-grid, .supply-grid { gap:6px; }
+.ore-line, .shop-card, .service-card, .supply-item, .factory-row, .fleet-card { border-radius:1px; border-color:#415e73; background:#1d3242; padding:12px; }
+.shop-card { grid-template-columns:48px minmax(0,1fr); gap:8px; }
+.shop-card button { margin:0; }
+.shop-card small { margin-top:4px; }
+.supply-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
+.supply-item > span { font-size:16px; }
+.supply-item button, .supply-item small { grid-column:1/-1; }
+.primary-button, .action-button, .fleet-card button, #claim-contract { border-radius:2px; border-color:#7395ac; background:linear-gradient(#426982,#2b4b63); color:#ebf8ff; }
+.primary-button:not(:disabled):hover { background:#487e9d; color:white; border-color:#a4e4ff; }
+.action-button:not(:disabled):hover { background:#365e77; }
+.engineering-nav { gap:3px; margin-bottom:14px; }
+.engineering-nav button { border-radius:1px; padding:8px 12px; background:#203c50; border-color:#547288; }
+.engineering-nav button[aria-pressed="true"] { background:#36617a; border-color:#8edcff; }
+input, select, textarea { color:#e9f3fb; background:#101f2b; border-color:#506c82; }
+.search-field { border-radius:1px; background:#102332; border-color:#5b788f; }
+.pause-panel { padding:26px; border-top:4px solid #7ab9df; }
+.pause-panel h2 { font-size:30px; }
+.danger-zone { margin-top:20px; padding-top:15px; }
+.help-panel { width:min(900px,100%); }
+#help-panel { z-index:30; }
+.help-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px 28px; }
+.help-grid h3 { margin:0 0 12px; color:#8ad6ff; }
+.help-grid dl { display:grid; grid-template-columns:130px 1fr; gap:8px; margin:0; }
+.help-grid dt { color:#f1d38b; }
+.help-grid dd { margin:0; }
+.start-screen { padding:24px 4vw; background:radial-gradient(ellipse at 75% 42%,#25496780,transparent 54%),linear-gradient(120deg,#080f18,#0c1a29); }
+.start-top { border-bottom:1px solid #55768e; padding-bottom:14px; }
+.start-layout { grid-template-columns:1fr 1.2fr; gap:30px; }
+.title-lockup h1 { font-size:clamp(44px,6vw,88px); letter-spacing:-.035em; margin:20px 0; }
+.title-lockup h1 span { color:#7acbfa; }
+.hero-copy { font-size:17px; color:#c0d4e4; }
+.title-lockup .primary-button { width:100%; max-width:370px; min-height:50px; border-left:4px solid #8de1ff; }
+.title-lockup .editor-link { width:100%; max-width:370px; padding:12px 16px; border:1px solid #425f77; text-decoration:none; background:#1b3246; }
+.orbit { border-color:#6689a444; border-radius:0; transform:rotate(45deg); animation:none; }
+.orbit::before, .orbit::after { display:none; }
+.start-footer { border-color:#49687f; font-size:14px; padding-top:15px; }
+.start-footer span { color:#8cd8ff; }
+
+/* Shipyard: bottom parts ribbon and a separate, always readable inspector. */
+.building .build-topbar { height:44px; background:linear-gradient(#35556d,#223c50); padding:0 10px; border-bottom:1px solid #7994a8; gap:18px; }
+.build-topbar strong { font-size:18px; }
+.build-topbar #build-funds { margin-left:auto; }
+.build-topbar #exit-build { padding:6px 12px; border-radius:1px; background:#3c6b58; }
+.building .build-panel { inset:auto 8px 32px 206px; width:auto; height:238px; display:grid; grid-template-columns:minmax(0,1fr) 240px; grid-template-rows:31px 45px 34px 1fr; border-radius:1px; overflow:visible; background:#162c3ded; }
+.building .build-panel header { grid-column:1; grid-row:1; padding:5px 9px; background:linear-gradient(#36556c,#243d50); }
+.building .build-panel header h2 { font-size:16px; }
+.building .build-panel header > span { display:none; }
+.building .build-panel .catalog-toolbar { grid-column:2; grid-row:1/3; align-self:start; padding:5px; }
+.building .build-panel .part-categories { grid-column:1; grid-row:2; flex-direction:row; padding:3px; gap:3px; border:0; overflow:auto; background:#182c3c; }
+.building .part-categories button { min-height:35px; padding:4px 7px; flex-direction:row; gap:4px; white-space:nowrap; }
+.building .part-categories button span { font-size:18px; }
+.building .part-categories button[aria-pressed="true"] { box-shadow:inset 0 -2px #7ad8ff; background:#38647e; }
+.building .build-filter { grid-column:2; grid-row:2; align-self:end; padding:4px 8px; }
+.building .build-modules { grid-column:1/-1; grid-row:3/5; display:grid; grid-template-columns:none; grid-template-rows:1fr; grid-auto-flow:column; grid-auto-columns:118px; justify-content:start; align-content:stretch; gap:4px; padding:5px; overflow-x:auto; overflow-y:hidden; }
+.building .part-tile { height:138px; min-height:0; padding:5px; background:linear-gradient(#29485e,#1c3447); justify-content:start; }
+.building .part-tile .module-sprite { width:60px; height:58px; flex-basis:58px; margin:2px auto; }
+.building .part-tile b { -webkit-line-clamp:2; line-height:1.2; }
+.building .part-tile.selected { border-color:#a0ddff; background:linear-gradient(#416f8d,#294d66); box-shadow:inset 0 -3px #80daff; }
+.building .part-tile:not([data-variants="1"])::after { top:30px; }
+.building .build-inspector { position:fixed; top:54px; right:8px; bottom:280px; left:auto; width:286px; min-height:0; max-height:none; border:1px solid #567b95; background:#172d3eed; overflow:auto; }
+.building .build-inspector details[open] { max-height:none; overflow:visible; }
+.building .build-inspector summary { background:linear-gradient(#35576e,#244255); padding:8px; }
+.building .part-detail-head h3 { font-size:18px; }
+.building .part-metrics { background:#102331; padding:8px 4px; }
+.building .build-toolbar { left:8px; right:auto; bottom:32px; width:190px; height:238px; display:flex; flex-direction:column; align-items:stretch; gap:4px; padding:6px; overflow:auto; border-radius:1px; background:#20394c; }
+.build-tool-group { padding:0; border:0; gap:4px; flex-wrap:wrap; }
+.build-toolbar button { padding:3px 5px; min-height:28px; line-height:18px; flex:1; background:linear-gradient(#3b5b72,#2b465b); }
+.build-toolbar kbd { display:none; }
+.build-toolbar .build-view-tools { margin:0; flex-wrap:wrap; }
+.build-view-tools #build-fit { flex-basis:100%; }
+.build-toolbar button.active, .build-toolbar button[aria-pressed="true"] { background:#436f8c; border-color:#b4e3ff; }
+.build-toolbar #delete-module.active { background:#693d40; border-color:#f2a69b; }
+.building .build-statusbar { height:26px; background:#102332; }
+.building #build-hint { color:#c4d9e9; }
+.editor-page { background:#0d1c29; }
+.editor-header { max-width:none; padding:12px 20px; border-bottom:1px solid #607d93; background:linear-gradient(#304f68,#20394e); }
+.editor-header h1 { font-size:24px; margin:4px 0 0; }
+.editor-layout { max-width:none; padding:12px; gap:12px; }
+.editor-controls, .editor-canvas-wrap, .workspace-heading, .editor-module-preview, #editor-status { border-radius:1px; border-color:#516f86; background-color:#172e40; }
+.editor-controls { padding:12px; }
+.editor-controls button { border-radius:1px; background:#2d4b62; border-color:#637f94; color:#d9ecf9; }
+.editor-controls label { margin-bottom:10px; }
+.editor-workspace { top:12px; }
+@media (max-width:1100px) {
+  .flight-keys span:not(.flight-mode) { display:none; }
+  .building .build-panel { grid-template-columns:minmax(0,1fr) 190px; }
+  .building .build-inspector { width:245px; }
+  .building .part-categories button { padding:4px; }
+  .build-topbar #build-summary { display:none; }
+}
+@media (max-width:760px) {
+  .brand-mark, .resource-card .eyebrow, .command-button span, .sector-heading .eyebrow { display:none; }
+  .flight-header { gap:6px; padding:0 6px; }
+  .sector-status { max-width:52vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mission-card { top:52px; right:6px; width:225px; max-height:126px; }
+  .target-card { top:190px; right:6px; width:225px; }
+  .ship-instruments { width:285px; left:6px; }
+  .interaction-prompt { left:auto; right:6px; transform:none; bottom:58px; }
+  .interaction-prompt b { font-size:14px; }
+  .control-strip .flight-keys { display:none; }
+  .quick-actions { width:100%; justify-content:space-between; }
+  .quick-actions button { padding:7px; }
+  .building .build-panel { left:148px; height:210px; grid-template-columns:minmax(0,1fr); grid-template-rows:36px 36px 1fr; }
+  .building .build-panel header, .building .build-filter { display:none; }
+  .building .build-panel .catalog-toolbar { grid-column:1; grid-row:1; padding:3px; }
+  .building .build-panel .part-categories { grid-row:2; }
+  .building .build-modules { grid-row:3; grid-auto-columns:108px; }
+  .building .part-tile { height:122px; }
+  .building .part-tile .module-sprite { height:46px; flex-basis:46px; }
+  .building .build-toolbar { width:134px; height:210px; }
+  .building .build-inspector { top:52px; bottom:252px; width:206px; }
+  .building .build-inspector summary { font-size:14px; }
+  .build-paused { display:none; }
+  .build-topbar { gap:6px; }
+  .build-topbar #build-funds { margin-left:auto; font-size:14px; }
+  .build-topbar strong { font-size:16px; }
+  .help-grid { grid-template-columns:1fr; }
+  .start-layout { grid-template-columns:1fr; }
+  .hero-vessel { display:none; }
+  .start-footer { flex-wrap:wrap; }
+}
+@media (max-height:640px) {
+  .ship-instruments .telemetry, .ship-instruments #distance { display:none; }
+  .target-card { top:185px; }
+  .mission-card { max-height:120px; }
+  .building .build-inspector { width:230px; }
+  .start-layout { padding:8px 0; }
+  .title-lockup h1 { font-size:48px; }
+  .hero-copy { margin-bottom:14px; }
+}
+@media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }

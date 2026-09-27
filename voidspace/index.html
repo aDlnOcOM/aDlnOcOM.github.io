@@ -6,20 +6,22 @@
   <meta name="theme-color" content="#080e16">
   <meta name="description" content="VOIDSPACE — космическая экспедиция, модульные корабли, добыча и инженерия.">
   <title>VOIDSPACE // Flight console</title>
-  <link rel="stylesheet" href="css/style.css?v=20260926-01">
-  <link rel="stylesheet" href="css/builder.css?v=20260926-01">
+  <link rel="stylesheet" href="css/style.css?v=20260928-01">
+  <link rel="stylesheet" href="css/builder.css?v=20260928-01">
+  <link rel="stylesheet" href="css/command-ui.css?v=20260928-01">
 </head>
 <body>
 <main id="game-shell" aria-label="VOIDSPACE — браузерная игра">
   <canvas id="game" width="960" height="540" aria-label="Игровое поле"></canvas>
   <section id="hud" class="hud" aria-label="Приборы корабля">
     <div class="flight-header">
-      <div class="brand-mark">V<span>/</span></div>
+      <div class="brand-mark">VOIDSPACE</div>
       <div class="sector-heading"><span class="eyebrow">НАВИГАЦИЯ / СЕКТОР</span><div id="sector-status" class="sector-status"></div></div>
       <div class="resource-card"><span class="eyebrow">БАЛАНС</span><strong><span id="credits">120</span><span class="currency">¤</span></strong></div>
+      <button id="hud-help" class="command-button" title="Справка (F1)">? <span>Справка</span></button>
     </div>
     <div class="ship-instruments"><div class="hud-card status-card">
-      <div class="card-heading"><span class="eyebrow">СОСТОЯНИЕ КОРАБЛЯ</span><span class="live-dot" aria-hidden="true"></span></div>
+      <div class="card-heading"><span class="eyebrow">ВАШ КОРАБЛЬ</span><button id="instruments-toggle" aria-expanded="true" aria-label="Свернуть приборы">−</button></div>
       <div class="bar-row"><span>Корпус</span><div class="meter"><i id="hp-fill"></i></div><b id="hp-value">100/100</b></div>
       <div class="bar-row"><span>Трюм</span><div class="meter cargo"><i id="cargo-fill"></i></div><b id="cargo-value">0/8</b></div>
       <div class="bar-row"><span>Энергия</span><div class="meter energy"><i id="energy-fill"></i></div><b id="energy-value">0/0</b></div>
@@ -45,21 +47,21 @@
   </aside>
   <div id="toast" class="toast" role="status"></div>
   <nav class="control-strip" aria-label="Управление">
-    <div class="flight-keys"><span><i>W S</i> Тяга</span><span><i>A D</i> Поворот</span><span><i>Q E</i> Смещение</span><span><i>ЛКМ</i> Огонь</span></div>
+    <div class="flight-keys"><span class="flight-mode">▶ ПОЛЁТ</span><span><i>W S</i> Тяга</span><span><i>A D</i> Поворот</span><span><i>Q E</i> Смещение</span><span><i>ЛКМ</i> Огонь</span></div>
     <div class="quick-actions"><button id="hud-build"><i>B</i> Конструктор</button><button id="hud-inventory"><i>I</i> Трюм</button><button id="hud-pause" aria-label="Открыть паузу"><i>ESC</i> Меню</button></div>
   </nav>
   <section id="start-screen" class="overlay start-screen">
     <div class="start-top"><span class="brand-word">VOIDSPACE</span><span class="eyebrow">БОРТОВОЙ КОМПЛЕКС / ONLINE</span></div>
     <div class="start-layout">
-      <div class="title-lockup"><span class="eyebrow">ВАША СЛЕДУЮЩАЯ ЭКСПЕДИЦИЯ</span><h1>VOID<span>SPACE</span></h1>
-        <p class="hero-copy">За пределами знакомого космоса.<br>Соберите корабль, который зайдёт дальше.</p>
+      <div class="title-lockup"><span class="eyebrow">КОСМИЧЕСКИЙ КОНСТРУКТОР / ЭКСПЕДИЦИЯ</span><h1>VOID<span>SPACE</span></h1>
+        <p class="hero-copy">Постройте корабль. Освойте сектор.<br>От первой руды до собственной флотилии.</p>
         <button id="start-button" class="primary-button">НАЧАТЬ ЭКСПЕДИЦИЮ <span>↗</span></button>
         <small>Автосохранение · локальный прогресс</small>
         <a class="editor-link" href="enemy-editor.html" target="_blank" rel="noopener">Конструктор врагов ↗</a>
       </div>
       <div class="hero-vessel"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><canvas id="fleet-preview" width="560" height="440" aria-label="Модульный корабль"></canvas><div class="vessel-caption"><span class="live-dot"></span><span id="preview-caption">КОРАБЛЬ ГОТОВ К ВЫЛЕТУ</span><span>01 / 04</span></div></div>
     </div>
-    <div class="start-footer"><div><span>01</span> ДОБЫЧА И ТОРГОВЛЯ</div><div><span>02</span> МОДУЛЬНАЯ ИНЖЕНЕРИЯ</div><div><span>03</span> ГЛУБОКИЙ КОСМОС</div></div>
+    <div class="start-footer"><div><span>01</span> БЕЗОПАСНЫЙ СТАРТОВЫЙ СЕКТОР</div><div><span>B</span> КОНСТРУКТОР КОРАБЛЯ</div><div><span>F1</span> СПРАВКА ПО УПРАВЛЕНИЮ</div></div>
   </section>
   <section id="dock-panel" class="overlay panel-overlay hidden" role="dialog" aria-modal="true" aria-label="Терминал станции">
     <div class="panel terminal-panel">
@@ -81,7 +83,7 @@
   </section>
   <div class="build-topbar"><div><strong>КОНСТРУКТОР</strong><span class="build-paused">Ⅱ СИМУЛЯЦИЯ НА ПАУЗЕ</span></div><p id="build-summary"></p><strong id="build-funds"></strong><button id="exit-build" aria-label="Закрыть конструктор">ГОТОВО <kbd>B</kbd></button></div>
   <section id="build-panel" class="build-panel hidden" aria-label="Режим строительства">
-    <header><h2>ДЕТАЛИ КОРАБЛЯ</h2><span>КАТАЛОГ</span></header>
+    <header><h2>ДЕТАЛИ КОРАБЛЯ</h2><span>Выберите деталь → установите на корабль</span></header>
     <nav id="build-categories" class="part-categories" aria-label="Категории блоков"></nav>
     <div class="catalog-toolbar"><label class="search-field"><span>⌕</span><input id="build-search" type="search" placeholder="Название, материал, назначение…" aria-label="Найти модуль"></label><select id="build-category" aria-label="Категория модулей" hidden></select></div>
     <label class="build-filter"><input id="build-available" type="checkbox"> Только открытые чертежи</label>
@@ -96,6 +98,16 @@
     <div class="build-tool-group build-view-tools"><button id="build-zoom-out" aria-label="Уменьшить масштаб">−</button><output id="build-scale">100%</output><button id="build-zoom-in" aria-label="Увеличить масштаб">+</button><button id="build-fit" title="Home">⊡ Весь корабль</button></div>
   </div>
   <div class="build-statusbar"><p id="build-hint">Перед инструментом — 1 свободная клетка; позади двигателя — 5 клеток.</p><span>ЛКМ — поставить · ПКМ — удалить · Стрелки / колёсико — сдвиг</span></div>
+  <section id="help-panel" class="overlay panel-overlay hidden" role="dialog" aria-modal="true" aria-label="Справочник капитана">
+    <div class="panel help-panel"><header><div><span class="eyebrow">РУКОВОДСТВО</span><h2>Справочник капитана</h2></div><button class="icon-button close-panel" data-close="help-panel" aria-label="Закрыть справку">×</button></header>
+      <div class="panel-content help-grid">
+        <section><h3>01 · Полёт</h3><dl><dt>W / S</dt><dd>Вперёд / назад</dd><dt>A / D</dt><dd>Повернуть корабль</dd><dt>Q / E</dt><dd>Сместиться влево / вправо</dd><dt>ЛКМ / Space</dt><dd>Огонь и добыча</dd><dt>F</dt><dd>Терминал в зоне дока</dd><dt>I / Esc</dt><dd>Трюм / пауза</dd></dl><p>Гашение инерции требует вычислительного модуля. Переключатель — на панели корабля.</p></section>
+        <section><h3>02 · Конструктор</h3><dl><dt>B</dt><dd>Войти / завершить строительство</dd><dt>R</dt><dd>Повернуть деталь на 90°</dd><dt>H / V</dt><dd>Отразить по горизонтали / вертикали</dd><dt>C / X</dt><dd>Скопировать / демонтировать</dd><dt>Ctrl+Z / Y</dt><dd>Отменить / повторить</dd><dt>+ / − / Home</dt><dd>Масштаб / весь корабль</dd></dl><p>ЛКМ ставит блок, ПКМ удаляет. Сдвиг вида — стрелками, колёсиком или средней кнопкой мыши. Симуляция на паузе.</p></section>
+        <section><h3>03 · Первые шаги</h3><p>Стартовые 1400 м свободны от врагов. Добудьте руду, вернитесь в открытый док станции и нажмите F. Продайте груз, отремонтируйтесь и откройте новые чертежи.</p></section>
+        <section><h3>04 · Правила сборки</h3><p>Детали должны соединяться с капсулой. Оставляйте свободную клетку перед инструментами и 5 клеток за двигателями. Следите за питанием и охлаждением; разгон открывается исследованиями.</p></section>
+      </div>
+    </div>
+  </section>
   <section id="pause-panel" class="overlay panel-overlay hidden" role="dialog" aria-modal="true" aria-label="Пауза">
     <div class="panel pause-panel"><span class="eyebrow">ПОЛЁТ ПРИОСТАНОВЛЕН</span><h2>Пауза</h2><p>Космос подождёт.<br>Экспедиция сохранена автоматически.</p><button id="resume-button" class="primary-button">ПРОДОЛЖИТЬ →</button><a class="editor-link" href="enemy-editor.html" target="_blank" rel="noopener">Конструктор врагов ↗</a><div class="danger-zone"><button id="reset-button" class="danger-button">Сбросить прогресс</button></div></div>
   </section>
@@ -104,21 +116,21 @@
   </section>
   <div id="loading" class="loading-screen"><div class="loader-mark"></div><span class="brand-word">VOIDSPACE</span><span>Подготовка корабля и сектора…</span></div>
 </main>
-<script src="js/utils.js?v=20260926-01" defer></script>
-<script src="js/modules.js?v=20260926-01" defer></script>
-<script src="js/content.js?v=20260926-01" defer></script>
-<script src="js/engineering-content.js?v=20260926-01" defer></script>
-<script src="js/visuals.js?v=20260926-01" defer></script>
-<script src="js/builder.js?v=20260926-01" defer></script>
-<script src="js/engineering.js?v=20260926-01" defer></script>
-<script src="js/inventory.js?v=20260926-01" defer></script>
-<script src="js/collisions.js?v=20260926-01" defer></script>
-<script src="js/entities.js?v=20260926-01" defer></script>
-<script src="js/station.js?v=20260926-01" defer></script>
-<script src="js/ship.js?v=20260926-01" defer></script>
-<script src="js/world.js?v=20260926-01" defer></script>
-<script src="js/weapons.js?v=20260926-01" defer></script>
-<script src="js/game.js?v=20260926-01" defer></script>
-<script src="js/main.js?v=20260926-01" defer></script>
+<script src="js/utils.js?v=20260928-01" defer></script>
+<script src="js/modules.js?v=20260928-01" defer></script>
+<script src="js/content.js?v=20260928-01" defer></script>
+<script src="js/engineering-content.js?v=20260928-01" defer></script>
+<script src="js/visuals.js?v=20260928-01" defer></script>
+<script src="js/builder.js?v=20260928-01" defer></script>
+<script src="js/engineering.js?v=20260928-01" defer></script>
+<script src="js/inventory.js?v=20260928-01" defer></script>
+<script src="js/collisions.js?v=20260928-01" defer></script>
+<script src="js/entities.js?v=20260928-01" defer></script>
+<script src="js/station.js?v=20260928-01" defer></script>
+<script src="js/ship.js?v=20260928-01" defer></script>
+<script src="js/world.js?v=20260928-01" defer></script>
+<script src="js/weapons.js?v=20260928-01" defer></script>
+<script src="js/game.js?v=20260928-01" defer></script>
+<script src="js/main.js?v=20260928-01" defer></script>
 </body>
 </html>

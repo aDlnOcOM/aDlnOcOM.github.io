@@ -149,3 +149,43 @@ test('new builder pages load shared code after module data and keep readable tex
   const css = fs.readFileSync(path.join(__dirname, '..', 'css/builder.css'), 'utf8');
   for (const match of css.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(match[1]) >= 14);
 });
+
+test('shipyard framing excludes the bottom ribbon and right inspector at desktop sizes', () => {
+  for (const [width, height, inspectorWidth] of [[1280, 720, 286], [900, 600, 230], [1920, 1080, 286]]) {
+    const canvas = { width, height, left: 0, top: 0 };
+    const palette = { top: height - 270 };
+    const inspector = { width: inspectorWidth, left: width - inspectorWidth - 8 };
+    const area = B.workspace(canvas, palette, inspector);
+    assert.ok(area.x >= 0 && area.y >= 44);
+    assert.ok(area.x + area.width < inspector.left);
+    assert.ok(area.y + area.height < palette.top);
+    assert.ok(area.width > 400 && area.height > 200);
+  }
+});
+
+test('help pauses flight, preserves an existing pause, and restores focus without altering build mode', () => {
+  for (const wasPaused of [false, true]) {
+    let hidden = true, focused = false;
+    const panel = { classList: { contains: () => hidden, remove: () => { hidden = false; }, add: () => { hidden = true; } } };
+    sandbox.document = { activeElement: { focus() { focused = true; } } };
+    const game = { dom: { 'help-panel': panel }, paused: wasPaused, buildMode: true, syncInterface() {} };
+    VS.Game.prototype.openHelp.call(game);
+    assert.equal(game.paused, true); assert.equal(hidden, false);
+    VS.Game.prototype.openHelp.call(game);
+    VS.Game.prototype.closePanel.call(game, 'help-panel');
+    assert.equal(game.paused, wasPaused); assert.equal(hidden, true);
+    assert.equal(game.buildMode, true); assert.ok(focused);
+  }
+  delete sandbox.document;
+});
+
+test('command UI is shared across pages, readable, and respects reduced motion', () => {
+  for (const page of ['index.html', 'enemy-editor.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', page), 'utf8');
+    assert.match(html, /css\/command-ui.css/);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '..', 'css/command-ui.css'), 'utf8');
+  for (const match of css.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(match[1]) >= 14);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /grid-auto-flow:column/);
+});

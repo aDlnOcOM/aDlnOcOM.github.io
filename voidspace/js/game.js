@@ -79,7 +79,7 @@
         "target-name", "target-fill", "target-yield", "dock-prompt", "toast", "mission", "mission-title",
         "mission-copy", "dock-panel", "dock-content", "inventory-panel", "inventory-content", "build-panel",
         "build-modules", "build-hint", "pause-panel", "death-panel", "start-screen", "inertia-toggle", "sector-status", "engineering-status",
-        "energy-fill", "energy-value", "speed-value", "temperature-value", "generation-value",
+        "energy-fill", "energy-value", "speed-value", "temperature-value", "generation-value", "help-panel",
       ];
       return Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     }
@@ -109,6 +109,13 @@
       document.getElementById("hud-build")?.addEventListener("click", () => { if (this.started && !this.paused) this.toggleBuild(!this.buildMode); });
       document.getElementById("hud-inventory")?.addEventListener("click", () => { if (this.started && !this.buildMode) this.toggleInventory(); });
       document.getElementById("hud-pause")?.addEventListener("click", () => { if (this.started) { if (this.buildMode) this.toggleBuild(false); this.togglePause(true); } });
+      document.getElementById('hud-help')?.addEventListener('click', () => this.openHelp());
+      document.getElementById('instruments-toggle')?.addEventListener('click', (event) => {
+        const collapsed = document.querySelector('.ship-instruments').classList.toggle('collapsed');
+        event.currentTarget.setAttribute('aria-expanded', String(!collapsed));
+        event.currentTarget.setAttribute('aria-label', collapsed ? 'Развернуть приборы' : 'Свернуть приборы');
+        event.currentTarget.textContent = collapsed ? '+' : '−';
+      });
       this.dom["dock-prompt"].addEventListener("click", () => { if (!this.paused && !this.buildMode) this.openDock(); });
       const category = document.getElementById("build-category");
       if (category && VS.Visuals) {
@@ -122,6 +129,11 @@
         categories.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { category.value = button.dataset.category; this.renderBuildPalette(); }));
       }
       document.getElementById('build-available')?.addEventListener('change', () => this.renderBuildPalette());
+      this.dom['build-modules']?.addEventListener('wheel', (event) => {
+        const ribbon = this.dom['build-modules'];
+        if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+        if (ribbon.scrollWidth > ribbon.clientWidth) { event.preventDefault(); ribbon.scrollLeft += event.deltaY; }
+      }, { passive: false });
       document.getElementById('build-undo')?.addEventListener('click', () => this.travelBuildHistory());
       document.getElementById('build-redo')?.addEventListener('click', () => this.travelBuildHistory(true));
       document.getElementById('build-copy')?.addEventListener('click', () => { this.buildPicking = !this.buildPicking; this.updateBuildTools(); });
@@ -148,7 +160,7 @@
         if (document.hidden) { this.input.clear(); this.mouse.down = false; if (this.started && !this.paused) this.togglePause(true); this.save(); }
       });
       window.addEventListener("pagehide", () => this.save());
-      window.addEventListener("resize", () => this.resizeCanvas());
+      window.addEventListener("resize", () => { this.resizeCanvas(); if (this.buildMode) this.fitBuild(); });
       this.canvas.addEventListener("pointermove", (event) => this.updatePointer(event));
       this.canvas.addEventListener("pointerdown", (event) => {
         this.updatePointer(event);
@@ -215,7 +227,7 @@
 
     onKeyDown(event) {
       if (event.code === "Tab") {
-        const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
+        const modal = document.querySelector('#help-panel:not(.hidden)') || document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
         if (modal) {
           const controls = [...modal.querySelectorAll('button:not(:disabled), a[href], input, select')].filter((element) => element.getClientRects().length);
           const first = controls[0], last = controls[controls.length - 1];
@@ -225,6 +237,14 @@
         return;
       }
       if (event.code !== "Escape" && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target?.tagName)) return;
+      if (event.code === 'F1') { event.preventDefault(); if (!event.repeat) this.openHelp(); return; }
+      if (this.dom?.['help-panel'] && !this.dom['help-panel'].classList.contains('hidden')) {
+        if (event.code === 'Escape') { event.preventDefault(); this.closePanel('help-panel'); }
+        return;
+      }
+      if (this.buildMode && event.code === 'KeyF' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault(); document.getElementById('build-search')?.focus(); return;
+      }
       if (this.buildMode && (event.ctrlKey || event.metaKey) && ['KeyZ', 'KeyY'].includes(event.code)) { event.preventDefault(); this.travelBuildHistory(event.code === 'KeyY' || event.shiftKey); return; }
       if (this.buildMode && !event.repeat && event.code === 'KeyC') { this.pickBuildModule(); return; }
       if (this.buildMode && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && ['KeyH', 'KeyV'].includes(event.code)) { this.mirrorBuildModule(event.code === 'KeyH' ? 'horizontal' : 'vertical'); return; }
@@ -656,12 +676,12 @@
       const left = Math.min(...points.map(p => p.x)), right = Math.max(...points.map(p => p.x));
       const top = Math.min(...points.map(p => p.y)), bottom = Math.max(...points.map(p => p.y));
       const panel = this.dom['build-panel'].getBoundingClientRect();
-      const occupied = Math.min(bounds.width * 0.5, Math.max(0, panel.right - bounds.left) + 20);
-      const rightInset = 20;
-      this.buildZoom = Utils.clamp(Math.min((bounds.width - occupied - rightInset - 50) / (right - left + 90), (bounds.height - 190) / (bottom - top + 90)) * 540 / bounds.height, 0.3, 1.4);
+      const inspector = document.getElementById('build-inspector')?.getBoundingClientRect();
+      const area = VS.Builder.workspace(bounds, panel, inspector);
+      this.buildZoom = Utils.clamp(Math.min(area.width / (right - left + 90), area.height / (bottom - top + 90)) * 540 / bounds.height, 0.3, 1.4);
       this.resizeCanvas();
-      this.camera.x = (left + right) / 2 - (occupied - rightInset) / 2 * this.viewport.width / bounds.width;
-      this.camera.y = (top + bottom) / 2;
+      this.camera.x = (left + right) / 2 - (area.x + area.width / 2 - bounds.width / 2) * this.viewport.width / bounds.width;
+      this.camera.y = (top + bottom) / 2 - (area.y + area.height / 2 - bounds.height / 2) * this.viewport.height / bounds.height;
       this.updateBuildHover(); this.updateBuildTools();
     }
 
@@ -683,8 +703,11 @@
       const category = document.getElementById("build-category")?.value || "all";
       const options = { category, query: document.getElementById("build-search")?.value || "", shipClass: this.ship.shipClass,
         unlocked: this.ship.unlocked, availableOnly: document.getElementById('build-available')?.checked, selected: this.buildSelected };
-      const list = this.dom['build-modules'], scroll = list.scrollTop;
-      list.innerHTML = VS.Builder.cards(options); list.scrollTop = scroll;
+      const list = this.dom['build-modules'];
+      const filterKey = `${category}:${options.query}:${options.availableOnly}`;
+      const scroll = this.buildFilterKey === filterKey ? list.scrollLeft : 0;
+      this.buildFilterKey = filterKey;
+      list.innerHTML = VS.Builder.cards(options); list.scrollLeft = scroll;
       const detail = document.getElementById('build-details');
       if (detail) detail.innerHTML = VS.Builder.detail(this.buildSelected, options);
       document.querySelectorAll('#build-categories button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
@@ -877,15 +900,30 @@
         ${rows.length ? `<div class="manifest-grid">${rows.map(([ore, amount]) => `<div class="ore-line"><img src="${ORES[ore].sprite}" alt=""><div><b>${ORES[ore].name}</b><small>Оценка: ${amount * ORES[ore].value} ¤</small></div><strong>${amount}</strong></div>`).join("")}</div>` : '<div class="empty-state">ГРУЗОВОЙ ОТСЕК ПУСТ</div>'}`;
     }
 
+    openHelp() {
+      const panel = this.dom['help-panel'];
+      if (!panel || !panel.classList.contains('hidden')) return;
+      this.helpWasPaused = this.paused;
+      this.helpFocus = document.activeElement;
+      this.paused = true; panel.classList.remove('hidden');
+      this.syncInterface('help-panel');
+    }
+
     closePanel(id, silent = false) {
       const panel = this.dom[id];
       if (panel) panel.classList.add("hidden");
+      if (id === 'help-panel') {
+        this.paused = Boolean(this.helpWasPaused); this.syncInterface();
+        this.helpFocus?.focus(); return;
+      }
       if (!silent && this.dom["dock-panel"].classList.contains("hidden") && this.dom["inventory-panel"].classList.contains("hidden") && this.dom["pause-panel"].classList.contains("hidden")) this.paused = false;
       this.syncInterface();
     }
 
     syncInterface(focusPanel = null) {
-      const modal = document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
+      const help = this.dom['help-panel'];
+      const modal = help && !help.classList.contains('hidden') ? help : document.querySelector('.panel-overlay:not(.hidden), #start-screen:not(.hidden)');
+      if (help) for (const panel of document.querySelectorAll('.overlay:not(#help-panel)')) panel.inert = modal === help;
       for (const selector of ["#hud", "#mission", ".control-strip", "#build-panel", "#build-inspector", ".build-topbar", ".build-toolbar"]) {
         const element = document.querySelector(selector); if (element) element.inert = Boolean(modal);
       }

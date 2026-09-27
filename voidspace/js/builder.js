@@ -54,5 +54,10 @@
       to.push(JSON.stringify(value)); return JSON.parse(from.pop());
     }
   }
-  VS.Builder = { family, metrics, groups, cards, detail, symbols, History };
+  function workspace(canvas, palette, inspector) {
+    const x = 18, y = 60;
+    const edge = inspector?.width > 0 ? inspector.left - canvas.left - 18 : canvas.width - 18;
+    return { x, y, width: Math.max(90, edge - x), height: Math.max(90, palette.top - canvas.top - y - 18) };
+  }
+  VS.Builder = { family, metrics, groups, cards, detail, symbols, History, workspace };
 })();
