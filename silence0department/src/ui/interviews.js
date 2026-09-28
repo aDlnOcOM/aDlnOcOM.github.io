@@ -108,7 +108,7 @@ export function styleReply(_app, person, topic, fact) {
       pressure: `Про время скажу только то, в чём не ошибусь. ${fact}`,
     },
   };
-  return variants[person.personalityId]?.[topic] || fact;
+  return variants[person.voiceId || person.personalityId]?.[topic] || fact;
 }
 
 
@@ -160,7 +160,7 @@ export function interviewObservation(_app, person, topic) {
       timeline: `${name} молчит дольше обычного, прежде чем вернуться к времени.`,
     },
   };
-  return observations[person.personalityId]?.[topic] || "";
+  return observations[person.voiceId || person.personalityId]?.[topic] || "";
 }
 
 
@@ -238,6 +238,7 @@ export function renderInterviews(_app) {
           </button>`).join("")}
         </div>
         <section class="interview-room">
+          <p class="fine-print">Типаж ${escapeHtml(active.mbti || "—")} · ${escapeHtml(active.personality)}. ${escapeHtml(active.behavior)}</p>
           <div class="interview-subject"><i class="person-avatar">${initials(active.name)}</i><div><h3>${escapeHtml(active.name)}</h3><p>${escapeHtml(active.role)} · ${escapeHtml(active.employer)}</p><small>${escapeHtml(active.life.need)}</small></div></div>
           ${renderConversationControls(active)}
           <div class="transcript" id="transcript">

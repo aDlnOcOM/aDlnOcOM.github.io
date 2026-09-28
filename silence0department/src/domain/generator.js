@@ -1,7 +1,8 @@
 /** Создаёт воспроизводимое дело: истинную причину, независимые источники и ложные цепочки. */
-import { DIFFICULTIES, PERSONALITIES, SCENARIOS, MOTIVES, CONFLICT_PATTERNS, CASE_ARCHETYPES, ARCHETYPE_TITLES, DISCOVERY_ROUTES, ORGANIZATION_NAMES, STREET_NAMES, COMMISSIONER_PROFILES, LEGACY_SHA1, NOISE_TITLES, NOISE_LINES } from '../data/catalog.js';
+import { DIFFICULTIES, SCENARIOS, MOTIVES, CONFLICT_PATTERNS, CASE_ARCHETYPES, ARCHETYPE_TITLES, DISCOVERY_ROUTES, ORGANIZATION_NAMES, STREET_NAMES, COMMISSIONER_PROFILES, LEGACY_SHA1, NOISE_TITLES, NOISE_LINES } from '../data/catalog.js';
 import { randomGenerator, choose, shuffled, uniquePeople, gendered, roleForGender, pastTense, normalize, surname, formatClock, pluralRu, encodeCaesar, textToHex, hiddenBinary, createAcrostic, generateAddress, buildMailbox } from '../core/utils.js';
 import detective from '../domain/engine.js';
+import { MBTI_PERSONALITIES, MOTIVE_ARCHETYPES, SCENE_LOCATIONS, STORY_SETTINGS, identifyCrimeStyle } from '../data/story-axes.js';
 
 export function generateCase(seed, difficultyKey, caseKind = "auto") {
   // Независимые потоки случайности для фактов и сюжетных деталей.
@@ -9,7 +10,20 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
   const storyRng = randomGenerator(`${seed}:${difficultyKey}:${caseKind}:field-v1`);
   const profile = detective.selectProfile(storyRng, caseKind, difficultyKey);
   const difficulty = DIFFICULTIES[difficultyKey];
-  const scenario = choose(rng, SCENARIOS);
+  const scenarioTemplate = choose(rng, SCENARIOS);
+  const compatibleSettings = STORY_SETTINGS.filter(item => item.scenarios.includes(scenarioTemplate.id));
+  const setting = choose(rng, compatibleSettings);
+  const scene = choose(rng, SCENE_LOCATIONS.filter(item => item.settings.includes(setting.id)));
+  const scenario = {
+    ...scenarioTemplate,
+    location: scene.name,
+    district: scene.district,
+    hubLocation: scenarioTemplate.location,
+    sceneId: scene.id,
+    sceneName: scene.name,
+    settingId: setting.id,
+    setting: setting.label,
+  };
   const archetype = CASE_ARCHETYPES.find((item) => item.id === profile.base);
   const discoveryRoute = choose(rng, DISCOVERY_ROUTES);
   const people = uniquePeople(rng, difficulty.suspects + 4);
@@ -20,9 +34,23 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
   const roles = shuffled(rng, scenario.roles).slice(0, difficulty.suspects);
   const culpritIndex = Math.floor(rng() * difficulty.suspects);
   const incidentMinute = 21 * 60 + 35 + Math.floor(rng() * 105);
-  const motive = choose(rng, profile.motives || MOTIVES.filter((item) => !["отсутствие рационального мотива", "паническая реакция без первоначального намерения убить"].includes(item)));
-  const crimePattern = choose(rng, profile.timed || profile.id === "contract" || profile.id === "serial" ? archetype.patterns.filter((item) => !item.method.includes("незапланированной")) : archetype.patterns);
+  // Мотивы совместимы с типом происшествия; случайный конфликт допускает несчастный случай.
+  const allowedMotives = profile.motives || MOTIVES.filter(item => item !== "отсутствие рационального мотива");
+  const motiveOptions = MOTIVE_ARCHETYPES.filter(item =>
+    item.incidents.includes(archetype.id) &&
+    (allowedMotives.includes(item.motive) || item.id === "panic" && profile.id === "death"),
+  );
+  const motiveType = choose(rng, motiveOptions);
+  const motive = motiveType.motive;
+  const availablePatterns = profile.timed || profile.id === "contract" || profile.id === "serial"
+    ? archetype.patterns.filter(item => !item.method.includes("незапланированной"))
+    : archetype.patterns;
+  const crimePatterns = motiveType.id === "panic"
+    ? availablePatterns.filter(item => item.method.includes("незапланированной"))
+    : availablePatterns;
+  const crimePattern = choose(rng, crimePatterns);
   const method = crimePattern.method;
+  const crimeStyle = identifyCrimeStyle(method, crimePattern.staging);
   const apparentMotive = choose(rng, MOTIVES.filter((item) => item !== motive));
   const cacheWord = choose(rng, scenario.cacheWords);
   const alias = `${choose(rng, ["blue", "north", "mute", "grey", "last"])}_${Math.floor(10 + rng() * 89)}`;
@@ -72,7 +100,7 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
     specialty: ["микроследы и контрольные образцы", "метаданные и локальные журналы", "маркировка, пломбы и версии документов"][index],
   }));
 
-  const personalities = shuffled(rng, PERSONALITIES);
+  const personalities = shuffled(rng, MBTI_PERSONALITIES);
   const suspects = people.map((identity, index) => {
     const isCulprit = index === culpritIndex;
     const personality = personalities[index % personalities.length];
@@ -99,6 +127,8 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
       habit: choose(rng, ["платит наличными за мелкие покупки", "сохраняет все транспортные чеки", "отвечает на письма только с рабочего терминала", "выключает геолокацию после смены", "часто одалживает рабочие инструменты", "использует два разных написания фамилии в старых базах"]),
       relationship: relationships[index % relationships.length],
       personalityId: personality.id,
+      voiceId: personality.voiceId,
+      mbti: personality.mbti,
       personality: gendered(identity, personality.male, personality.female),
       behavior: personality.signal,
       cadence: personality.cadence,
@@ -163,7 +193,7 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
   const incidentAddress = `${scenario.location}, ${generateAddress(rng).replace(/, кв\..*$/, "")}`;
   const caseTitle = choose(rng, [...ARCHETYPE_TITLES[archetype.id], ...scenario.titles]);
   // Сводка следует выбранному механизму; признаки разных ветвей не смешиваются.
-  const incidentSummary = `Центральный участник: ${victimName}. Объект: ${scenario.location}. Расследуется ${archetype.outcomeLabel}. Предварительная версия — «${crimePattern.apparent}». Её предстоит проверить по независимым источникам.`;
+  const incidentSummary = `Центральный участник: ${victimName}. Ключевое место: ${scenario.location}. Контекст: ${setting.label.toLowerCase()}. Расследуется ${archetype.outcomeLabel}. Предварительная версия — «${crimePattern.apparent}». Её предстоит проверить по независимым источникам.`;
   const mandateText = choose(rng, [
     `Нужно проверить, где версия «${crimePattern.apparent}» перестаёт объяснять факты. ${commissioner.constraint}.`,
     `Не ищите человека с самым громким конфликтом. Сначала установите путь возможности: ${discoveryRoute.primary}.`,
@@ -944,7 +974,19 @@ export function generateCase(seed, difficultyKey, caseKind = "auto") {
     mandateText,
     routeReconstruction,
     strongEvidenceIds: strongEvidenceByRoute[discoveryRoute.id],
-    sector: choose(rng, scenario.sectors),
+    sector: choose(rng, setting.sectors),
+    setting,
+    scene,
+    storyAxes: {
+      caseType: profile.id,
+      incident: archetype.id,
+      scenario: scenarioTemplate.id,
+      motive: motiveType.id,
+      setting: setting.id,
+      location: scene.id,
+      crimeStyle: crimeStyle.id,
+    },
+    crimeStyle,
     circumstance: incidentSummary,
     incidentMinute,
     culpritId: culprit.id,

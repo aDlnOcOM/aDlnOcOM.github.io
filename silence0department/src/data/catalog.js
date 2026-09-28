@@ -1,7 +1,7 @@
 /** Конфигурация сложности, персонажей, сценариев и аналитических задач. Данные не зависят от DOM. */
 // STORAGE: единый справочник, используемый генератором и интерфейсом.
 export const STORAGE = {
-  activeCase: "quiet-department.case.v4",
+  activeCase: "quiet-department.case.v5",
   notes: "quiet-department.notes.v1",
   quotes: "quiet-department.quotes.v1",
   checklist: "quiet-department.checklist.v1",
