@@ -28,6 +28,10 @@
       const value = Math.max(1, Math.round(max * zone.share));
       parts[id] = { max: value, health: value };
     }
+    // Rounding each anatomical share independently must not create or lose health.
+    const remainder = Math.round(max - Object.values(parts).reduce((sum, part) => sum + part.max, 0));
+    parts.thorax.max = Math.max(1, parts.thorax.max + remainder);
+    parts.thorax.health = parts.thorax.max;
     return { max, health: max, parts, status: defaultStatus(), lastZone: 'thorax' };
   }
 
@@ -118,7 +122,9 @@
     const bleed = status.bleed * dt * Math.max(1, body.max * .012);
     const burn = status.burn * dt * Math.max(1, body.max * .009);
     if (bleed + burn > 0) {
-      const part = body.parts[body.lastZone] || body.parts.thorax;
+      // A destroyed limb cannot keep losing health; systemic trauma continues through the thorax.
+      const wounded = body.parts[body.lastZone];
+      const part = wounded?.health > 0 ? wounded : body.parts.thorax;
       part.health = Math.max(0, part.health - bleed - burn);
       body.health = Math.max(0, sumHealth(body));
     }
