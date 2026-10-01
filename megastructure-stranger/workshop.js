@@ -23,7 +23,7 @@
   const parts={};
   const finite=(value,fallback=0)=>Number.isFinite(value)?value:fallback;
   const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
-  function make(w,defId,quality=2){return {uid:`i${w.next++}`,defId,quality:clamp(Math.floor(quality),0,4),condition:100,ceiling:100,age:0,upgrades:{},plates:[]};}
+  function make(w,defId,quality=2){return {uid:`i${w.next++}`,defId,quality:clamp(Math.floor(quality),0,4),condition:100,ceiling:100,age:0,upgrades:{},plates:[],attachments:{}};}
   function init(p,trees){
     for(const [slot,tree] of Object.entries(trees||{}))for(const branch of tree.branches)for(const option of branch.options)for(const tier of [false,true]){
       const id=partKey(slot,branch.id,option.id,tier);
@@ -38,7 +38,9 @@
       }
     }else{
       const ids=new Set();saved.items=(Array.isArray(saved.items)?saved.items:[]).filter(item=>item&&typeof item.uid==='string'&&!ids.has(item.uid)&&(A.byId[item.defId]||parts[item.defId])&&ids.add(item.uid)).slice(0,1500);
-      for(const item of saved.items){item.quality=clamp(Math.floor(finite(item.quality,2)),0,4);item.ceiling=clamp(finite(item.ceiling,100),40,100);item.condition=clamp(finite(item.condition,100),0,item.ceiling);item.age=Math.max(0,finite(item.age));item.upgrades=item.upgrades&&typeof item.upgrades==='object'?item.upgrades:{};item.plates=Array.isArray(item.plates)?item.plates.filter(id=>ids.has(id)):[];}
+      for(const item of saved.items){item.quality=clamp(Math.floor(finite(item.quality,2)),0,4);item.ceiling=clamp(finite(item.ceiling,100),40,100);item.condition=clamp(finite(item.condition,100),0,item.ceiling);item.age=Math.max(0,finite(item.age));item.upgrades=item.upgrades&&typeof item.upgrades==='object'?item.upgrades:{};item.plates=Array.isArray(item.plates)?item.plates.filter(id=>ids.has(id)):[];item.attachments=item.attachments&&typeof item.attachments==='object'?item.attachments:{};}
+      const attached=new Set();
+      for(const weapon of saved.items){const gun=A.byId[weapon.defId];if(gun?.kind!=='ranged'){weapon.attachments={};continue;}const clean={};for(const [slot,uid] of Object.entries(weapon.attachments)){const part=saved.items.find(item=>item.uid===uid),def=A.byId[part?.defId];if(!attached.has(uid)&&def?.attachmentSlot===slot&&A.canAttach(gun,def)){clean[slot]=uid;attached.add(uid);}}weapon.attachments=clean;}
       saved.next=Math.max(1,finite(saved.next,1),...saved.items.map(item=>(Number(item.uid.slice(1))||0)+1));saved.table=clamp(Math.floor(finite(saved.table,saved.table===true?1:0)),0,5);saved.equipped=saved.equipped&&typeof saved.equipped==='object'?saved.equipped:{};
       saved.research=Object.fromEntries(R.catalog.filter(item=>saved.research?.[item.id]===true).map(item=>[item.id,true]));
       if(!saved.job||!R.catalog.some(item=>item.id===saved.job.id)||!Number.isFinite(saved.job.ends))saved.job=null;
@@ -48,6 +50,8 @@
   }
   function definition(item){return A.byId[item?.defId]||parts[item?.defId];}
   function equipped(p,slot){return p.workshop?.items.find(item=>item.uid===p.workshop.equipped[slot]);}
+  function attachedTo(p,uid){return p.workshop?.items.some(item=>Object.values(item.attachments||{}).includes(uid));}
+  function attachments(p,weapon){return Object.values(weapon?.attachments||{}).map(uid=>p.workshop.items.find(item=>item.uid===uid)).filter(Boolean);}
   function balance(p,id){return id==='salvage'?p.salvage:(p.resources?.[id]||0);}
   function canPay(p,cost){return Object.entries(cost).every(([id,n])=>balance(p,id)>=n);}
   function pay(p,cost){if(!canPay(p,cost))return false;for(const [id,n]of Object.entries(cost)){if(id==='salvage')p.salvage-=n;else p.resources[id]-=n;}return true;}
@@ -89,9 +93,12 @@
     const old=equipped(p,def.slot);if(old)old.upgrades=JSON.parse(JSON.stringify(p.equipment[def.slot]||{}));
     p.workshop.equipped[def.slot]=uid;p.equipment[def.slot]=JSON.parse(JSON.stringify(item.upgrades));return '';
   }
+  function attach(p,weaponUid,partUid){const weapon=p.workshop.items.find(item=>item.uid===weaponUid),part=p.workshop.items.find(item=>item.uid===partUid),gun=definition(weapon),attachment=definition(part);if(gun?.kind!=='ranged'||attachment?.kind!=='attachment')return 'Нужны оружие и оружейная модификация';if(weapon.condition<=0||part.condition<=0)return 'Повреждённый предмет сначала нужно отремонтировать';if(!A.canAttach(gun,attachment))return 'Модификация не совместима с этой платформой';if(attachedTo(p,partUid))return 'Эта модификация уже установлена';weapon.attachments||={};if(weapon.attachments[attachment.attachmentSlot])return 'Сначала снимите текущую модификацию из этого сокета';weapon.attachments[attachment.attachmentSlot]=partUid;return '';}
+  function detach(p,weaponUid,slot){const weapon=p.workshop.items.find(item=>item.uid===weaponUid),gun=definition(weapon);if(gun?.kind!=='ranged'||!A.slotsFor(gun).includes(slot))return 'Сокет не существует на этой платформе';if(!weapon.attachments?.[slot])return 'В этом сокете ничего не установлено';delete weapon.attachments[slot];return '';}
   function repairQuote(item){return {metal:Math.max(1,Math.ceil((item.ceiling-item.condition)/12)),resin:1};}
   function repair(p,uid){const item=p.workshop.items.find(item=>item.uid===uid);if(!p.workshop.table)return 'Нужен стол';if(!item||item.condition>=item.ceiling)return 'Ремонт не требуется';if(!pay(p,repairQuote(item)))return 'Нужны металл и смола';item.ceiling=Math.max(40,item.ceiling-1);item.condition=item.ceiling;return '';}
-  function wear(p,slot,amount){const item=equipped(p,slot);if(item)item.condition=Math.max(0,item.condition-amount/(.7+item.quality*.15));}
+  function wearItem(item,amount){if(item)item.condition=Math.max(0,item.condition-amount/(.7+item.quality*.15));}
+  function wear(p,slot,amount){const item=equipped(p,slot);wearItem(item,amount);if(slot==='smg')for(const part of attachments(p,item))wearItem(part,amount*.28);}
   function age(p){for(const item of p.workshop.items){item.age++;item.ceiling=Math.max(40,item.ceiling-.12);item.condition=Math.min(item.ceiling,Math.max(0,item.condition-.2));}}
   function mount(p,uid){const carrier=equipped(p,'chest'),def=definition(carrier),plate=p.workshop.items.find(item=>item.uid===uid),pd=definition(plate);
     if(!def?.carrier)return 'Сначала найдите и наденьте плитоносец';if(pd?.kind!=='plate'||plate.condition<=0)return 'Плита повреждена или отсутствует';if(pd.protection>def.maxClass)return 'Класс плиты выше допуска жилета';
@@ -112,18 +119,20 @@
     const factor=item=>item&&item.condition>0?[.8,.9,1,1.12,1.25][item.quality]*(.65+.35*item.condition/100):0;
     if(gd?.ergonomics){
       const mods=p.equipment?.smg||{},stock=mods.stock?.choice,muzzle=mods.muzzle?.choice;
-      base.weaponProfile={build:gd.build,optic:mods.optic?.choice,muzzle,stock,ergonomics:Math.min(95,gd.ergonomics+(stock==='servo-stock'?10:0)),mass:gd.mass,
-        recoil:gd.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...gd.modes],condition:gun.condition,
-        penetration:Math.min(.9,gd.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0))};
-      base.speed*=Math.max(.86,Math.min(1.02,1-(gd.mass-2)*.018));
+      const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;
+      base.weaponProfile={build:gd.build,optic:mods.optic?.choice,muzzle,stock,ergonomics:Math.min(99,installed.ergonomics+(stock==='servo-stock'?10:0)),mass:installed.mass,
+        recoil:installed.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...installed.modes],condition:gun.condition,
+        penetration:Math.min(.95,installed.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0)),ammoType:installed.ammoType,heat:installed.heat,reliability:installed.reliability,hipSpread:installed.hipSpread,noise:installed.noise,flashlight:installed.flashlight,aim:installed.aim,attachments:attachments(p,gun).map(item=>item.uid)};
+      base.speed*=Math.max(.78,Math.min(1.02,1-(installed.mass-2)*.018));
       base.reload*=1+(60-base.weaponProfile.ergonomics)*.006;
+      base.reload*=installed.reload;
     }
-    if(gd){base.damage=(gd.damage+base.damage-9)*factor(gun);base.magazine=Math.max(1,gd.magazine+base.magazine-32);base.fireDelay=gd.delay;base.bulletSpeed=gd.velocity*base.bulletSpeed/680;base.spread=Math.max(.003,gd.spread+base.spread-.055);base.pellets=gd.pellets;base.projectileRange=gd.range;base.reload*=.75+gd.magazine/128;}
+    if(gd){const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;base.damage=(installed.damage+base.damage-9)*factor(gun);base.magazine=Math.max(1,installed.magazine+base.magazine-32);base.fireDelay=installed.delay;base.bulletSpeed=installed.velocity*base.bulletSpeed/680;base.spread=Math.max(.003,installed.spread+base.spread-.055+(installed.hipSpread||0));base.pellets=gd.pellets;base.projectileRange=gd.range;base.reload*=.75+installed.magazine/128;}
     if(kd){base.knifeDamage=(kd.damage+base.knifeDamage-34)*factor(knife);base.knifeDelay=Math.max(.15,kd.delay+base.knifeDelay-.42);base.meleeRange=kd.range;base.meleeArc=kd.arc;}
     let armor=0;for(const slot of ['chest','helmet','pants','boots']){const item=equipped(p,slot);armor+=(definition(item)?.armor||0)*factor(item);}
     base.armor=Math.max(0,base.armor-4+armor);const bag=equipped(p,'bag'),bd=definition(bag);if(bd){base.deathRetention=Math.min(.95,base.deathRetention+(bd.retention-.4)*factor(bag));base.salvageMultiplier+=(bd.capacity-4)*.01*factor(bag);}return base;
   }
   function loot(random,guaranteeCarrier=false,floor=1){const tier=clamp(Math.ceil(floor/5),1,5);const pool=guaranteeCarrier?A.items.filter(item=>item.carrier&&item.maxClass<=Math.min(6,tier+2)):A.items.filter(item=>!item.carrier&&item.tier<=tier);const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*tier),condition:55+Math.floor(random()*36)};}
   function receive(p,drops){for(const drop of drops||[]){if(!A.byId[drop.defId]||p.workshop.items.length>=1500)continue;const item=make(p.workshop,drop.defId,drop.quality);item.condition=clamp(finite(drop.condition,70),1,100);p.workshop.items.push(item);}}
-  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,repairQuote,repair,wear,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
+  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,attachedTo,attachments,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,attach,detach,repairQuote,repair,wear,wearItem,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
 })();
