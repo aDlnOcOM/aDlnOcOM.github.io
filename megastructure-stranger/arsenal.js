@@ -22,6 +22,44 @@
     arc:[55,3.7,.16,['semi','auto'],.22],dart:[76,1.8,.12,['semi'],.4]
   };
   const builds=[['Штатный',0,1,1],['Компактный',13,.8,1.18],['Длинноствольный',-9,1.15,.84],['Усиленный',-15,1.3,.72],['Облегчённый',8,.88,1.08]];
+  const platformSlots={
+    pistol:['optic','muzzle','barrel','grip','magazine','trigger','tactical'],
+    smg:['optic','muzzle','barrel','stock','grip','magazine','handguard','tactical','trigger','converter'],
+    carbine:['optic','muzzle','barrel','stock','grip','magazine','handguard','tactical','trigger'],
+    rifle:['optic','muzzle','barrel','stock','grip','magazine','handguard','tactical','trigger'],
+    shotgun:['optic','muzzle','barrel','stock','magazine','handguard','tactical','trigger'],
+    lmg:['optic','muzzle','barrel','stock','grip','magazine','handguard','tactical','trigger'],
+    plasma:['optic','muzzle','barrel','stock','grip','magazine','tactical','trigger','converter'],
+    rail:['optic','barrel','stock','grip','magazine','tactical','trigger','converter'],
+    arc:['optic','muzzle','barrel','stock','grip','magazine','tactical','trigger','converter'],
+    dart:['optic','muzzle','barrel','stock','grip','magazine','tactical','trigger','converter']
+  };
+  const attachmentBlueprints=[
+    ['optic','Коллиматор «Искра»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'],{spread:-.014,ergonomics:-2},1,'solder'],
+    ['optic','Голограф «Порог»',['smg','carbine','rifle','lmg','plasma','rail','arc','dart'],{spread:-.021,ergonomics:-4},2,'solder'],
+    ['optic','Призма «Дальний контур»',['carbine','rifle','lmg','rail','dart'],{spread:-.027,ergonomics:-9,aim:.1},3,'solder'],
+    ['muzzle','Компенсатор «Каскад»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','arc','dart'],{recoil:-.13,ergonomics:-2},1,'mill'],
+    ['muzzle','Глушитель «Тихий шов»',['pistol','smg','carbine','rifle','lmg','dart'],{noise:-.46,recoil:-.05,ergonomics:-5,mass:.28},2,'mill'],
+    ['muzzle','Дульный тормоз «Разлом»',['smg','carbine','rifle','lmg','rail'],{recoil:-.2,ergonomics:-4,mass:.18},3,'mill'],
+    ['barrel','Короткий ствол «Переход»',['pistol','smg','carbine','rifle','shotgun','plasma','arc','dart'],{mass:-.34,ergonomics:7,velocity:-.1,recoil:.08},1,'mill'],
+    ['barrel','Точный ствол «Длинная ось»',['smg','carbine','rifle','lmg','rail','dart'],{mass:.46,ergonomics:-7,velocity:.16,spread:-.011,penetration:.05},3,'mill'],
+    ['stock','Складной приклад «Крестовина»',['smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'],{recoil:-.1,ergonomics:3,mass:.14},1,'mill'],
+    ['stock','Сервоприклад «Вектор»',['smg','carbine','rifle','lmg','plasma','rail','arc'],{recoil:-.18,ergonomics:8,mass:.33},3,'solder'],
+    ['grip','Угловая рукоять «Хват»',['pistol','smg','carbine','rifle','lmg','plasma','rail','arc','dart'],{ergonomics:7,recoil:-.05},1,'mill'],
+    ['grip','Моторизованная рукоять «Блок»',['smg','carbine','rifle','lmg','plasma','rail','arc'],{ergonomics:10,recoil:-.1,mass:.18},3,'solder'],
+    ['magazine','Увеличенный магазин «Секция»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','arc','dart'],{magazine:12,reload:.15,mass:.21},1,'mill'],
+    ['magazine','Быстрая подача «Канал»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','arc','dart'],{reload:-.18,reliability:.08},2,'solder'],
+    ['magazine','Барабан «Контейнер»',['smg','carbine','rifle','lmg','plasma','arc'],{magazine:28,reload:.38,ergonomics:-9,mass:.62},4,'mill'],
+    ['handguard','Цевьё «Ребро»',['smg','carbine','rifle','shotgun','lmg','dart'],{ergonomics:4,recoil:-.04,mass:.1},1,'mill'],
+    ['handguard','Охлаждающее цевьё «Радиатор»',['smg','carbine','rifle','lmg','plasma','rail','arc'],{heat:-.22,mass:.26},3,'solder'],
+    ['tactical','Лазер «Нить»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'],{hipSpread:-.018,ergonomics:-1},1,'solder'],
+    ['tactical','Световой модуль «Грань»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'],{hipSpread:-.009,flashlight:42,mass:.13},2,'solder'],
+    ['trigger','Спуск «Разряд»',['pistol','smg','carbine','rifle','shotgun','lmg','plasma','rail','arc','dart'],{delay:-.11,reliability:-.04},2,'mill'],
+    ['trigger','Контроллер очереди «Такт»',['smg','carbine','lmg','arc'],{modes:['burst'],recoil:-.04,heat:.05},3,'solder'],
+    ['converter','Баллистический конвертер',['smg','plasma','rail','arc','dart'],{ammoType:'ballistic',damage:2,penetration:.12},2,'solder'],
+    ['converter','Термокапсульный конвертер',['smg','plasma','rail','arc','dart'],{ammoType:'elemental',damage:1,heat:.12},2,'solder'],
+    ['converter','Микродротиковый ускоритель',['smg','plasma','rail','arc','dart'],{ammoType:'mechanical',damage:1,penetration:.08},2,'solder']
+  ];
   const items=[];
   for(const family of families)for(let i=0;i<10;i++)items.push({
     id:`${family.id}-${i}`,name:family.id==='smg'&&i===0?'ПП Охраны':`${family.name} «${series[i]}-${i+1}»`,kind:'ranged',slot:'smg',family:family.id,type:family.type,
@@ -30,6 +68,10 @@
     tier:1+Math.floor(i/2),station:family.type==='ballistic'?'mill':'solder',caliber:family.caliber,box:family.box,
     costs:{steel:4+i,weaponFrame:1,barrelBlank:1,triggerGroup:1,...(family.type==='ballistic'?{spring:2}:{circuitModule:1,capacitor:2})}
   });
+  attachmentBlueprints.forEach(([attachmentSlot,name,families,effects,tier,station],index)=>items.push({
+    id:`attachment-${attachmentSlot}-${index}`,name,kind:'attachment',attachmentSlot,families,effects,tier,station,
+    costs:station==='solder'?{circuitModule:1,wire:2,fastener:2,...(tier>=3?{capacitor:1}:{} )}:{steel:2,fastener:2,grip:1,...(tier>=3?{barrelBlank:1}:{})}
+  }));
   const melee=[['Нож охраны',34,.42,83,.92],['Заточка',25,.25,62,.45],['Мачете',43,.55,98,1.1],['Топор',62,.85,90,.75],['Ломик',38,.6,93,.8],['Дубинка',30,.38,88,.95],['Копьё',48,.7,145,.3],['Катана',52,.58,115,1.2],['Кувалда',95,1.4,105,.7],['Кастет',22,.22,52,.5],['Серп',41,.48,80,1.35],['Цепь',35,.8,135,1.5],['Алебарда',72,1.05,150,1.05],['Шок-палка',46,.65,95,.8],['Резак',58,.5,75,.6]];
   melee.forEach(([name,damage,delay,range,arc],i)=>items.push({id:`melee-${i}`,name,kind:'melee',slot:'knife',damage,delay,range,arc,animation:i,type:i===13?'energy':i===14?'elemental':'mechanical',tier:Math.min(5,1+Math.floor(i/3)),station:'mill',costs:{steel:2+i,grip:1,fastener:2}}));
   const slots={chest:'Корпус',helmet:'Шлем',pants:'Брюки',boots:'Ботинки'};
@@ -42,6 +84,20 @@
     Object.assign(def,{build:build[0],ergonomics:Math.max(10,Math.min(95,ergo+build[1])),mass:Number((mass*build[2]).toFixed(2)),recoil:recoil*build[3],modes:[...modes],penetration});
   }
   function profile(item){return byId[item?.defId];}
+  function slotsFor(def){return [...(platformSlots[def?.family]||[])];}
+  function canAttach(gun,attachment){return Boolean(gun&&attachment&&attachment.kind==='attachment'&&slotsFor(gun).includes(attachment.attachmentSlot)&&attachment.families.includes(gun.family));}
+  function modificationProfile(def,attachments=[]){
+    const out={ergonomics:def.ergonomics,mass:def.mass,recoil:def.recoil,delay:def.delay,velocity:def.velocity,spread:def.spread,magazine:def.magazine,damage:def.damage,penetration:def.penetration,reload:1,heat:1,reliability:1,hipSpread:0,noise:1,flashlight:0,aim:0,modes:[...def.modes],ammoType:def.type};
+    for(const entry of attachments){const part=entry?.effects?entry:entry?.def||entry;const effect=part?.effects||{};const condition=Math.max(.35,Math.min(1,(entry?.condition??100)/100));
+      for(const [key,value] of Object.entries(effect)){
+        if(key==='modes'){for(const mode of value)if(!out.modes.includes(mode))out.modes.push(mode);continue;}
+        if(key==='ammoType'){out.ammoType=value;continue;}
+        if(key==='delay'||key==='velocity'||key==='recoil'||key==='spread'||key==='reload'||key==='heat'||key==='noise')out[key]*=1+value*condition;
+        else out[key]=(out[key]||0)+value*condition;
+      }
+    }
+    out.ergonomics=Math.round(Math.max(10,Math.min(99,out.ergonomics)));out.mass=Number(Math.max(.2,out.mass).toFixed(2));out.recoil=Math.max(.02,out.recoil);out.delay=Math.max(.06,out.delay);out.velocity=Math.max(90,out.velocity);out.spread=Math.max(.002,out.spread);out.magazine=Math.max(1,Math.round(out.magazine));out.damage=Math.max(1,out.damage);out.penetration=Math.max(0,Math.min(.95,out.penetration));out.reload=Math.max(.55,out.reload);out.heat=Math.max(.55,out.heat);out.reliability=Math.max(.5,Math.min(1.3,out.reliability));return out;
+  }
   function ammoInfo(def,type=def.type){return {key:`${def.family}:${type}`,type,magazine:`Магазин ${def.caliber} / ${type}`,box:`Боезапас ${def.caliber} / ${type}`,capacity:def.box,code:def.caliber};}
   function drawMelee(ctx,player,angle,definition){
     const def=definition||byId['melee-0'];const progress=1-Math.max(0,player.knifeFlash)/.25;
@@ -61,5 +117,5 @@
     if(i===14){ctx.arc(def.range*.7,0,12,progress*12,progress*12+Math.PI*1.6);}
     ctx.stroke();ctx.restore();
   }
-  window.Arsenal={items,byId,qualities,families,profile,ammoInfo,drawMelee};
+  window.Arsenal={items,byId,qualities,families,profile,platformSlots,attachmentBlueprints,slotsFor,canAttach,modificationProfile,ammoInfo,drawMelee};
 })();
