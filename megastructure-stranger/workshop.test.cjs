@@ -72,6 +72,24 @@ test('weapon upgrades stay with the individual weapon when switching',()=>{
   const first=W.equipped(p,'smg');W.craft(p,'pistol-0');const second=p.workshop.items.at(-1);W.equip(p,second.uid);
   assert.equal(p.equipment.smg.optic,undefined);W.equip(p,first.uid);assert.equal(p.equipment.smg.optic.choice,'reflex');
 });
+test('physical attachments obey platform sockets, persist per weapon and affect handling',()=>{
+  const {p,Workshop:W,Arsenal:A,Resources:R}=load();rich(p,W,R);
+  const gun=W.equipped(p,'smg');
+  W.craft(p,'attachment-optic-0');const optic=p.workshop.items.at(-1);
+  W.craft(p,'attachment-muzzle-3');const muzzle=p.workshop.items.at(-1);
+  W.craft(p,'attachment-converter-21');const converter=p.workshop.items.at(-1);
+  assert.equal(A.byId[optic.defId].attachmentSlot,'optic');
+  assert.equal(W.attach(p,gun.uid,optic.uid),'');
+  assert.ok(W.attach(p,gun.uid,optic.uid));
+  assert.equal(W.attach(p,gun.uid,muzzle.uid),'');
+  const stats=W.stats(p,{damage:9,magazine:32,bulletSpeed:680,spread:.055,reload:1.22,speed:245,knifeDamage:34,knifeDelay:.42,armor:4,deathRetention:.4,salvageMultiplier:1});
+  assert.ok(stats.weaponProfile.attachments.includes(optic.uid));
+  assert.ok(stats.spread<.055);
+  assert.equal(W.detach(p,gun.uid,'optic'),'');
+  assert.equal(gun.attachments.optic,undefined);
+  W.craft(p,'pistol-0');const pistol=p.workshop.items.at(-1);
+  assert.match(W.attach(p,pistol.uid,converter.uid),/совместима/);
+});
 test('ammo keys reject another caliber even within the ballistic family',()=>{
   const {PowerInventory:P}=load();const stock=P.create(12,false,'ballistic');stock.ammoKey='pistol:ballistic';stock.magazines.forEach(m=>m.ammoKey='rifle:ballistic');
   assert.equal(P.fire(stock),false);assert.equal(P.startRefill(stock,0),false);
