@@ -300,8 +300,10 @@
     const choice = progression.equipment.smg.ammo.choice;
     const type = choice === 'incendiary' ? 'elemental' : choice === 'armor-piercing' ? 'ballistic' : choice === 'flechette' ? 'mechanical' : 'energy';
     const gun = window.Workshop?.definition(window.Workshop.equipped(progression, "smg"));
-    const actualType = choice ? type : gun?.type || type;
-    const stock = window.PowerInventory.create(playerStats().magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType);
+    const stats = playerStats();
+    const profile = stats.weaponProfile || {};
+    const actualType = profile.ammoType || (choice ? type : gun?.type || type);
+    const stock = window.PowerInventory.create(stats.magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType, { reloadFactor: profile.reload || 1, reliability: profile.reliability || 1, mass: .12 + stats.magazine / 160 });
     if (gun) {
       stock.supply = window.Arsenal.ammoInfo(gun, actualType);
       stock.ammoKey = stock.supply.key;
@@ -688,7 +690,7 @@
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
   }
 
-  function reloadSmg() {
+  function reloadSmg(mode = 'tactical') {
     const player = state.player;
     if (player.weapon !== "smg" || player.reload > 0 || player.ammo === player.magazine) return;
     player.reload = playerStats().reload;
@@ -1479,7 +1481,7 @@
     emitNoise(player.x, player.y, 700 * noiseScale, "патруль услышал выстрел", true);
   }
 
-  function reloadSmg() {
+  function reloadSmg(mode = 'tactical') {
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || (player.ammo === player.magazine && state.powerInventory.nextMagazine === undefined)) return;
     if (!window.PowerInventory.canReload(state.powerInventory)) return;
@@ -1490,10 +1492,11 @@
       emitNoise(player.x, player.y, 105, "пополнение магазина");
       return;
     }
-    if (!window.PowerInventory.prepareReload(stock)) return;
-    player.reload = playerStats().reload;
+    if (!window.PowerInventory.prepareReload(stock, mode)) return;
+    const plan = stock.reloadPlan || { mode: 'tactical', duration: 1 };
+    player.reload = playerStats().reload * plan.duration;
     window.GameAnimation?.trigger(player, "reload", player.reload);
-    emitNoise(player.x, player.y, 105, "звук перезарядки");
+    emitNoise(player.x, player.y, plan.mode === 'speed' ? 145 : 105, plan.mode === 'speed' ? "быстрая смена магазина" : "звук перезарядки");
   }
 
   function knifeAttack() {
@@ -2164,7 +2167,7 @@
     if (state.selectedGear || state.inventoryOpen || !state.runActive) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
-    if (event.code === "KeyR" && !event.repeat) reloadSmg();
+    if (event.code === "KeyR" && !event.repeat) reloadSmg(event.shiftKey ? 'speed' : 'tactical');
     if (event.code === "KeyB" && !event.repeat && state.active && state.player.weapon !== "knife") window.WeaponHandling?.cycle(state.player, playerStats());
     if (event.code === "KeyQ") knifeAttack();
     if (event.code === "Digit1") switchWeapon("smg");

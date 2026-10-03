@@ -67,7 +67,7 @@
     if(stock.reloadTarget!==undefined||stock.refilling||!compatible(stock,magazine)||magazine.id===stock.loaded||magazine.energy<=0)return false;
     stock.nextMagazine=id;return true;
   }
-  function prepareReload(stock,mode='tactical'){const next=swapTarget(stock);if(!next||stock.refilling)return false;stock.reloadTarget=next.id;stock.reloadMode=mode==='speed'?'speed':'tactical';const current=stock.magazines[stock.loaded];return {target:next.id,mode:stock.reloadMode,duration:(next.reloadFactor||1)*(stock.reloadMode==='speed'?.72:1),retained:stock.reloadMode!=='speed',current:current.id};}
+  function prepareReload(stock,mode='tactical'){const next=swapTarget(stock);if(!next||stock.refilling)return false;stock.reloadTarget=next.id;stock.reloadMode=mode==='speed'?'speed':'tactical';const current=stock.magazines[stock.loaded];stock.reloadPlan={target:next.id,mode:stock.reloadMode,duration:(next.reloadFactor||1)*(stock.reloadMode==='speed'?.72:1),retained:stock.reloadMode!=='speed',current:current.id};return true;}
   function reload(stock) {
     const next=stock.reloadTarget!==undefined?stock.magazines.find(m=>m.id===stock.reloadTarget):swapTarget(stock);
     const previous=stock.magazines[stock.loaded];
@@ -75,7 +75,7 @@
       if(stock.reloadMode==='speed'&&previous&&previous.id!==next.id){previous.discarded=true;stock.dropped||=[];stock.dropped.push({id:previous.id,energy:previous.energy,type:previous.type});}
       stock.loaded=stock.magazines.indexOf(next);
     }
-    delete stock.reloadTarget;delete stock.nextMagazine;stock.reloadMode='tactical';
+    delete stock.reloadTarget;delete stock.nextMagazine;delete stock.reloadPlan;stock.reloadMode='tactical';
     return stock.magazines[stock.loaded].energy;
   }
   function canReload(stock) {
