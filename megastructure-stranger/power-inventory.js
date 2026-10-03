@@ -7,10 +7,14 @@
     elemental: { magazine: 'Термокапсульный магазин', box: 'Контейнер элементальных капсул', capacity: 90, code: 'ЭЛ' },
     mechanical: { magazine: 'Кассета механических микродротиков', box: 'Коробка микродротиков', capacity: 60, code: 'МХ' }
   };
-  function create(capacity, fastFeed = false, type = 'energy') {
+  function create(capacity, fastFeed = false, type = 'energy', setup = {}) {
     if (!supplies[type]) type = 'energy';
-    const variant = capacity >= 52 ? 'барабанный' : capacity > 32 ? 'увеличенный' : fastFeed ? 'быстрой подачи' : 'штатный';
-    return { type, loaded: 0, magazines: Array.from({ length: 3 }, (_, id) => ({ id, type, capacity, energy: capacity, variant })), battery: supplies[type].capacity };
+    const variant = setup.variant || (capacity >= 52 ? 'барабанный' : capacity > 32 ? 'увеличенный' : fastFeed ? 'быстрой подачи' : 'штатный');
+    const feed = setup.feed || (fastFeed ? 'quick' : capacity >= 52 ? 'drum' : 'standard');
+    const reloadFactor = Number.isFinite(setup.reloadFactor) ? Math.max(.55, setup.reloadFactor) : fastFeed ? .8 : capacity >= 52 ? 1.22 : 1;
+    const reliability = Number.isFinite(setup.reliability) ? Math.max(.5, Math.min(1.3, setup.reliability)) : fastFeed ? 1.06 : capacity >= 52 ? .92 : 1;
+    const mass = Number.isFinite(setup.mass) ? Math.max(.1, setup.mass) : .12 + capacity / 160;
+    return { type, loaded: 0, magazines: Array.from({ length: 3 }, (_, id) => ({ id, type, capacity, energy: capacity, variant, feed, reloadFactor, reliability, mass })), battery: supplies[type].capacity, dropped: [], reloadMode: 'tactical' };
   }
   function supplyFor(key) {
     if (key.includes(':') && window.Arsenal) {
@@ -51,7 +55,7 @@
   function cancelRefill(stock) {
     stock.refilling = null;
   }
-  function compatible(stock,magazine){return Boolean(magazine)&&(!stock.ammoKey||magazine.ammoKey===stock.ammoKey)&&(magazine.type||'energy')===(stock.type||'energy');}
+  function compatible(stock,magazine){return Boolean(magazine)&&!magazine.discarded&&(!stock.ammoKey||magazine.ammoKey===stock.ammoKey)&&(magazine.type||'energy')===(stock.type||'energy');}
   function swapTarget(stock){
     const current=stock.magazines[stock.loaded];
     const preferred=stock.magazines.find(m=>m.id===stock.nextMagazine&&m.id!==current.id&&m.energy>0&&compatible(stock,m));
@@ -63,11 +67,15 @@
     if(stock.reloadTarget!==undefined||stock.refilling||!compatible(stock,magazine)||magazine.id===stock.loaded||magazine.energy<=0)return false;
     stock.nextMagazine=id;return true;
   }
-  function prepareReload(stock){const next=swapTarget(stock);if(!next||stock.refilling)return false;stock.reloadTarget=next.id;return true;}
+  function prepareReload(stock,mode='tactical'){const next=swapTarget(stock);if(!next||stock.refilling)return false;stock.reloadTarget=next.id;stock.reloadMode=mode==='speed'?'speed':'tactical';const current=stock.magazines[stock.loaded];return {target:next.id,mode:stock.reloadMode,duration:(next.reloadFactor||1)*(stock.reloadMode==='speed'?.72:1),retained:stock.reloadMode!=='speed',current:current.id};}
   function reload(stock) {
     const next=stock.reloadTarget!==undefined?stock.magazines.find(m=>m.id===stock.reloadTarget):swapTarget(stock);
-    if(compatible(stock,next)&&next.energy>0)stock.loaded=stock.magazines.indexOf(next);
-    delete stock.reloadTarget;delete stock.nextMagazine;
+    const previous=stock.magazines[stock.loaded];
+    if(compatible(stock,next)&&next.energy>0){
+      if(stock.reloadMode==='speed'&&previous&&previous.id!==next.id){previous.discarded=true;stock.dropped||=[];stock.dropped.push({id:previous.id,energy:previous.energy,type:previous.type});}
+      stock.loaded=stock.magazines.indexOf(next);
+    }
+    delete stock.reloadTarget;delete stock.nextMagazine;stock.reloadMode='tactical';
     return stock.magazines[stock.loaded].energy;
   }
   function canReload(stock) {
@@ -102,7 +110,7 @@
       const battery = !magazine;
       details.innerHTML = battery
         ? '<small>ЗАПАС БОЕПРИПАСОВ</small><h4>' + info.box + '</h4><p>Всего ' + stock.battery + ' ед. · Ёмкость упаковки ' + info.capacity + ' · Совместимость: ' + info.code + '</p>'
-        : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.id === stock.loaded ? 'Установлен в оружии' : 'Запасной в подсумке') + '</p>';
+        : '<small>МАГАЗИН / ' + magazine.variant + '</small><h4>' + info.magazine + '</h4><p>' + magazine.energy + ' / ' + magazine.capacity + ' ед. · ' + (magazine.discarded ? 'Оставлен в зоне' : magazine.id === stock.loaded ? 'Установлен в оружии' : 'Запасной в подсумке') + ' · подача ' + (magazine.feed || 'standard') + '</p>';
       if (magazine && onRefill) {
         if(magazine.id!==stock.loaded){
           const choose=document.createElement('button');choose.type='button';choose.className='quiet-button';
@@ -121,9 +129,10 @@
       const cell = document.createElement('button'); cell.type = 'button'; cell.className = 'tactical-item energy-mag';
       cell.style.gridColumn = magazine.id === stock.loaded ? '1 / span 1' : 'auto / span 1';
       cell.style.gridRow = '1 / span 2';
-      cell.setAttribute('aria-label', info.magazine + ': ' + magazine.variant + ', ' + magazine.energy + ' из ' + magazine.capacity);
+      cell.setAttribute('aria-label', info.magazine + ': ' + magazine.variant + ', ' + magazine.energy + ' из ' + magazine.capacity + ', подача ' + (magazine.feed || 'standard'));
       cell.title = info.magazine + ' / ' + magazine.variant;
       if(stock.nextMagazine===magazine.id){cell.title+=' · выбран для R';cell.classList.add('selected-magazine');}
+      if(magazine.discarded){cell.disabled=true;cell.title+=' · оставлен в зоне';cell.classList.add('discarded-magazine');}
       cell.dataset.ammoType = stock.type || 'energy';
       cell.dataset.platform = stock.ammoKey?.split(':')[0] || 'smg';
       cell.innerHTML = '<small>' + info.code + '-' + magazine.capacity + '</small><span class="mag-drawing" aria-hidden="true"></span><strong>' + magazine.energy + '/' + magazine.capacity + '</strong>';
@@ -159,7 +168,7 @@
     const dialog = document.createElement('dialog'); dialog.className = 'field-inventory';
     dialog.setAttribute('aria-label', 'Экипировка и запасы энергии');
     const opener = document.activeElement;
-    dialog.innerHTML = '<header><div><p class="eyebrow">ПОЛЕВОЙ КОМПЛЕКТ / ПАУЗА</p><h2>Экипировка и инвентарь</h2></div><button class="quiet-button" data-close>Закрыть ×</button></header><div class="inventory-layout"><section><h3>Экипировка</h3><div class="field-slots"></div></section><section><h3>Запасы энергии</h3><div class="supply-grid"></div><p class="section-note">R — сменить магазин; если более заряженных нет — пополнить из Мк I. 1 выстрел = 1 ед. энергии.</p></section></div>';
+    dialog.innerHTML = '<header><div><p class="eyebrow">ПОЛЕВОЙ КОМПЛЕКТ / ПАУЗА</p><h2>Экипировка и инвентарь</h2></div><button class="quiet-button" data-close>Закрыть ×</button></header><div class="inventory-layout"><section><h3>Экипировка</h3><div class="field-slots"></div></section><section><h3>Запасы энергии</h3><div class="supply-grid"></div><p class="section-note">R — обычная смена с сохранением магазина; Shift+R — быстрая смена, старый магазин остаётся в зоне. 1 выстрел = 1 ед. энергии.</p></section></div>';
     const slots = dialog.querySelector('.field-slots');
     if(resources&&window.Resources){
       const section=document.createElement('section');section.className='field-resources';
