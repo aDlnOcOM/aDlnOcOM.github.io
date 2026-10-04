@@ -448,6 +448,7 @@
       radius: 13,
       health: stats.maxHealth,
       maxHealth: stats.maxHealth,
+      body: window.CombatModel?.createBody(stats.maxHealth),
       armor: stats.armor,
       maxArmor: stats.armor,
       speed: stats.speed,
@@ -1139,6 +1140,7 @@
       radius: 13,
       health: stats.maxHealth,
       maxHealth: stats.maxHealth,
+      body: window.CombatModel?.createBody(stats.maxHealth),
       armor: stats.armor,
       maxArmor: stats.armor,
       speed: stats.speed,
@@ -1386,7 +1388,11 @@
 
   function updatePlayer(delta) {
     const player = state.player;
-    const handlingStats = playerStats(), movementStart = {x:player.x,y:player.y};
+    const baseHandlingStats = playerStats();
+    window.CombatModel?.tick(player.body, delta);
+    player.health = player.body?.health ?? player.health;
+    const handlingStats = player.body ? {...baseHandlingStats,spread:baseHandlingStats.spread*(window.CombatModel?.aimMultiplier(player.body)||1)} : baseHandlingStats;
+    const movementStart = {x:player.x,y:player.y};
     let horizontal = 0;
     let vertical = 0;
     if (state.input.keys.has("KeyA") || state.input.keys.has("ArrowLeft")) horizontal -= 1;
@@ -1397,7 +1403,7 @@
     if (!dashing && (horizontal || vertical)) {
       const length = Math.hypot(horizontal, vertical);
       const before = { x: player.x, y: player.y };
-      const speed = player.speed * (window.WeaponHandling?.speed(player) || 1);
+      const speed = player.speed * (window.WeaponHandling?.speed(player) || 1) * (window.CombatModel?.movementMultiplier(player.body) || 1);
       moveCircle(player, horizontal / length * speed * delta, vertical / length * speed * delta);
       player.stepDistance = (player.stepDistance || 0) + distance(before, player);
       if (player.stepDistance >= 72) {
@@ -1626,21 +1632,25 @@
       if (bullet.owner === "player") {
         const target = state.enemies.find(enemy => distance(bullet, enemy) < bullet.radius + enemy.radius);
         if (target) {
-          damageEnemy(target, bullet.damage, bullet.damageType, bullet.penetration || 0);
+          damageEnemy(target, bullet.damage, bullet.damageType, bullet.penetration || 0, bullet);
           return false;
         }
       } else if (distance(bullet, state.player) < bullet.radius + state.player.radius) {
-        damagePlayer(bullet.damage, bullet.damageType);
+        damagePlayer(bullet.damage, bullet.damageType, bullet.penetration || 0, bullet);
         return false;
       }
       return true;
     });
   }
 
-  function damageEnemy(enemy, amount, damageType = "energy", penetration = 0) {
+  function damageEnemy(enemy, amount, damageType = "energy", penetration = 0, impact = {}) {
     if (enemy.health <= 0) return;
     amount = window.DamageTypes.resolve(amount, enemy.type, damageType, penetration);
-    enemy.health -= amount;
+    if (window.CombatModel) {
+      enemy.body ||= window.CombatModel.createBody(enemy.maxHealth || enemy.health);
+      const report = window.CombatModel.receive(enemy.body, { ...impact, amount, type: damageType, penetration, target: enemy });
+      enemy.health = report.critical ? 0 : report.health;
+    } else enemy.health -= amount;
     enemy.hitFlash = .12;
     createImpact(enemy.x, enemy.y, damageType);
     if (!enemy.boss) securityReport(enemy, enemy, "сигнал повреждения охранного узла");
@@ -1664,16 +1674,23 @@
     }
   }
 
-  function damagePlayer(amount, damageType = "mechanical") {
+  function damagePlayer(amount, damageType = "mechanical", penetration = 0, impact = {}) {
     const player = state.player;
     if (!player || player.invulnerability > 0) return;
+    const zone = window.CombatModel?.chooseZone(impact, player) || 'thorax';
     if (window.Workshop) {
-      amount -= window.Workshop.plateAbsorb(progression, amount, damageType);
+      if (zone === 'thorax' || zone === 'abdomen') amount -= window.Workshop.plateAbsorb(progression, amount, damageType);
       for (const slot of ["chest", "helmet", "pants", "boots"]) window.Workshop.wear(progression, slot, amount * .08);
     }
-    const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
-    player.armor -= armorAbsorb;
-    player.health = Math.max(0, player.health - Math.max(1, amount - armorAbsorb));
+    if (window.CombatModel) {
+      player.body ||= window.CombatModel.createBody(player.maxHealth);
+      const report = window.CombatModel.receive(player.body, { ...impact, zone, amount, type: damageType, penetration, target: player }, [{ id:'soft-shell', material:'soft', protection:player.armor*.7, integrity:player.armor/Math.max(1,player.maxArmor), damage:wear=>{player.armor=Math.max(0,player.armor-wear*.25);} }]);
+      player.health = report.critical ? 0 : report.health;
+    } else {
+      const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
+      player.armor -= armorAbsorb;
+      player.health = Math.max(0, player.health - Math.max(1, amount - armorAbsorb));
+    }
     player.invulnerability = playerStats().invulnerability;
     createImpact(player.x, player.y, damageType);
     if (player.health > 0) return;
