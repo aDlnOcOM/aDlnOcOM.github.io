@@ -25,12 +25,12 @@
     const max = Math.max(1, finite(maxHealth, 100));
     const parts = {};
     for (const [id, zone] of Object.entries(zones)) {
-      const value = Math.max(1, Math.round(max * zone.share));
+      const value = max * zone.share;
       parts[id] = { max: value, health: value };
     }
     // Rounding each anatomical share independently must not create or lose health.
-    const remainder = Math.round(max - Object.values(parts).reduce((sum, part) => sum + part.max, 0));
-    parts.thorax.max = Math.max(1, parts.thorax.max + remainder);
+    const remainder = max - Object.values(parts).reduce((sum, part) => sum + part.max, 0);
+    parts.thorax.max += remainder;
     parts.thorax.health = parts.thorax.max;
     return { max, health: max, parts, status: defaultStatus(), lastZone: 'thorax' };
   }
@@ -47,6 +47,7 @@
 
   function chooseZone(impact = {}, target = {}) {
     if (zones[impact.zone]) return impact.zone;
+    if (!Number.isFinite(impact.x) || !Number.isFinite(impact.y)) return 'thorax';
     const sx = finite(impact.x, 0) * .017 + finite(impact.vx, 0) * .0013;
     const sy = finite(impact.y, 0) * .023 + finite(impact.vy, 0) * .0009;
     const tx = finite(target.x, 0) * .007 + finite(target.y, 0) * .011;
@@ -90,9 +91,9 @@
 
   function applyStatus(body, zone, raw, unblocked, type) {
     const status = body.status ||= defaultStatus();
-    const ratio = raw / Math.max(1, body.max);
-    if (type === 'elemental') status.burn = clamp(status.burn + ratio * 18, 0, 1);
-    if (type === 'ballistic' && unblocked > 3) status.bleed = clamp(status.bleed + ratio * 15, 0, 1);
+    const ratio = unblocked / Math.max(1, body.max);
+    if (type === 'elemental') status.burn = clamp(status.burn + ratio * 3, 0, 1);
+    if (!body.robotic && type === 'ballistic' && unblocked > 3) status.bleed = clamp(status.bleed + ratio * 2, 0, 1);
     if (zone === 'legs' && unblocked > 8) status.fracture = clamp(status.fracture + ratio * 9, 0, 1);
     if (raw > body.max * .1 || zone === 'head') status.shock = clamp(status.shock + ratio * 12, 0, 1);
     status.suppression = clamp(status.suppression + ratio * 8, 0, 1);
@@ -107,16 +108,20 @@
     const zoneData = zones[zone];
     const wound = Math.max(0, layered.remaining * zoneData.multiplier + layered.blunt);
     const part = target.parts[zone] || target.parts.thorax;
+    const overflow = Math.max(0, wound - part.health);
     part.health = Math.max(0, part.health - wound);
+    if (zone !== 'thorax' && (!zoneData.critical || target.robotic)) target.parts.thorax.health = Math.max(0, target.parts.thorax.health - overflow * .7);
     target.lastZone = zone;
     applyStatus(target, zone, raw, layered.remaining, type);
     target.health = Math.min(target.max, sumHealth(target));
-    const critical = zoneData.critical && part.health <= 0;
+    const critical = !target.robotic && (target.parts.head.health <= 0 || target.parts.thorax.health <= 0);
+    target.dead ||= critical || target.health <= 0;
+    if (target.dead) target.health = 0;
     return { zone, raw, wound, critical, killed: target.health <= 0 || critical, ...layered, health: target.health };
   }
 
   function tick(body, delta) {
-    if (!body?.status) return body;
+    if (!body?.status || body.dead) return body;
     const dt = clamp(finite(delta), 0, .2);
     const status = body.status;
     const bleed = status.bleed * dt * Math.max(1, body.max * .012);
@@ -127,6 +132,8 @@
       const part = wounded?.health > 0 ? wounded : body.parts.thorax;
       part.health = Math.max(0, part.health - bleed - burn);
       body.health = Math.max(0, sumHealth(body));
+      body.dead = body.health <= 0 || (!body.robotic && (body.parts.head.health <= 0 || body.parts.thorax.health <= 0));
+      if (body.dead) body.health = 0;
     }
     status.suppression = Math.max(0, status.suppression - dt * .42);
     status.shock = Math.max(0, status.shock - dt * .06);
