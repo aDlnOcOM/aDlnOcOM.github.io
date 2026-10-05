@@ -43,3 +43,24 @@ test('critical hits, conditions and limb penalties are exposed to the combat loo
   C.tick(fresh, 1);
   assert.ok(fresh.health < before);
 });
+
+test('fractional bodies conserve health and a destroyed limb cannot absorb infinite shots', () => {
+  const C = load();
+  for (const max of [1, 4.5, 137, 250.3]) {
+    const b = C.createBody(max);
+    assert.ok(Math.abs(Object.values(b.parts).reduce((s,p)=>s+p.health,0)-max)<1e-9);
+  }
+  const b = C.createBody(100);
+  for(let i=0;i<30;i++) C.receive(b,{amount:20,type:'mechanical',zone:'legs'});
+  assert.equal(b.dead,true);C.tick(b,.1);assert.equal(b.health,0);
+});
+
+test('stopped bullets do not cause bleeding and contact attacks default to torso', () => {
+  const C=load(),b=C.createBody(100);
+  assert.equal(C.chooseZone({},{x:10,y:20}),'thorax');
+  C.receive(b,{amount:8,type:'ballistic',zone:'arms'},[{protection:100,material:'steel'}]);
+  assert.equal(b.status.bleed,0);
+  const robot=C.createBody(100);robot.robotic=true;
+  C.receive(robot,{amount:12,type:'ballistic',zone:'head'});
+  assert.equal(robot.status.bleed,0);assert.ok(robot.health>0);
+});
