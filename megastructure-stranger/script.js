@@ -1403,7 +1403,7 @@
     if (!dashing && (horizontal || vertical)) {
       const length = Math.hypot(horizontal, vertical);
       const before = { x: player.x, y: player.y };
-      const speed = player.speed * (window.WeaponHandling?.speed(player) || 1) * (window.CombatModel?.movementMultiplier(player.body) || 1);
+      const speed = player.speed * (window.WeaponHandling?.speed(player) || 1) * (window.CombatModel?.movementMultiplier(player.body) || 1) * (window.ArmorSystem?.burden(progression).speed || 1);
       moveCircle(player, horizontal / length * speed * delta, vertical / length * speed * delta);
       player.stepDistance = (player.stepDistance || 0) + distance(before, player);
       if (player.stepDistance >= 72) {
@@ -1678,13 +1678,11 @@
     const player = state.player;
     if (!player || player.invulnerability > 0) return;
     const zone = window.CombatModel?.chooseZone(impact, player) || 'thorax';
-    if (window.Workshop) {
-      if (zone === 'thorax' || zone === 'abdomen') amount -= window.Workshop.plateAbsorb(progression, amount, damageType);
-      for (const slot of ["chest", "helmet", "pants", "boots"]) window.Workshop.wear(progression, slot, amount * .08);
-    }
     if (window.CombatModel) {
       player.body ||= window.CombatModel.createBody(player.maxHealth);
-      const report = window.CombatModel.receive(player.body, { ...impact, zone, amount, type: damageType, penetration, target: player }, [{ id:'soft-shell', material:'soft', protection:player.armor*.7, integrity:player.armor/Math.max(1,player.maxArmor), damage:wear=>{player.armor=Math.max(0,player.armor-wear*.25);} }]);
+      const layers = window.ArmorSystem?.layers(progression,zone,impact,{...player,angle:playerAimAngle()}) || [{id:'soft-shell',material:'soft',protection:player.armor*.7,integrity:100*player.armor/Math.max(1,player.maxArmor),damage:wear=>{player.armor=Math.max(0,player.armor-wear*.25);}}];
+      const report = window.CombatModel.receive(player.body, { ...impact, zone, amount, type: damageType, penetration, target: player }, layers);
+      player.lastHit=report;
       player.health = report.critical ? 0 : report.health;
     } else {
       const armorAbsorb = Math.min(player.armor, Math.max(1, amount * .42));
