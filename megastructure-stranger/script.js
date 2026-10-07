@@ -755,7 +755,7 @@
   function createEnemyBullet(enemy, angle, speed, damage, color) {
     const damageType = enemy.damageType || window.DamageTypes.attacks[enemy.type] || "energy";
     color = window.DamageTypes.get(damageType).color;
-    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, damageType, color, lifetime: 4 });
+    state.bullets.push({ owner: "enemy", x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: enemy.boss ? 6 : 5, damage, damageType, penetration:window.EnemyArmor?.penetration(enemy)||0, color, lifetime: 4 });
   }
 
   function updateBullets(delta) {
@@ -801,6 +801,13 @@
     player.invulnerability = playerStats().invulnerability;
     createParticles(player.x, player.y, "#ff6d68", 11, 80);
     if (player.health > 0) return;
+    finishPlayerDeath();
+  }
+
+  function finishPlayerDeath() {
+    if (state.player.deathHandled) return;
+    state.player.deathHandled=true;
+    state.player.health=0;
     state.active = false;
     const recoveryRate = playerStats().deathRetention;
     const recovered = Math.floor(state.runSalvage * recoveryRate);
@@ -1391,6 +1398,7 @@
     const baseHandlingStats = playerStats();
     window.CombatModel?.tick(player.body, delta);
     player.health = player.body?.health ?? player.health;
+    if (player.body?.dead) { finishPlayerDeath(); return; }
     const handlingStats = player.body ? {...baseHandlingStats,spread:baseHandlingStats.spread*(window.CombatModel?.aimMultiplier(player.body)||1)} : baseHandlingStats;
     const movementStart = {x:player.x,y:player.y};
     let horizontal = 0;
@@ -1553,7 +1561,7 @@
     const player = state.player;
     if (enemy.type === "breaker") {
       window.EnemySpecialists.breaker(enemy, delta, player,
-        () => hasLineOfSight(enemy.x, enemy.y, player.x, player.y), moveCircle, damagePlayer);
+        () => hasLineOfSight(enemy.x, enemy.y, player.x, player.y), moveCircle, amount=>damagePlayer(amount,"mechanical",window.EnemyArmor?.penetration(enemy)||0));
       return;
     }
     const seesPlayer = window.SecurityAI.visible(enemy, player, 900, Math.PI * 2,
@@ -1582,6 +1590,11 @@
     for (const enemy of state.enemies) {
       enemy.hitFlash = Math.max(0, enemy.hitFlash - delta);
       if (enemy.health <= 0) continue;
+      if (enemy.body) {
+        window.CombatModel?.tick(enemy.body,delta);
+        if (enemy.body.dead) { damageEnemy(enemy,0); continue; }
+        enemy.health=enemy.body.health;
+      }
       if (enemy.boss) { updateBoss(enemy, delta); continue; }
       window.SecurityAI.tick(enemy, delta, env);
       if (enemy.type === "burstTurret") window.EnemySpecialists.burst(enemy, delta,
@@ -1647,8 +1660,11 @@
     if (enemy.health <= 0) return;
     amount = window.DamageTypes.resolve(amount, enemy.type, damageType, penetration);
     if (window.CombatModel) {
+      window.EnemyArmor?.init(enemy);
       enemy.body ||= window.CombatModel.createBody(enemy.maxHealth || enemy.health);
-      const report = window.CombatModel.receive(enemy.body, { ...impact, amount, type: damageType, penetration, target: enemy });
+      enemy.body.robotic = true;
+      const zone = window.CombatModel.chooseZone(impact,enemy);
+      const report = window.CombatModel.receive(enemy.body, { ...impact, zone, amount, type: damageType, penetration, target: enemy }, window.EnemyArmor?.layers(enemy,zone) || []);
       enemy.health = report.critical ? 0 : report.health;
     } else enemy.health -= amount;
     enemy.hitFlash = .12;
