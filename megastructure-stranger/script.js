@@ -1106,6 +1106,9 @@
     if (window.AssetBoot && !window.AssetBoot.ready) return;
     if (state.runActive && window.Workshop) window.Workshop.age(progression);
     state.runItems = [];
+    state.player = null;
+    state.medicine = window.FieldMedicine?.stock() || {};
+    window.Workshop?.packMedicine(progression,state.medicine);
     state.floor = window.Campaign ? window.Campaign.start(progression) : 1;
     state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);
@@ -1754,6 +1757,8 @@
       .sort((a, b) => distance(a, state.player) - distance(b, state.player))[0];
     if (crate) {
       const loot = window.LootContainers.collect(crate, state.powerInventory);
+      state.medicine ||= {};
+      for (const [id,count] of Object.entries(loot.medical||{})) state.medicine[id]=(state.medicine[id]||0)+count;
       state.runItems ||= [];
       const bag = window.Workshop?.definition(window.Workshop.equipped(progression, "bag"));
       const free = Math.max(0, (bag?.capacity || 4) - state.runItems.length);

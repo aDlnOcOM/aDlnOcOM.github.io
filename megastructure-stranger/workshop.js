@@ -111,6 +111,11 @@
       absorb+=def.protection*1.3*(material[type]||1)*(plate.condition/100)*[.8,.9,1,1.12,1.25][plate.quality];plate.condition=Math.max(0,plate.condition-amount*(def.material==='ceramic'?.65:.3));
     }return Math.min(amount*.8,absorb);
   }
+  function packMedicine(p,stock){
+    const packed=p.workshop.items.filter(item=>definition(item)?.kind==='medical'&&item.condition>0);
+    for(const item of packed){const id=definition(item).medicine;stock[id]=(stock[id]||0)+1;}
+    p.workshop.items=p.workshop.items.filter(item=>!packed.includes(item));return stock;
+  }
   function partKey(slot,branch,option,tier){return `module:${slot}:${branch}:${option}:${tier?1:0}`;}
   function partAvailable(p,id){return p.workshop.items.some(item=>item.defId===id&&item.condition>0);}
   function consumePart(p,id){const index=p.workshop.items.findIndex(item=>item.defId===id&&item.condition>0);if(index<0)return false;p.workshop.items.splice(index,1);return true;}
@@ -134,5 +139,5 @@
   }
   function loot(random,guaranteeCarrier=false,floor=1){const tier=clamp(Math.ceil(floor/5),1,5);const pool=guaranteeCarrier?A.items.filter(item=>item.carrier&&item.maxClass<=Math.min(6,tier+2)):A.items.filter(item=>!item.carrier&&item.tier<=tier);const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*tier),condition:55+Math.floor(random()*36)};}
   function receive(p,drops){for(const drop of drops||[]){if(!A.byId[drop.defId]||p.workshop.items.length>=1500)continue;const item=make(p.workshop,drop.defId,drop.quality);item.condition=clamp(finite(drop.condition,70),1,100);p.workshop.items.push(item);}}
-  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,attachedTo,attachments,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,attach,detach,repairQuote,repair,wear,wearItem,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive};
+  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,attachedTo,attachments,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,attach,detach,repairQuote,repair,wear,wearItem,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive,packMedicine};
 })();

@@ -37,7 +37,7 @@
         stock.extraSupplies[key] = (stock.extraSupplies[key] || 0) + container.ammo;
       }
     }
-    return { salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType, resources: container.resources || {}, items: container.items || [] };
+    return { medical:container.kind==='supply'?{bandage:1}: {}, salvage: container.salvage, ammo: container.ammo, ammoType: container.ammoType, resources: container.resources || {}, items: container.items || [] };
   }
   window.LootContainers = { generate, collect };
 })();

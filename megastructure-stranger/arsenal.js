@@ -78,6 +78,13 @@
   for(const [slot,label] of Object.entries(slots))for(let i=0;i<20;i++)items.push({id:`${slot}-${i}`,name:slot==='chest'&&i>=12?`Плитоносец «${series[i-12]}»`:`${label} «${series[i%10]}-${i+1}»`,kind:'armor',slot,tier:1+Math.floor(i/4),armor:slot==='chest'&&i>=12?1:1+i*.3,carrier:slot==='chest'&&i>=12,plateSlots:slot==='chest'&&i>=12?1+(i%2):0,maxClass:slot==='chest'&&i>=12?3+Math.floor((i-12)/2):0,lootOnly:slot==='chest'&&i>=12,station:'forming',costs:{fabric:4,aramid:2+Math.floor(i/4),armorMesh:1,fastener:2}});
   for(let i=0;i<10;i++)items.push({id:`bag-${i}`,name:i===0?'Офисная сумка':`Сумка «${series[i]}»`,kind:'bag',slot:'bag',tier:1+Math.floor(i/2),capacity:4+i*2,retention:.4+i*.025,station:'forming',costs:{fabric:4+i,thread:3,buckle:2,polymerSheet:1}});
   for(const [material,label,resource,weight] of [['steel','Стальная','steel',1],['ceramic','Керамическая','ceramic',.7],['composite','Композитная','composite',.5],['polyethylene','Полиэтиленовая','polyethylene',.35]])for(let level=1;level<=6;level++)items.push({id:`plate-${material}-${level}`,name:`${label} бронеплита · класс ${level}`,kind:'plate',material,protection:level,weight,tier:Math.min(5,level),station:'forming',costs:{[resource]:level*3,plateBlank:1,resin:level}});
+  for(const [id,name,costs,tier] of [
+    ['bandage','Гемостатическая повязка',{fabric:2,thread:1},1],
+    ['coolant','Противоожоговый гель',{acid:1,regen:1},2],
+    ['splint','Фиксатор конечности',{plastic:2,fabric:1},1],
+    ['medkit','Реген-набор',{regen:2,fabric:2},3],
+    ['surgery','Реконструктор ткани',{regen:4,pcbReady:1},4]
+  ])items.push({id:'medical-'+id,name,kind:'medical',medicine:id,tier,station:'table',costs});
   const byId=Object.fromEntries(items.map(item=>[item.id,item]));
   for(const def of items.filter(item=>item.kind==='ranged')){
     const index=Number(def.id.split('-').at(-1)),[ergo,mass,recoil,modes,penetration]=handling[def.family],build=builds[index%5];
