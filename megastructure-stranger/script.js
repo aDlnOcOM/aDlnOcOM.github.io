@@ -1142,15 +1142,19 @@
 
   function resetPlayer() {
     const stats = playerStats();
+    const previous = state.player;
     delete state.powerInventory.reloadTarget;
+    delete state.powerInventory.reloadPlan;
+    state.powerInventory.reloadMode='tactical';
+    if(previous)window.FieldMedicine?.cancel(previous);
     state.input.aimDown=false;state.input.mouseDown=false;
     state.player = {
       x: 84,
       y: HEIGHT * .72,
       radius: 13,
-      health: stats.maxHealth,
+      health: previous?.health ?? stats.maxHealth,
       maxHealth: stats.maxHealth,
-      body: window.CombatModel?.createBody(stats.maxHealth),
+      body: previous?.body || window.CombatModel?.createBody(stats.maxHealth),
       armor: stats.armor,
       maxArmor: stats.armor,
       speed: stats.speed,
@@ -1161,7 +1165,8 @@
       fireCooldown: 0,
       reload: 0,
       knifeCooldown: 0,
-      knifeFlash: 0
+      knifeFlash: 0,
+      handling: previous?.handling
     };
   }
 
