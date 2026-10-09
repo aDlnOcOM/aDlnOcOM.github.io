@@ -1222,6 +1222,7 @@
     const threat = map.bossStarted && !map.bossDefeated ? "БОСС / ШЛЮЗ" : state.alarm ? "ТРЕВОГА" : "ТИШИНА";
     element("threat-label").textContent = threat;
     element("abort-run").disabled = map.bossStarted && !map.bossDefeated;
+    if (player.treatment) element("weapon-hint").textContent = window.FieldMedicine.catalog[player.treatment.id].name+" · "+player.treatment.remaining.toFixed(1)+" с · H — отменить";
     if (state.powerInventory?.refilling) {
       const job = state.powerInventory.refilling;
       element("weapon-hint").textContent = "ПОПОЛНЕНИЕ БОЕПРИПАСОВ · " + Math.max(0, job.duration - job.elapsed).toFixed(1) + " с · I — инвентарь";
@@ -1399,6 +1400,10 @@
   function updatePlayer(delta) {
     const player = state.player;
     const baseHandlingStats = playerStats();
+    if (player.treatment) {
+      if (state.input.mouseDown || player.dash?.remaining>0) window.FieldMedicine?.cancel(player);
+      else window.FieldMedicine?.tick(player,state.medicine,delta);
+    }
     window.CombatModel?.tick(player.body, delta);
     player.health = player.body?.health ?? player.health;
     if (player.body?.dead) { finishPlayerDeath(); return; }
@@ -1470,7 +1475,7 @@
 
   function fireSmg() {
     const player = state.player;
-    if (!state.active || !player || player.reload > 0 || state.powerInventory.refilling) return;
+    if (!state.active || !player || player.reload > 0 || player.treatment || state.powerInventory.refilling) return;
     if (window.WeaponHandling && !window.WeaponHandling.canFire(player, playerStats())) return;
     if (!player.ammo) {
       reloadSmg();
@@ -1501,6 +1506,7 @@
   function reloadSmg(mode = 'tactical') {
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || (player.ammo === player.magazine && state.powerInventory.nextMagazine === undefined)) return;
+    if (player.treatment) return;
     if (!window.PowerInventory.canReload(state.powerInventory)) return;
     if (state.powerInventory.refilling) return;
     const stock = state.powerInventory;
@@ -1695,7 +1701,8 @@
 
   function damagePlayer(amount, damageType = "mechanical", penetration = 0, impact = {}) {
     const player = state.player;
-    if (!player || player.invulnerability > 0) return;
+    if (!player || player.invulnerability > 0 || player.deathHandled) return;
+    window.FieldMedicine?.cancel(player);
     const zone = window.CombatModel?.chooseZone(impact, player) || 'thorax';
     if (window.CombatModel) {
       player.body ||= window.CombatModel.createBody(player.maxHealth);
@@ -1805,6 +1812,7 @@
     for (const enemy of state.enemies) window.GameAnimation?.tick(enemy, delta);
     state.elapsed += delta;
     updatePlayer(delta);
+    if (!state.active) { updateRunUi(); return; }
     updateSensors(delta);
     updateEnemies(delta);
     updateBullets(delta);
@@ -2204,6 +2212,11 @@
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR" && !event.repeat) reloadSmg(event.shiftKey ? 'speed' : 'tactical');
+    if (event.code === "KeyH" && !event.repeat && state.active) {
+      if(state.player.treatment)window.FieldMedicine?.cancel(state.player);
+      else if(!state.powerInventory.refilling)window.FieldMedicine?.start(state.player,state.medicine);
+      state.input.mouseDown=false;
+    }
     if (event.code === "KeyB" && !event.repeat && state.active && state.player.weapon !== "knife") window.WeaponHandling?.cycle(state.player, playerStats());
     if (event.code === "KeyQ") knifeAttack();
     if (event.code === "Digit1") switchWeapon("smg");
