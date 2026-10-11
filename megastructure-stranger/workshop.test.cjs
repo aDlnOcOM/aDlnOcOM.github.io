@@ -12,7 +12,7 @@ function load(full=false){
   const p={salvage:0,resources:{},equipment:{},hideout:{}};scope.window.Workshop.init(p);
   return {...scope.window,p,saved:()=>JSON.parse(stored)};
 }
-function rich(p,W,R){p.salvage=99999;p.resources=Object.fromEntries(R.catalog.filter(r=>r.id!=='salvage').map(r=>[r.id,99999]));p.hideout={mill:5,forming:5,solder:5,generator:5,battery:5};p.workshop.table=1;p.workshop.research=Object.fromEntries(R.catalog.map(r=>[r.id,true]));}
+function rich(p,W,R){p.salvage=99999;p.resources=Object.fromEntries(R.catalog.filter(r=>r.id!=='salvage').map(r=>[r.id,99999]));p.hideout={mill:5,forming:5,solder:5,generator:5,battery:5};p.workshop.table=5;p.workshop.research=Object.fromEntries(R.catalog.map(r=>[r.id,true]));}
 test('catalog contains requested counts, four plate materials and six protection classes',()=>{
   const {Arsenal:A,Workshop:W,Resources:R}=load();
   assert.equal(A.items.filter(d=>d.kind==='ranged').length,100);
