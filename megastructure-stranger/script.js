@@ -302,8 +302,11 @@
     const gun = window.Workshop?.definition(window.Workshop.equipped(progression, "smg"));
     const stats = playerStats();
     const profile = stats.weaponProfile || {};
-    const actualType = profile.ammoType || (choice ? type : gun?.type || type);
+    const owned=window.Workshop?.equipped(progression,"smg");
+    const hasConverter=window.Workshop?.attachments(progression,owned).some(i=>window.Workshop.definition(i)?.attachmentSlot==='converter');
+    const actualType = hasConverter ? profile.ammoType : choice ? type : gun?.type || type;
     const stock = window.PowerInventory.create(stats.magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType, { reloadFactor: profile.reload || 1, reliability: profile.reliability || 1, mass: .12 + stats.magazine / 160 });
+    stock.cartridge=window.Ammunition?.get(actualType,owned?.roundVariant);
     if (gun) {
       stock.supply = window.Arsenal.ammoInfo(gun, actualType);
       stock.ammoKey = stock.supply.key;
@@ -1104,6 +1107,9 @@
 
   function beginRun() {
     if (window.AssetBoot && !window.AssetBoot.ready) return;
+    const ammoOffer=window.Workshop?.ammoQuote(progression);
+    if(ammoOffer?.reason){element("campaign-status").textContent=ammoOffer.reason;return;}
+    if(ammoOffer)window.Workshop.pay(progression,ammoOffer.cost);
     if (state.runActive && window.Workshop) window.Workshop.age(progression);
     state.runItems = [];
     state.player = null;
@@ -1489,6 +1495,7 @@
     const stats = playerStats();
     if (stats.damage <= 0) { element("signal-text").textContent = "Оружие сломано. Нужен ремонт в убежище."; return; }
     const damageType = state.powerInventory.type || "energy";
+    const cartridge=window.Ammunition?.shot(stats,state.powerInventory)||{damage:stats.damage,penetration:stats.weaponProfile?.penetration||0,velocity:stats.bulletSpeed,heat:1,noise:1};
     if (!window.PowerInventory.fire(state.powerInventory)) return;
     const handlingSpread = player.handling?.spread ?? stats.spread;
     const aimSpread = (stats.pellets || 1) > 1 ? handlingSpread * .18 : handlingSpread;
@@ -1496,7 +1503,7 @@
     window.WeaponHandling?.fired(player, stats);
     for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
     const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * stats.bulletSpeed, vy: Math.sin(shotAngle) * stats.bulletSpeed, radius: 3, damage: stats.damage, penetration:stats.weaponProfile?.penetration || 0, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / stats.bulletSpeed });
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * cartridge.velocity, vy: Math.sin(shotAngle) * cartridge.velocity, radius: 3, damage: cartridge.damage, penetration:cartridge.penetration, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / cartridge.velocity });
     }
     window.Workshop?.wear(progression, "smg", .07);
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
@@ -1505,7 +1512,7 @@
     createParticles(player.x, player.y, "#8df8ee", 2, 22);
     const suppressed = hasUpgrade("smg", "muzzle", "suppressor");
     const noiseScale = suppressed ? (hasTier("smg", "muzzle", "suppressor") ? .55 : .75) : 1;
-    emitNoise(player.x, player.y, 700 * noiseScale, "патруль услышал выстрел", true);
+    emitNoise(player.x, player.y, 700 * noiseScale * cartridge.noise * (stats.weaponProfile?.noise||1), "патруль услышал выстрел", true);
   }
 
   function reloadSmg(mode = 'tactical') {

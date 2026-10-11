@@ -70,6 +70,11 @@
         el.insertBefore(art,el.firstChild);
         if(def.slot&&def.kind!=='module')el.appendChild(button('Надеть',()=>act('equip',entry.uid),isEquipped||entry.condition<=0));
         if(def.kind==='ranged'){
+          if(window.Ammunition){
+            const selector=document.createElement('select');selector.setAttribute('aria-label','Боеприпас для '+def.name);
+            for(const [id,round] of Object.entries(window.Ammunition.variants)){const option=document.createElement('option');option.value=id;option.selected=id===(entry.roundVariant||'standard');option.textContent=round.name+' · за забег: '+(costs(round.costs)||'базовый запас');selector.appendChild(option);}
+            selector.onchange=()=>act('selectAmmo',entry.uid,selector.value);el.appendChild(selector);
+          }
           const installed=W.attachments?.(p,entry)||[];
           const sockets=document.createElement('p');sockets.textContent='Сокеты: '+A.slotsFor(def).map(slot=>{const part=installed.find(item=>A.byId[item.defId]?.attachmentSlot===slot);return slot+': '+(part?A.byId[part.defId].name:'пусто');}).join(' · ');el.appendChild(sockets);
           const compatible=p.workshop.items.filter(item=>A.byId[item.defId]?.kind==='attachment'&&!W.attachedTo(p,item.uid)&&A.canAttach(def,A.byId[item.defId]));
