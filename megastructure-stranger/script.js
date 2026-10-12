@@ -1518,7 +1518,7 @@
   function reloadSmg(mode = 'tactical') {
     const player = state.player;
     if (!state.active || !player || player.weapon !== "smg" || player.reload > 0 || (player.ammo === player.magazine && state.powerInventory.nextMagazine === undefined)) return;
-    if (player.treatment) return;
+    if (player.treatment || player.handling?.clearing) return;
     if (!window.PowerInventory.canReload(state.powerInventory)) return;
     if (state.powerInventory.refilling) return;
     const stock = state.powerInventory;
@@ -2224,9 +2224,10 @@
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
     state.input.keys.add(event.code);
     if (event.code === "KeyR" && !event.repeat) reloadSmg(event.shiftKey ? 'speed' : 'tactical');
+    if (event.code === "KeyJ" && !event.repeat && state.active && !state.powerInventory.refilling) window.WeaponHandling?.clear(state.player,playerStats());
     if (event.code === "KeyH" && !event.repeat && state.active) {
       if(state.player.treatment)window.FieldMedicine?.cancel(state.player);
-      else if(!state.powerInventory.refilling)window.FieldMedicine?.start(state.player,state.medicine);
+      else if(!state.powerInventory.refilling&&!state.player.handling?.clearing)window.FieldMedicine?.start(state.player,state.medicine);
       state.input.mouseDown=false;
     }
     if (event.code === "KeyB" && !event.repeat && state.active && state.player.weapon !== "knife") window.WeaponHandling?.cycle(state.player, playerStats());
