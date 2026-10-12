@@ -1500,7 +1500,7 @@
     const handlingSpread = player.handling?.spread ?? stats.spread;
     const aimSpread = (stats.pellets || 1) > 1 ? handlingSpread * .18 : handlingSpread;
     const aim = playerAimAngle() + randomBetween(-aimSpread, aimSpread);
-    window.WeaponHandling?.fired(player, stats);
+    window.WeaponHandling?.fired(player, stats, cartridge.heat);
     for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
     const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
     state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * cartridge.velocity, vy: Math.sin(shotAngle) * cartridge.velocity, radius: 3, damage: cartridge.damage, penetration:cartridge.penetration, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / cartridge.velocity });
