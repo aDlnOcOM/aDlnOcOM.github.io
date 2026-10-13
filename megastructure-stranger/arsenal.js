@@ -99,7 +99,7 @@
       for(const [key,value] of Object.entries(effect)){
         if(key==='modes'){for(const mode of value)if(!out.modes.includes(mode))out.modes.push(mode);continue;}
         if(key==='ammoType'){out.ammoType=value;continue;}
-        if(key==='delay'||key==='velocity'||key==='recoil'||key==='spread'||key==='reload'||key==='heat'||key==='noise')out[key]*=1+value*condition;
+        if(key==='delay'||key==='velocity'||key==='recoil'||key==='reload'||key==='heat'||key==='noise')out[key]*=1+value*condition;
         else out[key]=(out[key]||0)+value*condition;
       }
     }

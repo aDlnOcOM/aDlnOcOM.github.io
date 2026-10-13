@@ -98,7 +98,8 @@
   function repairQuote(item){return {metal:Math.max(1,Math.ceil((item.ceiling-item.condition)/12)),resin:1};}
   function repair(p,uid){const item=p.workshop.items.find(item=>item.uid===uid);if(!p.workshop.table)return 'Нужен стол';if(!item||item.condition>=item.ceiling)return 'Ремонт не требуется';if(!pay(p,repairQuote(item)))return 'Нужны металл и смола';item.ceiling=Math.max(40,item.ceiling-1);item.condition=item.ceiling;return '';}
   function wearItem(item,amount){if(item)item.condition=Math.max(0,item.condition-amount/(.7+item.quality*.15));}
-  function wear(p,slot,amount){const item=equipped(p,slot);wearItem(item,amount);if(slot==='smg')for(const part of attachments(p,item))wearItem(part,amount*.28);}
+  function wear(p,slot,amount){const item=equipped(p,slot);wearItem(item,amount);if(slot==='smg'&&item){item.fouling=clamp((item.fouling||0)+amount*2,0,100);for(const part of attachments(p,item))wearItem(part,amount*.28);}}
+  function clean(p,uid){const item=p.workshop.items.find(i=>i.uid===uid);if(definition(item)?.kind!=='ranged')return 'Нужно выбрать оружие';if(!p.workshop.table)return 'Нужен стол';if(!(item.fouling>0))return 'Оружие чистое';if(!pay(p,{fabric:1,resin:1}))return 'Нужны ткань и смола';item.fouling=0;return '';}
   function age(p){for(const item of p.workshop.items){item.age++;item.ceiling=Math.max(40,item.ceiling-.12);item.condition=Math.min(item.ceiling,Math.max(0,item.condition-.2));}}
   function mount(p,uid){const carrier=equipped(p,'chest'),def=definition(carrier),plate=p.workshop.items.find(item=>item.uid===uid),pd=definition(plate);
     if(!def?.carrier)return 'Сначала найдите и наденьте плитоносец';if(pd?.kind!=='plate'||plate.condition<=0)return 'Плита повреждена или отсутствует';if(pd.protection>def.maxClass)return 'Класс плиты выше допуска жилета';
@@ -138,7 +139,7 @@
       const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;
       base.weaponProfile={build:gd.build,optic:mods.optic?.choice,muzzle,stock,ergonomics:Math.min(99,installed.ergonomics+(stock==='servo-stock'?10:0)),mass:installed.mass,
         recoil:installed.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...installed.modes],condition:gun.condition,
-        penetration:Math.min(.95,installed.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0)),ammoType:installed.ammoType,heat:installed.heat,reliability:installed.reliability,hipSpread:installed.hipSpread,noise:installed.noise,flashlight:installed.flashlight,aim:installed.aim,attachments:attachments(p,gun).map(item=>item.uid)};
+        penetration:Math.min(.95,installed.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0)),ammoType:installed.ammoType,heat:installed.heat,reliability:installed.reliability,fouling:gun.fouling||0,hipSpread:installed.hipSpread,noise:installed.noise,flashlight:installed.flashlight,aim:installed.aim,attachments:attachments(p,gun).map(item=>item.uid)};
       base.speed*=Math.max(.78,Math.min(1.02,1-(installed.mass-2)*.018));
       base.reload*=1+(60-base.weaponProfile.ergonomics)*.006;
       base.reload*=installed.reload;
@@ -150,5 +151,5 @@
   }
   function loot(random,guaranteeCarrier=false,floor=1){const tier=clamp(Math.ceil(floor/5),1,5);const pool=guaranteeCarrier?A.items.filter(item=>item.carrier&&item.maxClass<=Math.min(6,tier+2)):A.items.filter(item=>!item.carrier&&item.tier<=tier);const def=pool[Math.floor(random()*pool.length)];return {defId:def.id,quality:Math.floor(random()*tier),condition:55+Math.floor(random()*36)};}
   function receive(p,drops){for(const drop of drops||[]){if(!A.byId[drop.defId]||p.workshop.items.length>=1500)continue;const item=make(p.workshop,drop.defId,drop.quality);item.condition=clamp(finite(drop.condition,70),1,100);p.workshop.items.push(item);}}
-  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,attachedTo,attachments,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,attach,detach,repairQuote,repair,wear,wearItem,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive,packMedicine,selectAmmo,ammoQuote,pay};
+  window.Workshop={init,starter,tableCost,tableTiers,researchTree,tableQuote,upgradeTable,parts,intermediate,definition,equipped,attachedTo,attachments,canPay,build,settle,researchQuote,research,recipe,craftQuote,craft,equip,attach,detach,repairQuote,repair,wear,wearItem,age,mount,unmount,plateAbsorb,partKey,partAvailable,consumePart,stats,loot,receive,packMedicine,selectAmmo,ammoQuote,pay,clean};
 })();

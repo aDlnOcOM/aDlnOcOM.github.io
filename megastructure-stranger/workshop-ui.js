@@ -70,6 +70,7 @@
         el.insertBefore(art,el.firstChild);
         if(def.slot&&def.kind!=='module')el.appendChild(button('Надеть',()=>act('equip',entry.uid),isEquipped||entry.condition<=0));
         if(def.kind==='ranged'){
+          el.appendChild(button('Чистка · ткань ×1 · смола ×1 · загрязнение '+Math.round(entry.fouling||0)+'%',()=>act('clean',entry.uid),!p.workshop.table||!(entry.fouling>0)));
           if(window.Ammunition){
             const selector=document.createElement('select');selector.setAttribute('aria-label','Боеприпас для '+def.name);
             for(const [id,round] of Object.entries(window.Ammunition.variants)){const option=document.createElement('option');option.value=id;option.selected=id===(entry.roundVariant||'standard');option.textContent=round.name+' · за забег: '+(costs(round.costs)||'базовый запас');selector.appendChild(option);}
