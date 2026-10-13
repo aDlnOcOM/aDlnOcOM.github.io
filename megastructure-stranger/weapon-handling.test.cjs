@@ -32,3 +32,14 @@ test('heat stops shooting and recovers only below hysteresis threshold',()=>{
 test('dash prevents aiming and shooting without altering collision data',()=>{
   const H=load().WeaponHandling,p=player();p.dash={remaining:.2};p.radius=13;H.tick(p,{spread:.03},.05,{aim:true});assert.equal(p.handling.ads,0);assert.equal(H.canFire(p,{}),false);assert.equal(p.radius,13);
 });
+test('burst mode stops at three successful shots and requires trigger release',()=>{
+ const H=load().WeaponHandling,p=player(),stats={weaponProfile:{...H.profile({}),modes:['burst']}};
+ for(let i=0;i<3;i++){assert.ok(H.canFire(p,stats));H.fired(p,stats);}
+ assert.equal(H.canFire(p,stats),false);H.tick(p,stats,.02,{fire:false});assert.ok(H.canFire(p,stats));
+});
+test('worn fouled guns stop feeding; clearing takes time and does not erase heat',()=>{
+ const H=load().WeaponHandling,p=player(),stats={weaponProfile:{...H.profile({}),condition:10,fouling:100,reliability:.6}};
+ for(let i=0;i<12;i++)H.fired(p,stats);assert.equal(p.handling.jammed,true);assert.equal(H.canFire(p,stats),false);
+ assert.ok(H.clear(p,stats));H.tick(p,stats,.1,{});assert.equal(p.handling.jammed,true);
+ for(let i=0;i<50;i++)H.tick(p,stats,.1,{});assert.equal(p.handling.jammed,false);
+});

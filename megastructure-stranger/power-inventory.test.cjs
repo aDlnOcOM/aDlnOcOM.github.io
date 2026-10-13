@@ -21,6 +21,12 @@ function load(game = false) {
   return { power: scope.window.PowerInventory, ...scope.window.test };
 }
 const total = stock => stock.battery + stock.magazines.reduce((sum, item) => sum + item.energy, 0);
+test('speed reload is faster and removes the discarded magazine from usable stock',()=>{
+ const P=load().power,s=P.create(32);s.magazines[0].energy=8;
+ assert.ok(P.prepareReload(s,'speed'));assert.ok(s.reloadPlan.duration<1);P.reload(s);
+ assert.equal(s.magazines[0].discarded,true);assert.equal(s.magazines[0].energy,8);
+ assert.equal(P.selectMagazine(s,0),false);assert.equal(P.startRefill(s,0),false);
+});
 test('empty magazines take 10, 13.75 and 16.25 seconds with incremental conserved transfer', () => {
   const { power } = load();
   for (const capacity of [32, 44, 52]) {

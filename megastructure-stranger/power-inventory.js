@@ -26,6 +26,7 @@
   }
   function fire(stock) {
     const magazine = stock.magazines[stock.loaded];
+    if(!compatible(stock,magazine))return false;
     if (stock.ammoKey && magazine.ammoKey !== stock.ammoKey) return false;
     if ((magazine.type || 'energy') !== (stock.type || 'energy')) return false;
     if (magazine.energy < 1) return false;
@@ -34,7 +35,7 @@
   function startRefill(stock, id) {
     if (stock.refilling || stock.reloadTarget!==undefined) return false;
     const magazine = stock.magazines.find(item => item.id === id);
-    if (!magazine) return false;
+    if (!compatible(stock,magazine)) return false;
     if (stock.ammoKey && magazine.ammoKey !== stock.ammoKey) return false;
     if ((magazine.type || 'energy') !== (stock.type || 'energy')) return false;
     const amount = Math.min(magazine.capacity - magazine.energy, stock.battery);
@@ -47,6 +48,7 @@
     if (!job || !Number.isFinite(delta) || delta <= 0) return;
     job.elapsed = Math.min(job.duration, job.elapsed + delta);
     const magazine = stock.magazines.find(item => item.id === job.id);
+    if(!compatible(stock,magazine)){cancelRefill(stock);return;}
     const due = Math.min(job.amount, Math.floor(job.elapsed / job.duration * job.amount + 1e-8));
     const amount = Math.min(due - job.transferred, stock.battery, magazine.capacity - magazine.energy);
     magazine.energy += amount; stock.battery -= amount; job.transferred += amount;
