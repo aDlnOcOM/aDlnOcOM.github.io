@@ -1,0 +1,23 @@
+.gunsmith-dialog { width:min(1180px,96vw); max-height:92dvh; padding:24px; color:#c3d3d7; border:1px solid #527275; background:linear-gradient(120deg,#0b141a,#131c20); }
+.gunsmith-dialog::backdrop { background:#010608d9; backdrop-filter:blur(5px); }
+.gunsmith-layout { display:grid; grid-template-columns:310px 1fr; gap:22px; }
+.gunsmith-summary { align-self:start; padding:18px; background:#081115; border-left:2px solid #71d6d0; }
+.gunsmith-summary img { display:block; width:100%; height:135px; object-fit:contain; image-rendering:auto; }
+.gunsmith-stats { display:grid; grid-template-columns:1fr auto; gap:9px; font-variant-numeric:tabular-nums; }
+.gunsmith-stats dt { color:#8fa6ad; } .gunsmith-stats dd { margin:0; color:#b5dfd7; }
+.gunsmith-sockets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.gunsmith-socket { background:#0b1118; padding:15px; border:1px solid #2d454d; }
+.gunsmith-socket h3 { margin:0 0 10px; color:#a3d9d7; font-size:16px; }
+.gunsmith-socket p { font-size:13px; min-height:36px; }
+.gunsmith-socket select,.gunsmith-socket button { width:100%; margin-top:8px; }
+.gunsmith-socket select { color:#d0e0e1; background:#17242c; border:1px solid #49616a; padding:9px; }
+.gunsmith-socket small { display:block; margin-top:10px; color:#8fadb6; }
+.gunsmith-feedback { min-height:1.5em; color:#d8c589; }
+.discarded-magazine { opacity:.35; filter:grayscale(1); text-decoration:line-through; }
+.trauma-panel { display:flex; gap:10px; flex-wrap:wrap; background:#0b141b; padding:9px 12px; border-top:1px solid #354a52; }
+.trauma-panel span { color:#abc3cc; font:11px monospace; }
+.trauma-panel [data-critical="true"] { color:#ff9c8c; }
+.medical-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.medical-actions button { font-size:12px; padding:7px 9px; }
+@media(max-width:760px){.gunsmith-layout{grid-template-columns:1fr}.gunsmith-sockets{grid-template-columns:1fr}.gunsmith-dialog{padding:14px}.gunsmith-summary img{height:90px}}
+@media(prefers-reduced-motion:reduce){.gunsmith-dialog *{scroll-behavior:auto;transition:none}}
