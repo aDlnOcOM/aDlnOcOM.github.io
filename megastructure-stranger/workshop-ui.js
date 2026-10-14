@@ -70,6 +70,7 @@
         el.insertBefore(art,el.firstChild);
         if(def.slot&&def.kind!=='module')el.appendChild(button('Надеть',()=>act('equip',entry.uid),isEquipped||entry.condition<=0));
         if(def.kind==='ranged'){
+          if(window.GunsmithUI)el.appendChild(button('Открыть оружейный верстак',()=>window.GunsmithUI.show(api,entry.uid,render)));
           el.appendChild(button('Чистка · ткань ×1 · смола ×1 · загрязнение '+Math.round(entry.fouling||0)+'%',()=>act('clean',entry.uid),!p.workshop.table||!(entry.fouling>0)));
           if(window.Ammunition){
             const selector=document.createElement('select');selector.setAttribute('aria-label','Боеприпас для '+def.name);
