@@ -1503,7 +1503,7 @@
     window.WeaponHandling?.fired(player, stats, cartridge.heat);
     for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
     const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
-    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * cartridge.velocity, vy: Math.sin(shotAngle) * cartridge.velocity, radius: 3, damage: cartridge.damage, penetration:cartridge.penetration, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / cartridge.velocity });
+    state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * cartridge.velocity, vy: Math.sin(shotAngle) * cartridge.velocity, radius: 3, damage: cartridge.damage, penetration:cartridge.penetration, range:stats.projectileRange||1000, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / cartridge.velocity });
     }
     window.Workshop?.wear(progression, "smg", .07);
     player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
@@ -1658,6 +1658,31 @@
 
   function updateBullets(delta) {
     const map = state.floorMap;
+    if(window.ProjectilePhysics){
+      const P=window.ProjectilePhysics,walls=getWorldColliders();
+      state.bullets=state.bullets.filter(bullet=>{
+        const dt=Math.min(delta,Math.max(0,bullet.lifetime));
+        const end={x:bullet.x+bullet.vx*dt,y:bullet.y+bullet.vy*dt};
+        const hit=P.trace(bullet,end,walls,bullet.owner==="player"?state.enemies:[state.player]);
+        const stop=hit||end,travel=Math.hypot(stop.x-bullet.x,stop.y-bullet.y);
+        bullet.travelled=(bullet.travelled||0)+travel;
+        if(bullet.owner!=="player"&&!bullet.suppressed&&state.player.body&&P.distanceToSegment(bullet,stop,state.player)<state.player.radius+38&&hasLineOfSight(stop.x,stop.y,state.player.x,state.player.y)){
+          state.player.body.status.suppression=Math.min(1,state.player.body.status.suppression+.18);
+          bullet.suppressed=true;
+        }
+        bullet.x=stop.x;bullet.y=stop.y;bullet.lifetime-=dt;
+        if(hit){
+          if(hit.kind==="target"){
+            const scale=P.falloff(bullet.travelled,bullet.range||1000);
+            if(bullet.owner==="player")damageEnemy(hit.target,bullet.damage*scale,bullet.damageType,(bullet.penetration||0)*scale,bullet);
+            else damagePlayer(bullet.damage*scale,bullet.damageType,(bullet.penetration||0)*scale,bullet);
+          } else createImpact(bullet.x,bullet.y,bullet.damageType);
+          return false;
+        }
+        return bullet.lifetime>0&&bullet.x>=0&&bullet.x<=map.width&&bullet.y>=0&&bullet.y<=HEIGHT;
+      });
+      return;
+    }
     state.bullets = state.bullets.filter(bullet => {
       bullet.x += bullet.vx * delta;
       bullet.y += bullet.vy * delta;
