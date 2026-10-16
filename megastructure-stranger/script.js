@@ -328,7 +328,7 @@
       window.PowerInventory.startRefill(state.powerInventory, id);
       state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
       updateRunUi();
-    }, () => { state.inventoryOpen = false; state.active = state.runActive; }, { ...state.runResources, salvage: state.runSalvage });
+    }, () => { state.inventoryOpen = false; state.active = state.runActive; }, { ...state.runResources, salvage: state.runSalvage }, {player:state.player,supplies:state.medicine,treat:id=>!state.powerInventory.refilling&&window.FieldMedicine?.start(state.player,state.medicine,id)});
   }
 
   function renderImplants() {
@@ -1213,6 +1213,7 @@
     element("armor-label").textContent = String(Math.ceil(player.armor)).padStart(2, "0");
     element("armor-bar").style.width = (player.armor / player.maxArmor) * 100 + "%";
 
+    window.CombatHUD?.update(player,progression,state.powerInventory);
     if (window.Wayfinding) {
       element("navigation-goal").textContent = window.Wayfinding.objective(map, player).label;
       element("navigation-bearing").textContent = window.Wayfinding.bearing(playerAimAngle());

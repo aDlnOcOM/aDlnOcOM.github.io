@@ -166,12 +166,13 @@
       details.append(progress, cancel);
     }
   }
-  function show(stock, items, onRefill, onClose, resources) {
+  function show(stock, items, onRefill, onClose, resources, medical) {
     const dialog = document.createElement('dialog'); dialog.className = 'field-inventory';
     dialog.setAttribute('aria-label', 'Экипировка и запасы энергии');
     const opener = document.activeElement;
     dialog.innerHTML = '<header><div><p class="eyebrow">ПОЛЕВОЙ КОМПЛЕКТ / ПАУЗА</p><h2>Экипировка и инвентарь</h2></div><button class="quiet-button" data-close>Закрыть ×</button></header><div class="inventory-layout"><section><h3>Экипировка</h3><div class="field-slots"></div></section><section><h3>Запасы энергии</h3><div class="supply-grid"></div><p class="section-note">R — обычная смена с сохранением магазина; Shift+R — быстрая смена, старый магазин остаётся в зоне. 1 выстрел = 1 ед. энергии.</p></section></div>';
     const slots = dialog.querySelector('.field-slots');
+    if(medical)window.CombatHUD?.medicalPanel(dialog,medical.player,medical.supplies,id=>{if(medical.treat(id))dialog.close();});
     if(resources&&window.Resources){
       const section=document.createElement('section');section.className='field-resources';
       const title=document.createElement('h3');title.textContent='Материалы этого забега';section.appendChild(title);

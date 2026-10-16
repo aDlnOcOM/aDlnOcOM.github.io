@@ -180,12 +180,14 @@
             <strong id="ammo-label">32 <small>/ 32</small></strong>
             <em id="weapon-hint">ЛКМ — огонь · R — перезарядка · 1/2 — смена</em>
             <small id="weapon-telemetry"></small>
+            <small id="cartridge-label"></small>
           </div>
           <div class="combat-readout">
             <span>ЛОМ <b id="run-salvage">000</b></span>
             <span>УГРОЗА <b id="threat-label">НИЗКАЯ</b></span>
           </div>
         </div>
+        <div class="trauma-panel" aria-label="Состояние тела"><span id="body-head"></span><span id="body-thorax"></span><span id="body-abdomen"></span><span id="body-arms"></span><span id="body-legs"></span><span id="body-status" role="status"></span></div>
         <div class="canvas-frame">
           <canvas id="game-canvas" width="960" height="600" aria-label="Поле боя. Передвижение WASD, прицеливание мышью, огонь левой кнопкой."></canvas>
           <div id="room-overlay" class="room-overlay" aria-live="polite"></div>
@@ -222,6 +224,7 @@
   <script src="enemy-armor.js"></script>
   <script src="workshop-ui.js"></script>
   <script src="gunsmith-ui.js"></script>
+  <script src="combat-hud.js"></script>
   <script src="loot-containers.js"></script>
   <script src="player-dash.js"></script>
   <script src="script.js"></script>
