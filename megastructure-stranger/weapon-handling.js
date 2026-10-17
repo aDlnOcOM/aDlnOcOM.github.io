@@ -10,7 +10,7 @@
   function tick(player,stats,delta,input={}){
     const p=profile(stats),h=init(player,stats),dt=clamp(Number.isFinite(delta)?delta:0,0,.1);
     h.visual=p;
-    if(h.clearing>0){h.clearing=Math.max(0,h.clearing-dt);if(!h.clearing){h.jammed=false;h.feedStress=0;h.trigger=true;}}
+    if(h.clearing>0){if(player.dash?.remaining>0)h.clearing=0;else{h.clearing=Math.max(0,h.clearing-dt);if(!h.clearing){h.jammed=false;h.feedStress=0;h.trigger=true;}}}
     if(!p.modes.includes(h.mode)){h.mode=p.modes[0];h.burstCount=0;h.trigger=true;}
     h.aiming=Boolean(input.aim&&player.weapon!=='knife'&&!player.reload&&!input.refilling&&!player.treatment&&!(player.dash?.remaining>0));
     const adsTime=.16+(100-p.ergonomics)*.006+(p.aim||0);

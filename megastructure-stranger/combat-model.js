@@ -110,7 +110,10 @@
     const part = target.parts[zone] || target.parts.thorax;
     const overflow = Math.max(0, wound - part.health);
     part.health = Math.max(0, part.health - wound);
-    if (zone !== 'thorax' && (!zoneData.critical || target.robotic)) target.parts.thorax.health = Math.max(0, target.parts.thorax.health - overflow * .7);
+    if(target.robotic){
+      let remaining=overflow;
+      for(const id of order){if(id===zone||remaining<=0)continue;const part=target.parts[id],taken=Math.min(part.health,remaining);part.health-=taken;remaining-=taken;}
+    } else if (zone !== 'thorax' && !zoneData.critical) target.parts.thorax.health = Math.max(0, target.parts.thorax.health - overflow * .7);
     target.lastZone = zone;
     applyStatus(target, zone, raw, layered.remaining, type);
     target.health = Math.min(target.max, sumHealth(target));

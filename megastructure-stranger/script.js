@@ -324,7 +324,7 @@
     state.input.keys.clear();
     state.input.mouseDown = false;
     window.PowerInventory.show(state.powerInventory, currentLoadout(), id => {
-      if (state.player.reload > 0) return;
+      if (state.player.reload > 0 || state.player.treatment || state.player.handling?.clearing) return;
       window.PowerInventory.startRefill(state.powerInventory, id);
       state.player.ammo = state.powerInventory.magazines[state.powerInventory.loaded].energy;
       updateRunUi();
@@ -1539,7 +1539,7 @@
     const player = state.player;
     if (!state.active || !player || player.knifeCooldown > 0) return;
     const stats = playerStats();
-    if (stats.knifeDamage <= 0) return;
+    if (stats.knifeDamage <= 0 || player.treatment || player.handling?.clearing) return;
     player.knifeCooldown = stats.knifeDelay;
     window.Workshop?.wear(progression, "knife", .2);
     player.knifeFlash = window.Workshop ? .25 : .16;
@@ -1741,6 +1741,7 @@
     const player = state.player;
     if (!player || player.invulnerability > 0 || player.deathHandled) return;
     window.FieldMedicine?.cancel(player);
+    if(player.handling)player.handling.clearing=0;
     const zone = window.CombatModel?.chooseZone(impact, player) || 'thorax';
     if (window.CombatModel) {
       player.body ||= window.CombatModel.createBody(player.maxHealth);
@@ -1756,10 +1757,7 @@
     player.invulnerability = playerStats().invulnerability;
     createImpact(player.x, player.y, damageType);
     if (player.health > 0) return;
-    state.active = false;
-    const recoveryRate = playerStats().deathRetention;
-    const recovered = Math.floor(state.runSalvage * recoveryRate);
-    showOverlay("<div class=\"overlay-card\"><p class=\"eyebrow\">контур контроля обнаружил след</p><h2>Смена окончена.</h2><p>Автономный маршрут выбросил тебя к убежищу. Удалось сохранить " + recovered + " ед. лома.</p><div class=\"overlay-actions\"><button class=\"primary-button\" type=\"button\" data-action=\"return\" data-multiplier=\"" + recoveryRate + "\">В убежище <span>↖</span></button><button class=\"quiet-button\" type=\"button\" data-action=\"retry\">Новый забег</button></div></div>");
+    finishPlayerDeath();
   }
 
   function startBossAirlock() {
