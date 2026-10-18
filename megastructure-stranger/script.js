@@ -1109,12 +1109,17 @@
     if (window.AssetBoot && !window.AssetBoot.ready) return;
     const ammoOffer=window.Workshop?.ammoQuote(progression);
     if(ammoOffer?.reason){element("campaign-status").textContent=ammoOffer.reason;return;}
-    if(ammoOffer)window.Workshop.pay(progression,ammoOffer.cost);
-    if (state.runActive && window.Workshop) window.Workshop.age(progression);
+    const candidate=JSON.parse(JSON.stringify(progression));
+    const medicine=window.FieldMedicine?.stock()||{};
+    if(ammoOffer)window.Workshop.pay(candidate,ammoOffer.cost);
+    if(state.runActive)window.Workshop?.age(candidate);
+    window.Workshop?.packMedicine(candidate,medicine);
+    try { localStorage.setItem(SAVE_KEY,JSON.stringify(candidate)); }
+    catch { element("campaign-status").textContent="Не удалось сохранить подготовку: ресурсы не списаны.";return; }
+    progression=candidate;
     state.runItems = [];
     state.player = null;
-    state.medicine = window.FieldMedicine?.stock() || {};
-    window.Workshop?.packMedicine(progression,state.medicine);
+    state.medicine = medicine;
     state.floor = window.Campaign ? window.Campaign.start(progression) : 1;
     state.powerInventory = createPowerStock();
     state.runSectorCount = randomInteger(10, 12);

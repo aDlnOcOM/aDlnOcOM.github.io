@@ -39,6 +39,13 @@
     }else{
       const ids=new Set();saved.items=(Array.isArray(saved.items)?saved.items:[]).filter(item=>item&&typeof item.uid==='string'&&!ids.has(item.uid)&&(A.byId[item.defId]||parts[item.defId])&&ids.add(item.uid)).slice(0,1500);
       for(const item of saved.items){item.quality=clamp(Math.floor(finite(item.quality,2)),0,4);item.ceiling=clamp(finite(item.ceiling,100),40,100);item.condition=clamp(finite(item.condition,100),0,item.ceiling);item.age=Math.max(0,finite(item.age));item.upgrades=item.upgrades&&typeof item.upgrades==='object'?item.upgrades:{};item.plates=Array.isArray(item.plates)?item.plates.filter(id=>ids.has(id)):[];item.attachments=item.attachments&&typeof item.attachments==='object'?item.attachments:{};}
+      const mountedPlates=new Set();
+      for(const item of saved.items){
+        item.fouling=clamp(finite(item.fouling),0,100);
+        if(!['standard','penetrator','impact','quiet'].includes(item.roundVariant))item.roundVariant='standard';
+        const carrier=A.byId[item.defId];
+        item.plates=carrier?.carrier?item.plates.filter(uid=>{const plate=saved.items.find(i=>i.uid===uid),def=A.byId[plate?.defId];if(mountedPlates.has(uid)||def?.kind!=='plate'||def.protection>carrier.maxClass)return false;mountedPlates.add(uid);return true;}).slice(0,carrier.plateSlots):[];
+      }
       const attached=new Set();
       for(const weapon of saved.items){const gun=A.byId[weapon.defId];if(gun?.kind!=='ranged'){weapon.attachments={};continue;}const clean={};for(const [slot,uid] of Object.entries(weapon.attachments)){const part=saved.items.find(item=>item.uid===uid),def=A.byId[part?.defId];if(!attached.has(uid)&&def?.attachmentSlot===slot&&A.canAttach(gun,def)){clean[slot]=uid;attached.add(uid);}}weapon.attachments=clean;}
       saved.next=Math.max(1,finite(saved.next,1),...saved.items.map(item=>(Number(item.uid.slice(1))||0)+1));saved.table=clamp(Math.floor(finite(saved.table,saved.table===true?1:0)),0,5);saved.equipped=saved.equipped&&typeof saved.equipped==='object'?saved.equipped:{};
@@ -124,7 +131,7 @@
     return {cost:def.costs,reason:p.workshop.table<def.tier?'Нужен стол уровня '+def.tier:missing.length?'Не исследованы материалы выбранного боезапаса':!canPay(p,def.costs)?'Не хватает материалов для боезапаса: выберите штатный':''};
   }
   function packMedicine(p,stock){
-    const packed=p.workshop.items.filter(item=>definition(item)?.kind==='medical'&&item.condition>0);
+    const counts={};const packed=p.workshop.items.filter(item=>{const def=definition(item);if(def?.kind!=='medical'||item.condition<=0||(counts[def.medicine]||0)>=2)return false;counts[def.medicine]=(counts[def.medicine]||0)+1;return true;});
     for(const item of packed){const id=definition(item).medicine;stock[id]=(stock[id]||0)+1;}
     p.workshop.items=p.workshop.items.filter(item=>!packed.includes(item));return stock;
   }
