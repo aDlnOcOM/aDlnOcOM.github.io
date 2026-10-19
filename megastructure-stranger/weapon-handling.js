@@ -19,11 +19,11 @@
     h.heat=Math.max(0,h.heat-dt*.18);
     if(h.overheated&&h.heat<.4)h.overheated=false;
     h.moving=clamp(input.moving||0,0,1);
-    h.spread=Math.max(.002,(stats.spread||.035)*(1-h.ads*.65)*(1+h.moving*.9)+h.recoil*.085+(100-clamp(p.condition,0,100))*.0003);
+    h.spread=Math.max(.002,(stats.spread||.035)*(1-h.ads*.65)*(1+h.moving*.9)+h.recoil*.085+(100-clamp(p.condition,0,100))*.0003+(p.hipSpread||0)*(1-h.ads));
     if(!input.fire){h.trigger=false;h.burstCount=0;}
     return h;
   }
-  function canFire(player,stats){const h=init(player,stats);return !h.jammed&&!h.clearing&&!h.overheated&&!player.treatment&&!(player.dash?.remaining>0)&&(h.mode!=='semi'||!h.trigger)&&(h.mode!=='burst'||h.burstCount<3);}
+  function canFire(player,stats){const h=init(player,stats);return !profile(stats).brokenPart&&!h.jammed&&!h.clearing&&!h.overheated&&!player.treatment&&!(player.dash?.remaining>0)&&(h.mode!=='semi'||!h.trigger)&&(h.mode!=='burst'||h.burstCount<3);}
   function fired(player,stats,heat=1){
     const p=profile(stats),h=init(player,stats);h.trigger=true;if(h.mode==='burst')h.burstCount++;
     h.recoil=clamp(h.recoil+p.recoil*(1-h.ads*.35),0,1.5);
@@ -39,6 +39,6 @@
   }
   function clear(player,stats){const h=init(player,stats);if(!h.jammed||h.clearing||player.reload||player.treatment||player.dash?.remaining>0)return false;h.clearing=1.8+(100-profile(stats).ergonomics)*.012;h.ads=0;return true;}
   function speed(player){return 1-(player.handling?.ads||0)*.38;}
-  function label(player){const h=player.handling;return !h?'':h.clearing?'УСТРАНЕНИЕ · '+h.clearing.toFixed(1)+' с':h.jammed?'ЗАДЕРЖКА ПОДАЧИ · J':h.overheated?'ПЕРЕГРЕВ · ОХЛАЖДЕНИЕ':(h.mode==='semi'?'ОДИНОЧНЫЙ':h.mode==='burst'?'ОТСЕЧКА 3':'АВТО')+' · '+(h.ads>.7?'ПРИЦЕЛ':'ОТ БЕДРА');}
+  function label(player){const h=player.handling;return !h?'':h.visual?.brokenPart?'ДЕТАЛЬ СЛОМАНА · НУЖЕН РЕМОНТ':h.clearing?'УСТРАНЕНИЕ · '+h.clearing.toFixed(1)+' с':h.jammed?'ЗАДЕРЖКА ПОДАЧИ · J':h.overheated?'ПЕРЕГРЕВ · ОХЛАЖДЕНИЕ':(h.mode==='semi'?'ОДИНОЧНЫЙ':h.mode==='burst'?'ОТСЕЧКА 3':'АВТО')+' · '+(h.ads>.7?'ПРИЦЕЛ':'ОТ БЕДРА');}
   window.WeaponHandling={profile,init,tick,canFire,fired,cycle,clear,speed,label};
 })();

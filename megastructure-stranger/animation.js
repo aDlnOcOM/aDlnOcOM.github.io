@@ -100,7 +100,7 @@
       window.GameAssets?.sprite(ctx,'weapons/melee-'+meleeId,7,-4,30,25);
     } else {
       window.GameAssets?.sprite(ctx,'weapons/'+family,0,0,32,22);
-      if(visual?.build==='Длинноствольный'){ctx.fillStyle='#96a79c';ctx.fillRect(11,-1.5,10,3);}
+      if(visual?.longBarrel||visual?.build==='Длинноствольный'){ctx.fillStyle='#96a79c';ctx.fillRect(11,-1.5,10,3);}
       if(visual?.build==='Усиленный'){ctx.fillStyle='#718576';ctx.fillRect(-10,-5,15,3);}
       if(visual?.optic){ctx.strokeStyle='#b8cba9';ctx.lineWidth=1;ctx.strokeRect(-3,-6,7,5);ctx.fillStyle='#89bbb0';ctx.fillRect(0,-5,2,3);}
       if(visual?.muzzle==='suppressor'){ctx.fillStyle='#586762';ctx.fillRect(12,-3,11,6);}

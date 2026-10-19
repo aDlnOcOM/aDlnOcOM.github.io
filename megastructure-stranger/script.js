@@ -305,7 +305,7 @@
     const owned=window.Workshop?.equipped(progression,"smg");
     const hasConverter=window.Workshop?.attachments(progression,owned).some(i=>window.Workshop.definition(i)?.attachmentSlot==='converter');
     const actualType = hasConverter ? profile.ammoType : choice ? type : gun?.type || type;
-    const stock = window.PowerInventory.create(stats.magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType, { reloadFactor: profile.reload || 1, reliability: profile.reliability || 1, mass: .12 + stats.magazine / 160 });
+    const stock = window.PowerInventory.create(stats.magazine, hasUpgrade("smg", "magazine", "quick-feed"), actualType, { mass: .12 + stats.magazine / 160 });
     stock.cartridge=window.Ammunition?.get(actualType,owned?.roundVariant);
     if (gun) {
       stock.supply = window.Arsenal.ammoInfo(gun, actualType);
@@ -1506,7 +1506,8 @@
     const handlingSpread = player.handling?.spread ?? stats.spread;
     const aimSpread = (stats.pellets || 1) > 1 ? handlingSpread * .18 : handlingSpread;
     const aim = playerAimAngle() + randomBetween(-aimSpread, aimSpread);
-    window.WeaponHandling?.fired(player, stats, cartridge.heat);
+    const feedReliability=state.powerInventory.magazines[state.powerInventory.loaded].reliability||1;
+    window.WeaponHandling?.fired(player, {...stats,weaponProfile:{...(stats.weaponProfile||window.WeaponHandling?.profile(stats)),reliability:(stats.weaponProfile?.reliability||1)*feedReliability}}, cartridge.heat);
     for (let pellet = 0; pellet < (stats.pellets || 1); pellet++) {
     const shotAngle = aim + (pellet ? randomBetween(-stats.spread, stats.spread) : 0);
     state.bullets.push({ owner: "player", x: player.x + Math.cos(aim) * 18, y: player.y + Math.sin(aim) * 18, vx: Math.cos(shotAngle) * cartridge.velocity, vy: Math.sin(shotAngle) * cartridge.velocity, radius: 3, damage: cartridge.damage, penetration:cartridge.penetration, range:stats.projectileRange||1000, damageType, color: window.DamageTypes.get(damageType).color, lifetime: (stats.projectileRange || stats.bulletSpeed * 1.4) / cartridge.velocity });
@@ -1751,6 +1752,8 @@
     if (window.CombatModel) {
       player.body ||= window.CombatModel.createBody(player.maxHealth);
       const layers = window.ArmorSystem?.layers(progression,zone,impact,{...player,angle:playerAimAngle()}) || [{id:'soft-shell',material:'soft',protection:player.armor*.7,integrity:100*player.armor/Math.max(1,player.maxArmor),damage:wear=>{player.armor=Math.max(0,player.armor-wear*.25);}}];
+      const innate=window.EquipmentWorkbench.applyBonuses(basePlayerStats(),progression.equipment,EQUIPMENT_TREES).armor-4;
+      if(innate>0)layers.push({id:'implant-lining',material:'composite',protection:innate,integrity:100});
       const report = window.CombatModel.receive(player.body, { ...impact, zone, amount, type: damageType, penetration, target: player }, layers);
       player.lastHit=report;
       player.health = report.critical ? 0 : report.health;

@@ -143,15 +143,23 @@
     const factor=item=>item&&item.condition>0?[.8,.9,1,1.12,1.25][item.quality]*(.65+.35*item.condition/100):0;
     if(gd?.ergonomics){
       const mods=p.equipment?.smg||{},stock=mods.stock?.choice,muzzle=mods.muzzle?.choice;
-      const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;
+      const components=attachments(p,gun);
+      const installed=A.modificationProfile?A.modificationProfile(gd,components.map(item=>({...definition(item),condition:item.condition}))):gd;
       base.weaponProfile={build:gd.build,optic:mods.optic?.choice,muzzle,stock,ergonomics:Math.min(99,installed.ergonomics+(stock==='servo-stock'?10:0)),mass:installed.mass,
         recoil:installed.recoil*(muzzle==='compensator'?.75:1)*(stock==='frame-stock'?.8:1),modes:[...installed.modes],condition:gun.condition,
         penetration:Math.min(.95,installed.penetration+(mods.ammo?.choice==='armor-piercing'?.25:0)),ammoType:installed.ammoType,heat:installed.heat,reliability:installed.reliability,fouling:gun.fouling||0,hipSpread:installed.hipSpread,noise:installed.noise,flashlight:installed.flashlight,aim:installed.aim,attachments:attachments(p,gun).map(item=>item.uid)};
+      const mounted=slot=>components.find(i=>definition(i).attachmentSlot===slot&&i.condition>0);
+      base.weaponProfile.optic=mounted('optic')?.defId||base.weaponProfile.optic;
+      const physicalMuzzle=mounted('muzzle');
+      if(physicalMuzzle)base.weaponProfile.muzzle=definition(physicalMuzzle).effects.noise?'suppressor':'compensator';
+      base.weaponProfile.longBarrel=Boolean(mounted('barrel')&&definition(mounted('barrel')).effects.velocity>0);
+      base.weaponProfile.brokenPart=components.some(i=>i.condition<=0&&['barrel','trigger','converter','magazine'].includes(definition(i).attachmentSlot));
+      base.flashlightRange=(base.flashlightRange||336)+(installed.flashlight||0);
       base.speed*=Math.max(.78,Math.min(1.02,1-(installed.mass-2)*.018));
       base.reload*=1+(60-base.weaponProfile.ergonomics)*.006;
       base.reload*=installed.reload;
     }
-    if(gd){const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;base.damage=(installed.damage+base.damage-9)*factor(gun);base.magazine=Math.max(1,installed.magazine+base.magazine-32);base.fireDelay=installed.delay;base.bulletSpeed=installed.velocity*base.bulletSpeed/680;base.spread=Math.max(.003,installed.spread+base.spread-.055+(installed.hipSpread||0));base.pellets=gd.pellets;base.projectileRange=gd.range;base.reload*=.75+installed.magazine/128;}
+    if(gd){const installed=A.modificationProfile?A.modificationProfile(gd,attachments(p,gun).map(item=>({...definition(item),condition:item.condition}))):gd;base.damage=(installed.damage+base.damage-9)*factor(gun);base.magazine=Math.max(1,installed.magazine+base.magazine-32);base.fireDelay=installed.delay;base.bulletSpeed=installed.velocity*base.bulletSpeed/680;base.spread=Math.max(.003,installed.spread+base.spread-.055);base.pellets=gd.pellets;base.projectileRange=gd.range;base.reload*=.75+installed.magazine/128;}
     if(kd){base.knifeDamage=(kd.damage+base.knifeDamage-34)*factor(knife);base.knifeDelay=Math.max(.15,kd.delay+base.knifeDelay-.42);base.meleeRange=kd.range;base.meleeArc=kd.arc;}
     let armor=0;for(const slot of ['chest','helmet','pants','boots']){const item=equipped(p,slot);armor+=(definition(item)?.armor||0)*factor(item);}
     base.armor=Math.max(0,base.armor-4+armor);const bag=equipped(p,'bag'),bd=definition(bag);if(bd){base.deathRetention=Math.min(.95,base.deathRetention+(bd.retention-.4)*factor(bag));base.salvageMultiplier+=(bd.capacity-4)*.01*factor(bag);}return base;
