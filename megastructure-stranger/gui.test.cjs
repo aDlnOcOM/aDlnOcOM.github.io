@@ -46,7 +46,7 @@ test('research filters combine actual availability with the resource name',()=>{
 });
 test('GUI is loaded after legacy styles and initialized without bypassing asset preparation',()=>{
   const html=read('index.html'),styles=[...html.matchAll(/<link[^>]+href="([^"]+\.css)"/g)].map(m=>m[1]);
-  assert.equal(styles.at(-1),'gui.css');assert.ok(html.indexOf('src="gui.js"')>html.indexOf('src="script.js"'));
+  assert.equal(styles.at(-2),'gui.css');assert.equal(styles.at(-1),'combat-ui.css');assert.ok(html.indexOf('src="gui.js"')>html.indexOf('src="script.js"'));
   assert.ok(html.indexOf('src="gui.js"')<html.indexOf('src="asset-loading.js"'));
   assert.match(html,/<main[^>]+inert/);assert.doesNotMatch(read('gui.js'),/AssetBoot|\.ready\s*=|\.inert\s*=/);
   for(const control of ['storage-search','storage-owned','storage-empty','storage-result-count'])assert.match(html,new RegExp('id="'+control+'"'));

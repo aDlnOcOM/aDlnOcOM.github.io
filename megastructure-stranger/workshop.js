@@ -44,7 +44,7 @@
         item.fouling=clamp(finite(item.fouling),0,100);
         if(!['standard','penetrator','impact','quiet'].includes(item.roundVariant))item.roundVariant='standard';
         const carrier=A.byId[item.defId];
-        item.plates=carrier?.carrier?item.plates.filter(uid=>{const plate=saved.items.find(i=>i.uid===uid),def=A.byId[plate?.defId];if(mountedPlates.has(uid)||def?.kind!=='plate'||def.protection>carrier.maxClass)return false;mountedPlates.add(uid);return true;}).slice(0,carrier.plateSlots):[];
+        item.plates=carrier?.carrier?item.plates.filter(uid=>{const plate=saved.items.find(i=>i.uid===uid),def=A.byId[plate?.defId];if(mountedPlates.has(uid)||def?.kind!=='plate'||def.protection>carrier.maxClass||item.plates.indexOf(uid)>=carrier.plateSlots)return false;mountedPlates.add(uid);return true;}).slice(0,carrier.plateSlots):[];
       }
       const attached=new Set();
       for(const weapon of saved.items){const gun=A.byId[weapon.defId];if(gun?.kind!=='ranged'){weapon.attachments={};continue;}const clean={};for(const [slot,uid] of Object.entries(weapon.attachments)){const part=saved.items.find(item=>item.uid===uid),def=A.byId[part?.defId];if(!attached.has(uid)&&def?.attachmentSlot===slot&&A.canAttach(gun,def)){clean[slot]=uid;attached.add(uid);}}weapon.attachments=clean;}

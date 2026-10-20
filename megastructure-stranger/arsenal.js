@@ -86,6 +86,10 @@
     ['surgery','Реконструктор ткани',{regen:4,pcbReady:1},4]
   ])items.push({id:'medical-'+id,name,kind:'medical',medicine:id,tier,station:'table',costs});
   const byId=Object.fromEntries(items.map(item=>[item.id,item]));
+  for(const def of items.filter(item=>item.kind==='armor')){
+    def.armorMaterial=def.carrier||def.tier===1?'soft':def.tier>=4?'composite':def.slot==='helmet'?'steel':'soft';
+    def.mass=Number(((def.slot==='chest'?1.2:def.slot==='helmet'?.6:.4)+def.armor*.15).toFixed(2));
+  }
   for(const def of items.filter(item=>item.kind==='ranged')){
     const index=Number(def.id.split('-').at(-1)),[ergo,mass,recoil,modes,penetration]=handling[def.family],build=builds[index%5];
     Object.assign(def,{build:build[0],ergonomics:Math.max(10,Math.min(95,ergo+build[1])),mass:Number((mass*build[2]).toFixed(2)),recoil:recoil*build[3],modes:[...modes],penetration});
@@ -95,8 +99,9 @@
   function canAttach(gun,attachment){return Boolean(gun&&attachment&&attachment.kind==='attachment'&&slotsFor(gun).includes(attachment.attachmentSlot)&&attachment.families.includes(gun.family));}
   function modificationProfile(def,attachments=[]){
     const out={ergonomics:def.ergonomics,mass:def.mass,recoil:def.recoil,delay:def.delay,velocity:def.velocity,spread:def.spread,magazine:def.magazine,damage:def.damage,penetration:def.penetration,reload:1,heat:1,reliability:1,hipSpread:0,noise:1,flashlight:0,aim:0,modes:[...def.modes],ammoType:def.type};
-    for(const entry of attachments){const part=entry?.effects?entry:entry?.def||entry;const effect=part?.effects||{};const condition=Math.max(.35,Math.min(1,(entry?.condition??100)/100));
+    for(const entry of attachments){const part=entry?.effects?entry:entry?.def||entry;const effect=part?.effects||{};const condition=Math.max(0,Math.min(1,(entry?.condition??100)/100));
       for(const [key,value] of Object.entries(effect)){
+        if(condition===0&&!['mass','magazine','ammoType'].includes(key))continue;
         if(key==='modes'){for(const mode of value)if(!out.modes.includes(mode))out.modes.push(mode);continue;}
         if(key==='ammoType'){out.ammoType=value;continue;}
         if(key==='delay'||key==='velocity'||key==='recoil'||key==='reload'||key==='heat'||key==='noise')out[key]*=1+value*condition;
