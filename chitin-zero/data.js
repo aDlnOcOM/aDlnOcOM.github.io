@@ -39,7 +39,8 @@
     brute: { name: 'Панцирник', hp: 140, speed: 57, radius: 24, damage: 18, xp: 9, color: '#b28cce' },
     spitter: { name: 'Кислотник', hp: 55, speed: 74, radius: 16, damage: 11, xp: 6, color: '#99dc70' },
     charger: { name: 'Таран', hp: 85, speed: 95, radius: 19, damage: 16, xp: 7, color: '#f87963' },
-    queen: { name: 'МАТКА РАЗЛОМА', hp: 2200, speed: 53, radius: 57, damage: 28, xp: 180, color: '#ff5977', boss: true }
+    queen: { name: 'МАТКА РАЗЛОМА', hp: 2200, speed: 53, radius: 57, damage: 28, xp: 180, color: '#ff5977', boss: true },
+    nest: { name: 'Гнездо', hp: 360, speed: 0, radius: 35, damage: 12, xp: 35, color: '#cfa26f' }
   };
   const biomes = [
     { name: 'ПЕПЕЛЬНЫЕ РАВНИНЫ', ground: '#161e24', line: '#29343a', accent: '#79665c' },
