@@ -138,7 +138,7 @@
     activateCore() {
       const p = this.player;
       if (this.status !== 'playing' || p.charge < 100 || p.coreTime > 0) return false;
-      p.charge = 0; p.coreTime = D.cores[p.core].duration;
+      p.charge = 0; p.coreTime = D.cores[p.core].duration + ((p.coreLevel || 1) - 1) * 2;
       if (p.core === 'aegis') p.shield = p.maxShield;
       this.effect('ring', p.x, p.y, D.cores[p.core].color, 220, .7); this.shake = 6;
       this.message(`Ядро «${D.cores[p.core].name}» активно.`); return true;
