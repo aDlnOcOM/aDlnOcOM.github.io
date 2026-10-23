@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 860" fill="none">
+ <defs>
+  <linearGradient id="steel" x1="250" y1="160" x2="560" y2="650" gradientUnits="userSpaceOnUse"><stop stop-color="#71848b"/><stop offset=".45" stop-color="#344750"/><stop offset="1" stop-color="#15232e"/></linearGradient>
+  <linearGradient id="face" x1="300" y1="100" x2="540" y2="500" gradientUnits="userSpaceOnUse"><stop stop-color="#acb9af"/><stop offset="1" stop-color="#465a60"/></linearGradient>
+  <linearGradient id="gold" x1="100" y1="200" x2="240" y2="480" gradientUnits="userSpaceOnUse"><stop stop-color="#f4dc58"/><stop offset="1" stop-color="#a77a37"/></linearGradient>
+  <radialGradient id="halo"><stop stop-color="#68e1d8" stop-opacity=".2"/><stop offset="1" stop-color="#18323c" stop-opacity="0"/></radialGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="4"/></filter>
+ </defs>
+ <ellipse cx="426" cy="740" rx="270" ry="55" fill="#030a10" opacity=".8"/>
+ <circle cx="435" cy="370" r="340" fill="url(#halo)"/>
+ <g stroke="#607b80" opacity=".25"><circle cx="429" cy="394" r="279"/><circle cx="429" cy="394" r="292" stroke-dasharray="4 14"/><path d="M70 394h100m520 0h70M429 42v95m0 520v100"/></g>
+ <!-- Rear reactor and aerials -->
+ <path d="M315 240l-18-97 34-31 27 38 2 94m177 12 19-117 24-14 14 23-10 131" fill="#172b36" stroke="#72838a" stroke-width="4"/>
+ <path d="M323 129l-5-67m248 80 16-101m-5 45 27 3" stroke="#779397" stroke-width="4"/>
+ <path d="M342 190h194l31 209-47 104H333l-45-112z" fill="#14252f" stroke="#0a131c" stroke-width="9"/>
+ <path d="M364 209h148v82H364z" fill="#203c48"/><path d="M378 219h117m-117 16h117m-117 16h117m-117 16h117" stroke="#5b797c" stroke-width="6"/>
+ <!-- Legs -->
+ <path d="M340 451l-42 67-7 98 54 31 61-52 3-110m61-9 9 117 68 37 50-37-19-98-47-49" fill="#192b36" stroke="#07121b" stroke-width="12"/>
+ <path d="M323 520l61 4-7 63-67 25zM491 515l59-12 24 75-68 15z" fill="url(#face)" stroke="#8d9c98" stroke-width="3"/>
+ <path d="M324 540l46 2m-48 12 47 2m138-24 44-10m-39 25 43-11" stroke="#263d45" stroke-width="8"/>
+ <path d="M308 609l-19 93 69 35 41-35-24-100m132-11 4 105 71 12 35-34-43-92" fill="url(#steel)" stroke="#091721" stroke-width="10"/>
+ <path d="M319 627l39 3 10 61-59 9zM529 612l36-5 24 65-60 7z" fill="#47616a" stroke="#769293" stroke-width="2"/>
+ <path d="M288 688l-47 39-4 29 98 12 65-34-10-35-53 18zM512 681l-18 33 22 35 107 3 35-17-38-52-61 19z" fill="#1d313e" stroke="#08131c" stroke-width="9"/>
+ <path d="M253 735l80 8 45-20m143 8 100 2" stroke="#82938c" stroke-width="7"/>
+ <path d="M312 646l10 2-6 33-10-2m235-51 11-2 8 33-11 2" fill="#ebd457"/>
+ <!-- Shoulder armor -->
+ <path d="M322 236l-93-25-56 36-6 89 96 32 73-51m197-73 88-11 55 47-9 91-101 17-50-55" fill="url(#steel)" stroke="#0a1720" stroke-width="10"/>
+ <path d="M224 228l-36 27-1 65 60 19 29-90z" fill="url(#gold)" stroke="#e3d389" stroke-width="2"/>
+ <path d="M577 254l34-4 42 36-8 55-58 12-27-50z" fill="url(#gold)"/>
+ <path d="M205 267l37 9m-38 7 37 9m354-14 32 5m-34 11 32 5" stroke="#24323a" stroke-width="7"/>
+ <text x="207" y="319" fill="#202f36" font-family="monospace" font-weight="bold" font-size="20">07</text>
+ <!-- Arms and gun -->
+ <path d="M202 340l-24 91 57 56 59-37-20-92m316 8 3 76 49 41 39-42-24-92" fill="url(#steel)" stroke="#09151f" stroke-width="10"/>
+ <circle cx="229" cy="429" r="29" fill="#14232d" stroke="#728287" stroke-width="6"/>
+ <circle cx="619" cy="435" r="25" fill="#14232d" stroke="#728287" stroke-width="6"/>
+ <path d="M156 410l88 4 36 51-19 72-101-17-31-54z" fill="#263d49" stroke="#08141d" stroke-width="9"/>
+ <path d="M145 463l63 17-39 139-73-20z" fill="#304b58" stroke="#07121a" stroke-width="9"/>
+ <path d="M150 491l-31 101m50-97-31 101m50-96-29 101" stroke="#7b8b8a" stroke-width="10"/>
+ <path d="M101 578l76 22-13 45-79-22z" fill="#12232e" stroke="#526b70" stroke-width="4"/>
+ <path d="M107 617l6-24m14 29 6-24m14 29 6-24" stroke="#080f17" stroke-width="9"/>
+ <path d="M589 452l59-9 23 49-25 47-68-12z" fill="#3c535c" stroke="#0b1822" stroke-width="8"/>
+ <path d="M596 489l44-1m-45 13 44-1m-45 13 44-1" stroke="#a4aca2" stroke-width="5"/>
+ <!-- Main cockpit -->
+ <path d="M335 237l65-48 100 10 54 62-9 146-65 79-116-13-62-79z" fill="url(#face)" stroke="#0b1720" stroke-width="10"/>
+ <path d="M350 250l56-34 78 7 42 50-24 99-60 26-81-40z" fill="#182e3b" stroke="#8aa6a6" stroke-width="3"/>
+ <path d="M368 258l44-21 65 6 28 30-17 38-105-7z" fill="#073b43" stroke="#143039" stroke-width="6"/>
+ <path d="M378 269l108 7-10 16-92-6z" fill="#58f2dd"/>
+ <path d="M378 269l108 7-10 16-92-6z" fill="#83ffe5" filter="url(#glow)"/>
+ <path d="M381 323l102 9-14 28-65-4z" fill="#071822"/>
+ <path d="M404 329l-4 20m18-18-4 20m18-18-4 20m18-18-4 20m18-18-4 20" stroke="#64848a" stroke-width="4"/>
+ <path d="M331 362l21 21 79 26 65-18 36-38-9 54-49 53-106-11-42-47z" fill="url(#steel)" stroke="#1a303b" stroke-width="4"/>
+ <path d="M362 393l26 9-9 27-25-11m141-18-22 8 7 27 22-15" fill="#f6d754"/>
+ <path d="M411 417l51 4-3 22-49-5z" fill="#17262f"/><text x="419" y="434" fill="#87a5a5" font-family="monospace" font-size="12">MR:07</text>
+ <g fill="#d2d5b8"><circle cx="337" cy="274" r="4"/><circle cx="522" cy="293" r="4"/><circle cx="356" cy="440" r="4"/><circle cx="507" cy="430" r="4"/></g>
+ <g stroke="#d0d3b7" opacity=".45" stroke-width="2"><path d="M277 270l21 6m-20 5 16 4m233 17 5 31m-193-10-5 32m170 53-12 14M342 567l23-14"/></g>
+</svg>
