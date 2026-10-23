@@ -10,7 +10,8 @@
     if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
   }
   class Renderer {
-    constructor(canvas, minimap) {
+    constructor(canvas, minimap, sprites) {
+      this.sprites = sprites;
       this.canvas = canvas; this.ctx = canvas.getContext('2d', { alpha: false });
       this.map = minimap; this.mapCtx = minimap.getContext('2d');
       this.camera = { x: 0, y: 0 }; this.width = 0; this.height = 0; this.zoom = 1; this.dpr = 1;
@@ -29,6 +30,15 @@
       const sectorX = Math.floor(x / 2400), sectorY = Math.floor(y / 2400);
       const biome = D.biomes[((sectorX + sectorY) % 4 + 4) % 4];
       this.biome = biome.name; ctx.fillStyle = biome.ground; ctx.fillRect(x - w / 2 - 20, y - h / 2 - 20, w + 40, h + 40);
+      if (this.sprites?.ready) {
+        const tile = 620; ctx.globalAlpha = .6;
+        for (let tx = Math.floor((x - w / 2) / tile); tx <= Math.ceil((x + w / 2) / tile); tx++) {
+          for (let ty = Math.floor((y - h / 2) / tile); ty <= Math.ceil((y + h / 2) / tile); ty++) {
+            ctx.drawImage(this.sprites.images.ground, tx * tile, ty * tile, tile + 1, tile + 1);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
       const size = 160;
       for (let gx = Math.floor((x - w / 2) / size) - 1; gx <= Math.ceil((x + w / 2) / size); gx++) {
         for (let gy = Math.floor((y - h / 2) / size) - 1; gy <= Math.ceil((y + h / 2) / size); gy++) {
@@ -36,10 +46,17 @@
           ctx.strokeStyle = biome.line; ctx.lineWidth = 1; ctx.globalAlpha = .35;
           ctx.beginPath(); ctx.moveTo(px + 4, py); ctx.lineTo(px + 17, py); ctx.moveTo(px, py + 4); ctx.lineTo(px, py + 17); ctx.stroke();
           if (r > .68) {
+            if (this.sprites?.ready) {
+              const index = r > .94 ? 4 + Math.floor(C.hash(gy + 13, gx) * 12) : Math.floor(C.hash(gx, gy + 17) * 4);
+              ctx.globalAlpha = .78;
+              this.sprites.draw(ctx, 'props', Math.floor(index / 4), index % 4, px + r * 100, py + C.hash(gy, gx + 1) * 110, index < 4 ? 55 + r * 22 : 115);
+              ctx.globalAlpha = 1;
+            } else {
             ctx.save(); ctx.translate(px + r * 110, py + C.hash(gy, gx + 1) * 120); ctx.rotate(r * 6);
             ctx.globalAlpha = .8; ctx.fillStyle = '#080d11'; ctx.beginPath(); ctx.ellipse(5, 9, 28 * r, 16 * r, 0, 0, C.TAU); ctx.fill();
             polygon(ctx, [[-22 * r, 0], [-13 * r, -17 * r], [10 * r, -20 * r], [23 * r, -5], [13 * r, 13 * r], [-12 * r, 16 * r]], biome.line, '#10181d');
             ctx.globalAlpha = .6; ctx.strokeStyle = biome.accent; ctx.beginPath(); ctx.moveTo(-12 * r, -15 * r); ctx.lineTo(9 * r, -18 * r); ctx.stroke(); ctx.restore();
+            }
           }
           ctx.globalAlpha = .45; ctx.fillStyle = biome.accent;
           for (let i = 0; i < 3; i++) { const a = C.hash(gx * 7 + i, gy * 5); ctx.fillRect(px + a * 156, py + C.hash(gy + i, gx) * 156, 2, 2); }
@@ -61,6 +78,7 @@
       }
     }
     bug(e, time) {
+      if (this.sprites?.ready) { this.spriteBug(e, time); return; }
       const ctx = this.ctx, r = e.radius;
       ctx.save(); ctx.translate(e.x, e.y);
       ctx.fillStyle = '#05080b88'; ctx.beginPath(); ctx.ellipse(5, 10, r * 1.35, r * .8, 0, 0, C.TAU); ctx.fill();
@@ -100,6 +118,7 @@
       }
     }
     mech(p, time) {
+      if (this.sprites?.ready) { this.spriteMech(p, time); return; }
       const ctx = this.ctx, color = D.chassis[p.chassis].color, heavy = p.chassis === 'bastion' ? 1.16 : 1;
       ctx.save(); ctx.translate(p.x, p.y); ctx.fillStyle = '#03090bad'; ctx.beginPath(); ctx.ellipse(6, 15, 32, 19, 0, 0, C.TAU); ctx.fill();
       if (p.coreTime > 0) {
@@ -133,6 +152,44 @@
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
       ctx.globalAlpha = .7; polygon(ctx, [[46, -5], [55, 0], [46, 5]], color);
       ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3, 8]); ctx.beginPath(); ctx.moveTo(60, 0); ctx.lineTo(100, 0); ctx.stroke(); ctx.restore();
+    }
+    spriteBug(e, time) {
+      const ctx = this.ctx, frame = Math.floor(time * (e.boss ? 5 : e.type === 'nest' ? 3 : 9) + e.id) % 4;
+      ctx.save(); ctx.translate(e.x, e.y); ctx.fillStyle = '#00000060'; ctx.beginPath(); ctx.ellipse(4, 7, e.radius * 1.35, e.radius * .85, 0, 0, C.TAU); ctx.fill(); ctx.restore();
+      const row = { mite: 0, runner: 0, spitter: 1, brute: 2, charger: 2, queen: 3 }[e.type];
+      ctx.save();
+      if (e.flash > 0) ctx.filter = 'brightness(1.8)';
+      else if (e.type === 'runner') ctx.filter = 'sepia(.4) saturate(1.5)';
+      else if (e.type === 'charger') ctx.filter = 'saturate(1.7)';
+      this.sprites.draw(ctx, e.type === 'nest' ? 'mechs' : 'bugs', e.type === 'nest' ? 3 : row, frame, e.x, e.y,
+        e.radius * (e.boss ? 2.9 : e.type === 'nest' ? 2.8 : 3.5), e.type === 'nest' ? 0 : e.angle - Math.PI / 2);
+      ctx.restore();
+      if (e.elite) { ctx.save(); ctx.setLineDash([4, 6]); circle(ctx, e.x, e.y, e.radius * 1.7, null, '#ffce54'); ctx.restore(); }
+      if (e.hp < e.maxHp && (e.boss || e.elite || e.type === 'nest' || e.type === 'brute')) {
+        ctx.fillStyle = '#05090d'; ctx.fillRect(e.x - e.radius, e.y - e.radius - 22, e.radius * 2, 4);
+        ctx.fillStyle = e.color; ctx.fillRect(e.x - e.radius, e.y - e.radius - 22, e.radius * 2 * e.hp / e.maxHp, 4);
+      }
+    }
+    spriteMech(p, time) {
+      const ctx = this.ctx, color = D.chassis[p.chassis].color;
+      ctx.save(); ctx.translate(p.x, p.y);
+      ctx.fillStyle = '#03090b90'; ctx.beginPath(); ctx.ellipse(5, 15, 30, 22, 0, 0, C.TAU); ctx.fill();
+      if (p.coreTime > 0) {
+        ctx.save(); ctx.rotate(time); ctx.setLineDash([20, 12]); ctx.lineWidth = 2;
+        circle(ctx, 0, 0, p.core === 'singularity' ? 150 + Math.sin(time * 3) * 30 : 48, null, D.cores[p.core].color); ctx.restore();
+      }
+      if (p.shield > 0) { ctx.globalAlpha = p.hurt > 0 ? .5 : .1; circle(ctx, 0, 0, 41, '#5ef5e0', '#93fff1'); ctx.globalAlpha = 1; }
+      ctx.rotate(p.angle - Math.PI / 2);
+      if (p.dashTime > 0) for (const x of [-18, 18]) {
+        polygon(ctx, [[x - 5, -12], [x, -65 - Math.sin(time * 90) * 12], [x + 5, -12]], '#5ef5e0');
+        polygon(ctx, [[x - 2, -12], [x, -43], [x + 2, -12]], '#edfff4');
+      }
+      if (p.hurt > 0) ctx.filter = 'brightness(1.5) sepia(.3)';
+      this.sprites.draw(ctx, 'mechs', { spectre: 0, bastion: 1, vector: 2 }[p.chassis], Math.floor(p.walk * 1.4) % 4, 0, 0, p.chassis === 'bastion' ? 95 : 83);
+      ctx.restore();
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle); ctx.globalAlpha = .8;
+      polygon(ctx, [[50, -5], [60, 0], [50, 5]], color);
+      ctx.strokeStyle = color; ctx.setLineDash([3, 8]); ctx.beginPath(); ctx.moveTo(66, 0); ctx.lineTo(112, 0); ctx.stroke(); ctx.restore();
     }
     telegraphs(game) {
       const ctx = this.ctx;
