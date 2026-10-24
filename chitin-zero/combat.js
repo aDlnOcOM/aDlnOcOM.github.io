@@ -51,6 +51,7 @@
       }
       game.effect('muzzle', p.x + Math.cos(angle) * 35, p.y + Math.sin(angle) * 35, spec.color, weapon.id === 'rail' ? 22 : 13, .07);
     }
+    p.shootTime = .12;
     game.shotSerial = (game.shotSerial || 0) + 1; game.lastWeapon = weapon.id;
     return true;
   }

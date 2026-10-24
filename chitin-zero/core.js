@@ -56,7 +56,7 @@
       this.bountyTotal = 0; this.bountyPaid = 0; this.bountyKills = {};
       this.id = 0; this.spawnClock = .6; this.bossAt = 120; this.nestAt = 35; this.wave = 1;
       this.player = { x: 0, y: 0, angle: Math.PI / 2, moveAngle: Math.PI / 2, walk: 0, walkTime: 0, moving: false, radius: 19, chassis, hp: frame.hp, maxHp: frame.hp, shield: frame.shield, maxShield: frame.shield,
-        speed: frame.speed, dashBase: frame.dash, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, invulnerable: 1.2, hurt: 0, sinceHit: 10,
+        speed: frame.speed, dashBase: frame.dash, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, invulnerable: 1.2, hurt: 0, shootTime: 0, sinceHit: 10,
         level: 1, xp: 0, xpNext: 14, core, charge: 0, coreTime: 0, distance: 0,
         stats: { damage: 1, rate: 1, speed: 1, magnet: 110, critical: .05, regen: 0, radius: 1, dash: 0, experience: 1, armor: 0, coreGain: 1, coreDuration: 0 },
         weapons: [{ id: frame.weapon, level: 1, cooldown: .2 }], passives: {} };
@@ -160,7 +160,7 @@
     pause() { if (this.status === 'playing') this.status = 'paused'; else if (this.status === 'paused') this.status = 'playing'; }
     updatePlayer(dt, input) {
       const p = this.player;
-      for (const key of ['dashCooldown', 'dashTime', 'invulnerable', 'hurt', 'coreTime']) p[key] = Math.max(0, p[key] - dt);
+      for (const key of ['dashCooldown', 'dashTime', 'invulnerable', 'hurt', 'coreTime', 'shootTime']) p[key] = Math.max(0, (p[key] || 0) - dt);
       p.sinceHit += dt;
       if (p.sinceHit > 4) p.shield = Math.min(p.maxShield, p.shield + p.maxShield * .09 * dt);
       p.hp = Math.min(p.maxHp, p.hp + p.stats.regen * dt);
