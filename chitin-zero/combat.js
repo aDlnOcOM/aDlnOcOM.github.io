@@ -120,7 +120,7 @@
     const options = candidates(game);
     // Endless builds retain meaningful choices after every finite upgrade is capped.
     options.push({ key: 'supply:repair', type: 'supply', id: 'repair', name: 'ПОЛЕВОЙ СЕРВИС', label: 'ПРИПАСЫ', level: 1, description: 'Восстановить 40% корпуса и весь щит.', glyph: '+', color: '#5ef5e0' });
-    if (options.length < 3) options.push({ key: 'supply:overclock', type: 'supply', id: 'overclock', name: 'БЕСКОНЕЧНЫЙ РАЗГОН', label: 'ПРЕДЕЛ СНЯТ', level: 1, description: '+5% к базовому урону. Доступно после полной сборки.', glyph: '↟', color: '#ffdf68' });
+    if (!options.some(o => ['weapon', 'evolution', 'passive'].includes(o.type))) options.push({ key: 'supply:overclock', type: 'supply', id: 'overclock', name: 'БЕСКОНЕЧНЫЙ РАЗГОН', label: 'ПРЕДЕЛ СНЯТ', level: 1, description: '+5% к базовому урону. Доступно после полной сборки.', glyph: '↟', color: '#ffdf68' });
     for (let i = options.length - 1; i > 0; i--) { const j = Math.floor(game.rng() * (i + 1)); [options[i], options[j]] = [options[j], options[i]]; }
     game.offers = options.slice(0, 3); game.status = 'upgrade'; return true;
   }

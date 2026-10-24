@@ -8,13 +8,13 @@
     const safe = fresh();
     if (!raw || typeof raw !== 'object' || raw.version !== 1) return safe;
     for (const key of ['bestKills', 'bestTime', 'runs', 'totalKills']) safe[key] = number(raw[key]);
-    if (D.chassis[raw.chassis]) safe.chassis = raw.chassis;
-    if (D.cores[raw.core]) safe.core = raw.core;
+    if (Object.hasOwn(D.chassis, raw.chassis)) safe.chassis = raw.chassis;
+    if (Object.hasOwn(D.cores, raw.core)) safe.core = raw.core;
     if (typeof raw.sound === 'boolean') safe.sound = raw.sound;
     if (typeof raw.reducedEffects === 'boolean') safe.reducedEffects = raw.reducedEffects;
     if (Array.isArray(raw.history)) safe.history = raw.history.slice(0, 8).filter(r => r && typeof r === 'object').map(r => ({
       kills: number(r.kills), time: number(r.time), level: number(r.level), bosses: number(r.bosses),
-      chassis: D.chassis[r.chassis] ? r.chassis : 'spectre'
+      chassis: Object.hasOwn(D.chassis, r.chassis) ? r.chassis : 'spectre'
     }));
     return safe;
   }

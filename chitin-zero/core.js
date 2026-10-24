@@ -47,8 +47,8 @@
   }
   class Game {
     constructor({ chassis = 'spectre', core = 'inferno', seed = Date.now(), combat = null } = {}) {
-      chassis = D.chassis[chassis] ? chassis : 'spectre';
-      core = D.cores[core] ? core : 'inferno';
+      chassis = Object.hasOwn(D.chassis, chassis) ? chassis : 'spectre';
+      core = Object.hasOwn(D.cores, core) ? core : 'inferno';
       const frame = D.chassis[chassis];
       this.rng = random(seed); this.seed = seed; this.combat = combat;
       this.status = 'playing'; this.time = 0; this.kills = 0; this.bossKills = 0; this.nests = 0;
@@ -70,10 +70,10 @@
     }
     spawn(type, x, y, elite = false) {
       if (this.enemies.filter(e => !e.dead).length >= D.limits.enemies) return null;
+      if (!Object.hasOwn(D.enemies, type)) return null;
       const spec = D.enemies[type];
-      if (!spec) return null;
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        const angle = this.rng() * TAU, radius = 720 + this.rng() * 220;
+        const angle = this.rng() * TAU, radius = 950 + this.rng() * 140;
         x = this.player.x + Math.cos(angle) * radius; y = this.player.y + Math.sin(angle) * radius;
       }
       const growth = 1 + this.time / 320 + Math.pow(this.wave - 1, 1.6) * .035;
@@ -90,11 +90,13 @@
           let nearest = null, best = Infinity;
           for (const d of this.drops) if (d.kind === 'xp' && distance(d, item) < best) { best = distance(d, item); nearest = d; }
           if (nearest) { nearest.value += value; return; }
-          return;
+          this.drops.shift();
+          this.drops.push(item); return;
         }
         // Preserve experience when replacing a supply in the bounded pool.
         const index = this.drops.findIndex(d => d.kind !== 'xp');
-        if (index >= 0) this.drops.splice(index, 1); else return;
+        if (index >= 0) this.drops.splice(index, 1);
+        else { this.drops[1].value += this.drops[0].value; this.drops.splice(0, 1); }
       }
       this.drops.push(item);
     }
@@ -206,7 +208,7 @@
         let dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
         e.angle = Math.atan2(dy, dx);
         if (dist > 1700 && !e.boss && e.type !== 'nest') {
-          const a = this.rng() * TAU; e.x = p.x + Math.cos(a) * 850; e.y = p.y + Math.sin(a) * 850; continue;
+          const a = this.rng() * TAU; e.x = p.x + Math.cos(a) * 1000; e.y = p.y + Math.sin(a) * 1000; continue;
         }
         if (dist > 2400 && e.type === 'nest') { e.dead = true; continue; }
         let speed = e.speed, direction = 1;
