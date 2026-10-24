@@ -18,9 +18,34 @@
   // store directions in columns and phases in rows. Explicit cuts and pivots
   // compensate for the generated artwork's non-uniform packing without slicing limbs.
   const mechDefinitions = {
-    spectre: { columns: [0, 202, 384, 588, 791, 1005], centers: [107, 301, 502, 686, 892], torsoY: 148, hipsY: [0, 220, 409, 603, 805] },
-    bastion: { columns: [0, 212, 400, 601, 792, 1000], rowColumns: { 4: [0, 190, 400, 601, 792, 1000] }, centers: [111, 304, 502, 692, 892], torsoY: 144, hipsY: [0, 201, 397, 591, 792] },
-    vector: { columns: [0, 233, 440, 616, 809, 1024], centers: [134, 334, 532, 711, 904], torsoY: 160, hipsY: [0, 217, 410, 603, 803] }
+    spectre: { columns: [0, 202, 384, 588, 791, 1005] },
+    bastion: { columns: [0, 212, 400, 601, 792, 1000], rowColumns: { 4: [0, 190, 400, 601, 792, 1000] } },
+    vector: { columns: [0, 233, 440, 616, 809, 1024] }
+  };
+  // Source-space mechanical couplers, calibrated per view AND per gait pose.
+  // Bounding-box centers are not joints (especially with a gun extending sideways).
+  const joints = {
+    spectre: [
+      [[104, 154], [302, 150], [506, 153], [685, 147], [895, 155]],
+      [[105, 219], [292, 219], [495, 219], [679, 219], [891, 220]],
+      [[106, 406], [292, 408], [497, 409], [678, 409], [892, 409]],
+      [[112, 598], [297, 603], [500, 602], [683, 603], [893, 601]],
+      [[105, 804], [295, 804], [494, 802], [685, 803], [893, 803]]
+    ],
+    bastion: [
+      [[119, 144], [305, 143], [506, 134], [687, 145], [894, 147]],
+      [[109, 201], [300, 202], [504, 202], [697, 200], [888, 202]],
+      [[112, 395], [299, 395], [501, 396], [694, 394], [891, 395]],
+      [[109, 590], [306, 589], [510, 590], [700, 589], [891, 590]],
+      [[110, 788], [301, 789], [512, 790], [705, 789], [887, 790]]
+    ],
+    vector: [
+      [[129, 163], [330, 159], [536, 148], [708, 151], [904, 158]],
+      [[136, 215], [331, 216], [534, 218], [701, 217], [905, 216]],
+      [[135, 405], [339, 406], [536, 408], [697, 407], [905, 407]],
+      [[135, 599], [344, 600], [535, 601], [700, 601], [905, 601]],
+      [[131, 798], [330, 798], [537, 797], [699, 798], [910, 800]]
+    ]
   };
   const animations = {
     idle: { frame_count: 1, frame_sequence: [1], animation_speed: 0 },
@@ -38,10 +63,10 @@
     const state = p.dashTime > 0 ? 'dashing' : p.moving ? (armed ? 'running_with_gun' : 'running') : (armed ? 'idle_with_gun' : 'idle');
     const spec = animations[state];
     const frame = Math.floor((Math.max(0, p.walkTime || 0) + 1e-9) * spec.animation_speed * 60) % spec.frame_count;
-    return { state, row: spec.frame_sequence[frame], legs: directionIndex(p.moveAngle), torso: directionIndex(p.angle), recoil: Math.min(1, Math.max(0, p.shootTime || 0) / .12) };
+    return { state, row: spec.frame_sequence[frame], legs: p.legDirection ?? directionIndex(p.moveAngle), torso: p.torsoDirection ?? directionIndex(p.angle), recoil: Math.min(1, Math.max(0, p.shootTime || 0) / .12) };
   }
   function frameRect(chassis, row, direction) {
-    const spec = mechDefinitions[chassis], atlas = manifest[chassis];
+    const spec = Object.hasOwn(mechDefinitions, chassis) ? mechDefinitions[chassis] : null, atlas = manifest[chassis];
     if (!spec || !Number.isInteger(row) || row < 0 || row > 4 || !Number.isInteger(direction) || direction < 0 || direction > 7) return null;
     // Three right-hand views reuse mirrored left-hand views. This keeps the
     // silhouette consistent where generated right-hand poses were inaccurate.
@@ -49,7 +74,7 @@
     const columns = spec.rowColumns?.[row] || spec.columns;
     const x = columns[column], y = Math.round(atlas.rows[row] * atlas.height);
     return { x, y, width: columns[column + 1] - x, height: Math.round(atlas.rows[row + 1] * atlas.height) - y,
-      pivotX: spec.centers[column] - x, pivotY: (row === 0 ? spec.torsoY : spec.hipsY[row]) - y, flip: direction > 4 };
+      pivotX: joints[chassis][row][column][0] - x, pivotY: joints[chassis][row][column][1] - y, flip: direction > 4 };
   }
   class Sprites {
     constructor() { this.images = {}; this.ready = false; }
@@ -91,8 +116,7 @@
       const installed = E ? E.visualParts(p.installedParts) : [];
       const angle = Math.PI / 2 + pose.torso * Math.PI / 4;
       const legAngle = Math.PI / 2 + pose.legs * Math.PI / 4;
-      const recoil = pose.recoil * size * .018;
-      const upperX = x - Math.cos(angle) * recoil, upperY = y - Math.sin(angle) * recoil * .65;
+      const upperX = x, upperY = y;
       // Project hardpoints in the fixed camera, not by rotating the entire body.
       const socket = (bearing, side, forward, height, ox = x, oy = y) => ({
         x: ox + (Math.cos(bearing) * forward - Math.sin(bearing) * side) * size,
@@ -123,17 +147,23 @@
         if (item.slot === 'weapon') add(item, .24, .05, .12, .36);
         if (item.slot === 'utility') add(item, -.23, 0, .19, .23);
       }
+      // Lean and recoil deform the upper body ABOUT the pelvis, never translate
+      // the coupler away from the legs. Attachments share this exact transform.
+      ctx.save(); ctx.translate(x, y);
+      ctx.transform(1, 0, (p.leanX || 0) * .035 + Math.cos(angle) * pose.recoil * .012, 1 + (p.leanY || 0) * .018 - pose.recoil * .012, 0, 0);
+      ctx.translate(-x, -y);
       for (const a of attachments.filter(a => a.behind)) part(a.item, a.mount, a.width, angle);
       this.mechLayer(ctx, p.chassis, 0, pose.torso, upperX, upperY, size);
       for (const a of attachments.filter(a => !a.behind)) part(a.item, a.mount, a.width, angle);
+      ctx.restore();
     }
     preview(canvas, chassis, time, reduced, installedParts = {}) {
       if (!this.ready) return;
       const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const angle = reduced ? Math.PI / 2 : Math.PI / 2 + Math.floor(time / 2) * Math.PI / 4;
+      const angle = reduced ? Math.PI / 2 : Math.PI / 2 + time * Math.PI / 4 / 2;
       this.mech(ctx, { chassis, moving: !reduced, walkTime: time, dashTime: 0, angle, moveAngle: angle, installedParts }, canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * .75);
     }
   }
-  root.ChitinSprites = { Sprites, manifest, WALK_FPS, walkFrame, mechDefinitions, animations, directionIndex, animationPose, frameRect };
+  root.ChitinSprites = { Sprites, manifest, WALK_FPS, walkFrame, mechDefinitions, joints, animations, directionIndex, animationPose, frameRect };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.ChitinSprites;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

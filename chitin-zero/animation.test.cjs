@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { inflateSync } = require('node:zlib');
-const { Sprites, manifest, animations, directionIndex, animationPose, frameRect } = require('./sprites.js');
-const { Game } = require('./core.js');
+const { Sprites, manifest, joints, animations, directionIndex, animationPose, frameRect } = require('./sprites.js');
+const { Game, followAngle, poseDirection } = require('./core.js');
 const combat = require('./combat.js');
 const chassis = ['spectre', 'bastion', 'vector'];
 const angle = direction => Math.PI / 2 + direction * Math.PI / 4;
@@ -75,7 +75,7 @@ test('all 192 chassis/travel/aim combinations use whole layers, independent pivo
   for (const id of chassis) sprites.images[id] = { id };
   for (const id of chassis) for (let travel = 0; travel < 8; travel++) for (let aim = 0; aim < 8; aim++) {
     const calls = [], scales = [];
-    const ctx = { save() {}, restore() {}, translate() {}, scale(...args) { scales.push(args); }, drawImage(...args) { calls.push(args); } };
+    const ctx = { save() {}, restore() {}, translate() {}, transform() {}, scale(...args) { scales.push(args); }, drawImage(...args) { calls.push(args); } };
     sprites.mech(ctx, { chassis: id, moving: true, walkTime: .125, moveAngle: angle(travel), angle: angle(aim) }, 30, 40, 90);
     assert.equal(calls.length, 2);
     for (const [index, direction, row] of [[0, travel, 3], [1, aim, 0]]) {
@@ -116,4 +116,81 @@ test('preview uses every direction while reduced motion stays planted in one vie
   assert.deepEqual(poses.map(p => animationPose(p).torso), [0, 1, 2, 3, 4, 5, 6, 7]);
   sprites.preview(canvas, 'vector', 9, true);
   assert.equal(animationPose(poses.at(-1)).state, 'idle'); assert.equal(animationPose(poses.at(-1)).torso, 0);
+});
+
+test('calibrated couplers sit on visible material in every source pose and view', () => {
+  for (const id of chassis) {
+    const alpha = rgba(fs.readFileSync(path.join(__dirname, manifest[id].src)));
+    for (const [row, points] of joints[id].entries()) for (const [d, [x, y]] of points.entries()) {
+      assert.ok(alpha(x, y) > 100, `${id}/${row}/${d}: coupler falls outside the actual sprite`);
+    }
+  }
+});
+
+test('lean, recoil, mirrored views and every gait pose keep both joints at one world point', () => {
+  const sprites = new Sprites(); for (const id of chassis) sprites.images[id] = { id };
+  for (const id of chassis) for (let legs = 0; legs < 8; legs++) for (let torso = 0; torso < 8; torso++) for (let phase = 0; phase < 4; phase++) {
+    let m = [1, 0, 0, 1, 0, 0]; const stack = [], pivots = [];
+    const multiply = (a, b, c, d, e, f) => { const [A, B, C, D, E, F] = m; m = [A*a+C*b, B*a+D*b, A*c+C*d, B*c+D*d, A*e+C*f+E, B*e+D*f+F]; };
+    const ctx = { save() { stack.push([...m]); }, restore() { m = stack.pop(); }, translate(x,y) { multiply(1,0,0,1,x,y); }, scale(x,y) { multiply(x,0,0,y,0,0); }, transform: multiply,
+      drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) {
+        const row = sy === 0 ? 0 : [2,3,4,1][phase], cell = frameRect(id, row, sy === 0 ? torso : legs);
+        const px = dx + cell.pivotX * dw / sw, py = dy + cell.pivotY * dh / sh;
+        pivots.push([m[0]*px+m[2]*py+m[4], m[1]*px+m[3]*py+m[5]]);
+      } };
+    sprites.mech(ctx, { chassis: id, moving: true, walkTime: phase/8, angle: angle(torso), moveAngle: angle(legs), shootTime: .12, leanX: phase%2 ? 1 : -1, leanY: 1 }, 80, 120, 90);
+    assert.equal(pivots.length, 2); assert.equal(stack.length, 0);
+    for (const [x,y] of pivots) { assert.ok(Math.abs(x-80)<1e-8); assert.ok(Math.abs(y-120)<1e-8); }
+  }
+});
+
+test('motor acceleration is smooth, diagonal-normalized and independent of timestep subdivision', () => {
+  for (const id of chassis) {
+    const a = new Game({ chassis: id }), b = new Game({ chassis: id }), diagonal = new Game({ chassis: id });
+    a.updatePlayer(.05, { x: 1 }); assert.ok(a.player.vx > 0 && a.player.vx < a.player.speed);
+    for (let i = 0; i < 5; i++) b.updatePlayer(.01, { x: 1 });
+    diagonal.updatePlayer(.05, { x: 1, y: 1 });
+    assert.ok(Math.abs(a.player.x-b.player.x)<1e-8); assert.ok(Math.abs(a.player.vx-b.player.vx)<1e-8);
+    assert.ok(Math.abs(a.player.x-Math.hypot(diagonal.player.x,diagonal.player.y))<1e-8);
+    for (let i=0;i<30;i++) a.updatePlayer(1/60,{x:1});
+    assert.ok(a.player.vx > a.player.speed*.99);
+  }
+});
+
+test('release brakes to rest within a short distance and reversal does not instantly flip velocity', () => {
+  for (const id of chassis) {
+    const g = new Game({ chassis: id }), p = g.player;
+    for (let i=0;i<60;i++) g.updatePlayer(1/60,{x:1});
+    const start = p.x; g.updatePlayer(1/60,{}); assert.ok(p.vx > 0);
+    for(let i=0;i<40;i++) g.updatePlayer(1/60,{});
+    assert.equal(p.vx,0); assert.equal(p.moving,false); assert.ok(p.x-start<14);
+    for(let i=0;i<60;i++) g.updatePlayer(1/60,{x:1});
+    g.updatePlayer(1/60,{x:-1}); assert.ok(p.vx>0);
+    for(let i=0;i<30;i++) g.updatePlayer(1/60,{x:-1}); assert.ok(p.vx<0);
+  }
+});
+
+test('dash remains immediate and cannot inject boosted velocity into braking', () => {
+  const g = new Game(), p = g.player;
+  g.updatePlayer(1/60,{x:1,dash:true}); assert.ok(Math.abs(p.x-p.speed*4.3/60)<1e-8);
+  for(let i=0;i<15;i++) g.updatePlayer(1/60,{});
+  assert.ok(Math.hypot(p.vx,p.vy)<=p.speed);
+  for(let i=0;i<30;i++) g.updatePlayer(1/60,{}); assert.equal(p.vx,0);
+});
+
+test('visual turning follows the short arc and hysteresis prevents sector boundary flicker', () => {
+  const a = followAngle(Math.PI-.02,-Math.PI+.02,.016,20);
+  assert.ok(a>Math.PI-.02 && a<Math.PI+.02);
+  const edge = Math.PI/2+Math.PI/8;
+  assert.equal(poseDirection(edge+.02,0),0); assert.equal(poseDirection(edge+.08,0),1);
+  assert.equal(poseDirection(edge-.02,1),1); assert.equal(poseDirection(edge-.08,1),0);
+});
+
+test('aim and projectiles respond immediately while presentation eases and freezes on pause', () => {
+  const g = new Game({combat}), p = g.player; g.spawnClock = g.bossAt = g.nestAt = 1e9; p.weapons[0].cooldown=0;
+  g.step(1/60,{x:1,aim:true,angle:0});
+  assert.equal(p.angle,0); assert.ok(p.torsoFacing>0 && p.torsoFacing<Math.PI/2);
+  assert.ok(g.bullets[0].vx>0); assert.ok(Math.abs(g.bullets[0].vy)<30);
+  const state = JSON.stringify(p); g.pause(); g.step(.05,{x:-1}); assert.equal(JSON.stringify(p),state);
+  g.status='upgrade'; g.step(.05); assert.equal(JSON.stringify(p),state);
 });

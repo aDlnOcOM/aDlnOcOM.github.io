@@ -5,6 +5,13 @@
   const TAU = Math.PI * 2;
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const angleDelta = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  function followAngle(from, to, dt, response) { return from + angleDelta(from, to) * (1 - Math.exp(-response * dt)); }
+  function poseDirection(angle, previous) {
+    const step = TAU / 8;
+    if (Number.isInteger(previous) && Math.abs(angleDelta(Math.PI / 2 + previous * step, angle)) <= step / 2 + .07) return previous;
+    return Math.round((((angle - Math.PI / 2) % TAU) + TAU) % TAU / step) % 8;
+  }
   function random(seed) {
     let s = seed >>> 0;
     return () => { s += 0x6D2B79F5; let n = s; n = Math.imul(n ^ n >>> 15, n | 1); n ^= n + Math.imul(n ^ n >>> 7, n | 61); return ((n ^ n >>> 14) >>> 0) / 4294967296; };
@@ -57,6 +64,7 @@
       this.id = 0; this.spawnClock = .6; this.bossAt = 120; this.nestAt = 35; this.wave = 1;
       this.player = { x: 0, y: 0, angle: Math.PI / 2, moveAngle: Math.PI / 2, walk: 0, walkTime: 0, moving: false, radius: 19, chassis, hp: frame.hp, maxHp: frame.hp, shield: frame.shield, maxShield: frame.shield,
         speed: frame.speed, dashBase: frame.dash, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, invulnerable: 1.2, hurt: 0, shootTime: 0, sinceHit: 10,
+        vx: 0, vy: 0, accelerationX: 0, accelerationY: 0, leanX: 0, leanY: 0, legFacing: Math.PI / 2, torsoFacing: Math.PI / 2,
         level: 1, xp: 0, xpNext: 14, core, charge: 0, coreTime: 0, distance: 0,
         stats: { damage: 1, rate: 1, speed: 1, magnet: 110, critical: .05, regen: 0, radius: 1, dash: 0, experience: 1, armor: 0, coreGain: 1, coreDuration: 0 },
         weapons: [{ id: frame.weapon, level: 1, cooldown: .2 }], passives: {} };
@@ -169,8 +177,24 @@
       if (input.dash) this.dash(dx, dy);
       if (input.core) this.activateCore();
       const velocity = p.speed * p.stats.speed;
-      const mx = (p.dashTime > 0 ? p.dashX * velocity * 4.3 : dx * velocity) * dt;
-      const my = (p.dashTime > 0 ? p.dashY * velocity * 4.3 : dy * velocity) * dt;
+      const oldX = p.vx, oldY = p.vy;
+      const response = { spectre: [.065, .045], bastion: [.105, .070], vector: [.080, .055] }[p.chassis];
+      const tau = response[len > 0 ? 0 : 1], decay = Math.exp(-dt / tau);
+      const tx = dx * velocity, ty = dy * velocity;
+      let mx, my;
+      if (p.dashTime > 0) {
+        // Dash bypasses acceleration. Never feed its 4.3x velocity into coasting.
+        p.vx = p.dashX * velocity; p.vy = p.dashY * velocity;
+        mx = p.vx * 4.3 * dt; my = p.vy * 4.3 * dt;
+      } else {
+        p.vx = tx + (oldX - tx) * decay; p.vy = ty + (oldY - ty) * decay;
+        // Exact integration of the first-order motor response, independent of FPS.
+        mx = tx * dt + (oldX - tx) * tau * (1 - decay);
+        my = ty * dt + (oldY - ty) * tau * (1 - decay);
+        if (len === 0 && Math.hypot(p.vx, p.vy) < 2) { p.vx = p.vy = 0; mx = my = 0; }
+      }
+      p.accelerationX = clamp((p.vx - oldX) / Math.max(1, velocity * dt * 12), -1, 1);
+      p.accelerationY = clamp((p.vy - oldY) / Math.max(1, velocity * dt * 12), -1, 1);
       p.x += mx; p.y += my; p.distance += Math.hypot(mx, my); p.walk += Math.hypot(mx, my) / 24;
       p.moving = Math.hypot(mx, my) > .001;
       if (p.moving) p.moveAngle = Math.atan2(my, mx);
@@ -180,6 +204,15 @@
       if (input.aim && Number.isFinite(input.angle)) p.angle = input.angle;
       else if (len > 0) p.angle = Math.atan2(dy, dx);
       if (p.dashTime > 0) this.effect('ghost', p.x, p.y, D.chassis[p.chassis].color, 22, .22);
+    }
+    updatePresentation(dt) {
+      const p = this.player, blend = 1 - Math.exp(-14 * dt);
+      p.leanX += (-p.accelerationX - p.leanX) * blend;
+      p.leanY += (-p.accelerationY - p.leanY) * blend;
+      p.legFacing = followAngle(p.legFacing, p.moveAngle, dt, p.dashTime > 0 ? 40 : 20);
+      p.torsoFacing = followAngle(p.torsoFacing, p.angle, dt, 28);
+      p.legDirection = poseDirection(p.legFacing, p.legDirection);
+      p.torsoDirection = poseDirection(p.torsoFacing, p.torsoDirection);
     }
     updateDirector(dt) {
       const wave = 1 + Math.floor(this.time / 60);
@@ -301,7 +334,7 @@
       this.updatePlayer(dt, input); this.updateDirector(dt); this.grid.build(this.enemies);
       this.updateEnemies(dt);
       if (this.status !== 'dead') {
-        this.grid.build(this.enemies); this.combat?.update(this, dt, input); this.updateDrops(dt);
+        this.grid.build(this.enemies); this.combat?.update(this, dt, input); this.updatePresentation(dt); this.updateDrops(dt);
         if (this.pendingLevels > 0) this.combat?.offer(this);
       }
       this.enemies = this.enemies.filter(e => !e.dead);
@@ -309,7 +342,7 @@
       this.effects = this.effects.filter(fx => fx.life > 0);
     }
   }
-  const api = { Game, Grid, random, hash, clamp, distance, segmentHit, TAU };
+  const api = { Game, Grid, random, hash, clamp, distance, segmentHit, followAngle, poseDirection, TAU };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ChitinCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

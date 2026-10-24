@@ -22,7 +22,9 @@ test('walking uses eight timed frames a second regardless of chassis or upgrades
 test('idle and dash use a planted pose; aiming never rotates the travel direction', () => {
   const g = quietGame(); g.updatePlayer(.04, { x: 1, aim: true, angle: Math.PI });
   assert.equal(g.player.moveAngle, 0); assert.equal(g.player.angle, Math.PI);
-  g.updatePlayer(.04, {}); assert.equal(walkFrame(g.player), 1); assert.equal(g.player.walkTime, 0);
+  g.updatePlayer(.04, {}); assert.equal(g.player.moving, true, 'brief braking coast still animates');
+  for (let i = 0; i < 10; i++) g.updatePlayer(.04, {});
+  assert.equal(walkFrame(g.player), 1); assert.equal(g.player.walkTime, 0);
   g.updatePlayer(.04, { y: 1, dash: true }); assert.equal(walkFrame(g.player), 1); assert.equal(g.player.walkTime, 0);
   assert.ok(g.player.dashTime > 0); assert.equal(g.player.moveAngle, Math.PI / 2);
 });
