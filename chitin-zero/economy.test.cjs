@@ -81,8 +81,8 @@ test('assembly enforces ownership, slot, platform compatibility and power budget
   assert.equal(profile.ownedParts.includes('capacitor'), true);
   assert.deepEqual(profile.loadouts.bastion, {});
 });
-test('all sixteen parts have unique visible sprites and real gameplay effects', () => {
-  assert.equal(Object.keys(E.parts).length, 16); assert.equal(new Set(Object.values(E.parts).map(p => p.visual)).size, 16);
+test('all eighty models have visual definitions and real gameplay effects', () => {
+  assert.equal(Object.keys(E.parts).length, 80); assert.equal(new Set(Object.values(E.parts).map(p => `${p.visual}/${p.visualHue || 0}/${p.visualScale || 1}`)).size, 80);
   for (const [id, part] of Object.entries(E.parts)) {
     const profile = funded(), chassis = part.chassis?.[0] || 'spectre'; E.purchase(profile, id); E.equip(profile, chassis, part.slot, id);
     const g = quietGame({ chassis, profile }), base = quietGame({ chassis });

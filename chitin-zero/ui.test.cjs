@@ -111,6 +111,32 @@ test('wrong directional atlas dimensions block deployment instead of sampling ou
   assert.match(h.nodes.get('asset-status').textContent, /Не удалось загрузить/);
   h.click('deploy'); assert.equal(h.context.testGame, undefined);
 });
+
+test('market pagination reaches all 80 models and slot filters keep all sixteen choices', async () => {
+  const h = await harness({ savedProfile: { version: 1, credits: 100000 } }); h.click('market');
+  const ids = new Set();
+  for (let page = 0; page < 7; page++) {
+    for (const button of h.nodes.get('dialog-body').children) if (button.dataset.buy) ids.add(button.dataset.buy);
+    if (page < 6) h.action(page + 1, 'page');
+  }
+  assert.equal(ids.size, 80); assert.match(h.nodes.get('dialog-body').innerHTML, /СТРАНИЦА 7\/7/);
+  h.action('weapon', 'filter'); assert.match(h.nodes.get('dialog-body').innerHTML, /МОДЕЛЕЙ: 16/);
+  h.action(1, 'page'); assert.match(h.nodes.get('dialog-body').innerHTML, /СТРАНИЦА 2\/2/);
+  h.action('armor', 'filter'); assert.match(h.nodes.get('dialog-body').innerHTML, /СТРАНИЦА 1\/2/);
+});
+
+test('quality purchase and upgrade persist through workshop installation and deployment', async () => {
+  const h = await harness({ savedProfile: { version: 1, credits: 10000 } }); h.click('market');
+  h.action('salvaged', 'quality'); h.action('jet', 'buy');
+  let saved = JSON.parse([...h.memory.values()][0]); assert.equal(saved.partQualities.jet, 'salvaged');
+  h.action('pristine', 'quality'); assert.match(h.nodes.get('dialog-body').innerHTML, /ПОВЫСИТЬ КАЧЕСТВО/); h.action('jet', 'buy');
+  saved = JSON.parse([...h.memory.values()][0]); assert.equal(saved.credits, 10000 - h.context.ChitinEconomy.resolvePart('jet', 'pristine').price);
+  assert.equal(saved.ownedParts.length, 1); assert.equal(saved.partQualities.jet, 'pristine');
+  h.action('workshop'); assert.match(h.nodes.get('dialog-body').innerHTML, /Эталонное/); h.action('jet', 'equip');
+  h.action('close-garage'); h.click('deploy');
+  assert.equal(h.context.testGame.player.installedQualities.jet, 'pristine');
+  assert.ok(Math.abs(h.context.testGame.player.stats.speed - 1.198) < 1e-9);
+});
 test('unavailable storage does not block playable deployment or results', async () => {
   const h = await harness({ blockedStorage: true }); h.click('deploy'); h.frame(16); h.context.testGame.status = 'dead'; h.frame(32);
   assert.equal(h.nodes.get('notice').hidden, false); assert.match(h.nodes.get('notice').textContent, /Хранилище недоступно/);

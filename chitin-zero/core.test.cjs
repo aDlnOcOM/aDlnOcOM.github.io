@@ -95,7 +95,7 @@ test('segment collision prevents tunneling and returns the earliest impact', () 
   const grid = new Grid(); const a = { x: -20, y: -20 }, b = { x: 1000, y: 1000 }; grid.build([a, b]);
   assert.deepEqual(grid.near(0, 0, 50), [a]);
 });
-test('all six weapons hurt targets and piercing never repeats the same target', () => {
+test('all twelve weapons hurt targets and piercing never repeats the same target', () => {
   for (const id of Object.keys(D.weapons)) {
     const g = isolated(); g.player.weapons = [{ id, level: 1, cooldown: 0 }];
     const e = g.spawn('queen', 100, 0); g.grid.build(g.enemies); combat.fire(g, g.player.weapons[0], {});
