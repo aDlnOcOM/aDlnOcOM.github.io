@@ -33,7 +33,6 @@
     if (!enemy && !input.aim) return false;
     let angle = input.aim ? input.angle : Math.atan2(enemy.y - p.y, enemy.x - p.x);
     if (!Number.isFinite(angle)) angle = p.angle;
-    if (!input.aim && enemy) p.angle = angle;
     if (weapon.id === 'arc') {
       if (!enemy) return false;
       game.effect('ring', p.x, p.y, spec.color, spec.range, .4);
@@ -152,6 +151,10 @@
     game.rerolls--; return offer(game);
   }
   function update(game, dt, input) {
+    if (!input.aim) {
+      const enemy = target(game, Math.max(...game.player.weapons.map(w => profile(game, w).range)));
+      if (enemy) game.player.angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x);
+    }
     for (const weapon of game.player.weapons) {
       weapon.cooldown = Math.max(0, weapon.cooldown - dt);
       if (weapon.cooldown <= 0 && fire(game, weapon, input)) weapon.cooldown = profile(game, weapon).delay;

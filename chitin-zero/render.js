@@ -179,13 +179,14 @@
         circle(ctx, 0, 0, p.core === 'singularity' ? 150 + Math.sin(time * 3) * 30 : 48, null, D.cores[p.core].color); ctx.restore();
       }
       if (p.shield > 0) { ctx.globalAlpha = p.hurt > 0 ? .5 : .1; circle(ctx, 0, 0, 41, '#5ef5e0', '#93fff1'); ctx.globalAlpha = 1; }
-      ctx.rotate(p.angle - Math.PI / 2);
+      ctx.save(); ctx.rotate(p.moveAngle - Math.PI / 2);
       if (p.dashTime > 0) for (const x of [-18, 18]) {
         polygon(ctx, [[x - 5, -12], [x, -65 - Math.sin(time * 90) * 12], [x + 5, -12]], '#5ef5e0');
         polygon(ctx, [[x - 2, -12], [x, -43], [x + 2, -12]], '#edfff4');
       }
+      ctx.restore();
       if (p.hurt > 0) ctx.filter = 'brightness(1.5) sepia(.3)';
-      this.sprites.draw(ctx, 'mechs', { spectre: 0, bastion: 1, vector: 2 }[p.chassis], Math.floor(p.walk * 1.4) % 4, 0, 0, p.chassis === 'bastion' ? 95 : 83);
+      this.sprites.mech(ctx, p, 0, 0, p.chassis === 'bastion' ? 95 : 83);
       ctx.restore();
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle); ctx.globalAlpha = .8;
       polygon(ctx, [[50, -5], [60, 0], [50, 5]], color);

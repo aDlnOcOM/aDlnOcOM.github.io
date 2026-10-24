@@ -8,7 +8,7 @@
   <title>CHITIN // ZERO — Протокол зачистки</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23f1e658' d='M32 2 59 17v30L32 62 5 47V17z'/%3E%3Cpath fill='%230a111b' d='M18 18h28v9H27v10h19v9H18z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
-  <script defer src="data.js"></script><script defer src="core.js"></script><script defer src="combat.js"></script>
+  <script defer src="data.js"></script><script defer src="economy.js"></script><script defer src="core.js"></script><script defer src="combat.js"></script>
   <script defer src="storage.js"></script><script defer src="audio.js"></script><script defer src="sprites.js"></script>
   <script defer src="render.js"></script><script defer src="app.js"></script>
 </head>
@@ -36,7 +36,8 @@
       <div class="reactor-loadout"><div class="section-label"><span>02 / АКТИВНОЕ ЯДРО</span><span>Q</span></div><div id="core-options" class="core-options"></div><p id="core-description" class="core-description"></p></div>
       <div class="deploy-actions"><span class="difficulty">РЕЖИМ <b>БЕСКОНЕЧНЫЙ</b></span><button id="deploy" class="primary deploy" disabled>ЗАГРУЗКА СПРАЙТОВ…</button><small id="asset-status" role="status">Подготовка графики</small></div>
     </section>
-    <footer class="hangar-footer"><span>НЕ ЗАХВАТИТЬ. ЗАЧИСТИТЬ.</span><div><button id="sound-setting" class="quiet">ЗВУК: ВКЛ</button><button id="effects-setting" class="quiet">ЭФФЕКТЫ: ПОЛНЫЕ</button></div><span>CHITIN // ZERO <b>v0.1</b></span></footer>
+    <section class="garage-bar" aria-label="Модификация меха и чёрный рынок"><div class="wallet"><small>АСТРО-КРЕДИТЫ</small><strong id="wallet">0 AC</strong><span>BOUNTY / НАГРАДА ЗА УНИЧТОЖЕНИЕ</span></div><div class="garage-summary"><span id="loadout-summary">Штатная конфигурация</span><small id="power-summary"></small></div><button id="workshop" class="secondary">МОДИФИКАЦИЯ МЕХА ↗</button><button id="market" class="primary">ЧЁРНЫЙ РЫНОК ↗</button></section>
+    <footer class="hangar-footer"><span>НЕ ЗАХВАТИТЬ. ЗАЧИСТИТЬ.</span><div><button id="sound-setting" class="quiet">ЗВУК: ВКЛ</button><button id="effects-setting" class="quiet">ЭФФЕКТЫ: ПОЛНЫЕ</button></div><span>CHITIN // ZERO <b>v0.2</b></span></footer>
   </main>
   <section id="battle" class="battle" hidden aria-label="Поле боя">
     <canvas id="world" tabindex="0" aria-label="Поле боя. WASD — движение, Shift — рывок, Q — ядро. Стрельба автоматическая."></canvas>
@@ -44,6 +45,7 @@
       <div class="operation-clock"><small>ВРЕМЯ ОПЕРАЦИИ</small><strong id="timer">00:00</strong><span id="wave">ЭСКАЛАЦИЯ 01</span></div>
       <div class="kill-panel"><div><small>УНИЧТОЖЕНО</small><strong id="kills">0</strong></div><button id="pause" aria-label="Пауза" class="icon-button">Ⅱ</button></div>
     </div>
+    <div class="bounty-hud"><span>BOUNTY</span><b id="bounty-hud">0 AC</b><small id="bounty-pending"></small></div>
     <div class="xp-strip"><i id="xp-fill"></i><span id="level">СИНХРОНИЗАЦИЯ / 01</span></div>
     <div id="boss-hud" class="boss-hud" hidden><span id="boss-name">МАТКА РАЗЛОМА</span><div class="meter"><i id="boss-fill"></i></div></div>
     <div class="radio"><span>ОРБИТА // СВЯЗЬ</span><p id="radio-message" role="status"></p></div>

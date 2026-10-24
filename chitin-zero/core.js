@@ -1,6 +1,7 @@
 (function (root) {
   'use strict';
   const D = root.ChitinData || require('./data.js');
+  const E = root.ChitinEconomy || require('./economy.js');
   const TAU = Math.PI * 2;
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -46,18 +47,20 @@
     }
   }
   class Game {
-    constructor({ chassis = 'spectre', core = 'inferno', seed = Date.now(), combat = null } = {}) {
+    constructor({ chassis = 'spectre', core = 'inferno', seed = Date.now(), combat = null, profile = null } = {}) {
       chassis = Object.hasOwn(D.chassis, chassis) ? chassis : 'spectre';
       core = Object.hasOwn(D.cores, core) ? core : 'inferno';
       const frame = D.chassis[chassis];
       this.rng = random(seed); this.seed = seed; this.combat = combat;
       this.status = 'playing'; this.time = 0; this.kills = 0; this.bossKills = 0; this.nests = 0;
+      this.bountyTotal = 0; this.bountyPaid = 0; this.bountyKills = {};
       this.id = 0; this.spawnClock = .6; this.bossAt = 120; this.nestAt = 35; this.wave = 1;
-      this.player = { x: 0, y: 0, angle: 0, walk: 0, radius: 19, chassis, hp: frame.hp, maxHp: frame.hp, shield: frame.shield, maxShield: frame.shield,
+      this.player = { x: 0, y: 0, angle: Math.PI / 2, moveAngle: Math.PI / 2, walk: 0, walkTime: 0, moving: false, radius: 19, chassis, hp: frame.hp, maxHp: frame.hp, shield: frame.shield, maxShield: frame.shield,
         speed: frame.speed, dashBase: frame.dash, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, invulnerable: 1.2, hurt: 0, sinceHit: 10,
         level: 1, xp: 0, xpNext: 14, core, charge: 0, coreTime: 0, distance: 0,
-        stats: { damage: 1, rate: 1, speed: 1, magnet: 110, critical: .05, regen: 0, radius: 1, dash: 0, experience: 1, armor: 0 },
+        stats: { damage: 1, rate: 1, speed: 1, magnet: 110, critical: .05, regen: 0, radius: 1, dash: 0, experience: 1, armor: 0, coreGain: 1, coreDuration: 0 },
         weapons: [{ id: frame.weapon, level: 1, cooldown: .2 }], passives: {} };
+      E.apply(this.player, E.build(E.normalize(profile || {}), chassis));
       this.enemies = []; this.bullets = []; this.hostile = []; this.drops = []; this.effects = [];
       this.grid = new Grid(); this.events = []; this.offers = []; this.pendingLevels = 0; this.rerolls = 3;
       this.damageDone = 0; this.bestCombo = 0; this.combo = 0; this.comboTime = 0; this.shake = 0;
@@ -106,8 +109,10 @@
       if (critical) this.effect('text', enemy.x, enemy.y - enemy.radius, '#fff3a1', 0, .55, String(Math.round(amount)));
       if (enemy.hp > 0) return;
       enemy.dead = true; this.kills++; this.combo++; this.comboTime = 2.8; this.bestCombo = Math.max(this.bestCombo, this.combo);
+      this.bountyTotal += E.reward(enemy);
+      this.bountyKills[enemy.type] = (this.bountyKills[enemy.type] || 0) + 1;
       const p = this.player;
-      p.charge = Math.min(100, p.charge + (enemy.boss ? 35 : enemy.elite ? 8 : 1.5));
+      p.charge = Math.min(100, p.charge + (enemy.boss ? 35 : enemy.elite ? 8 : 1.5) * p.stats.coreGain);
       this.drop('xp', enemy.x, enemy.y, enemy.xp);
       this.effect('burst', enemy.x, enemy.y, enemy.color, enemy.radius * 2.3, .42);
       if (enemy.boss) {
@@ -140,7 +145,7 @@
     activateCore() {
       const p = this.player;
       if (this.status !== 'playing' || p.charge < 100 || p.coreTime > 0) return false;
-      p.charge = 0; p.coreTime = D.cores[p.core].duration + ((p.coreLevel || 1) - 1) * 2;
+      p.charge = 0; p.coreTime = D.cores[p.core].duration + ((p.coreLevel || 1) - 1) * 2 + p.stats.coreDuration;
       if (p.core === 'aegis') p.shield = p.maxShield;
       this.effect('ring', p.x, p.y, D.cores[p.core].color, 220, .7); this.shake = 6;
       this.message(`Ядро «${D.cores[p.core].name}» активно.`); return true;
@@ -167,6 +172,11 @@
       const mx = (p.dashTime > 0 ? p.dashX * velocity * 4.3 : dx * velocity) * dt;
       const my = (p.dashTime > 0 ? p.dashY * velocity * 4.3 : dy * velocity) * dt;
       p.x += mx; p.y += my; p.distance += Math.hypot(mx, my); p.walk += Math.hypot(mx, my) / 24;
+      p.moving = Math.hypot(mx, my) > .001;
+      if (p.moving) p.moveAngle = Math.atan2(my, mx);
+      // Animation runs at 8 frames/second of walking, never at distance-dependent speed.
+      if (p.moving && p.dashTime <= 0) p.walkTime += dt;
+      else p.walkTime = 0;
       if (input.aim && Number.isFinite(input.angle)) p.angle = input.angle;
       else if (len > 0) p.angle = Math.atan2(dy, dx);
       if (p.dashTime > 0) this.effect('ghost', p.x, p.y, D.chassis[p.chassis].color, 22, .22);

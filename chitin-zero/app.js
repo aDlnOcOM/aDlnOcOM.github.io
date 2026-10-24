@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const D = ChitinData, C = ChitinCore, combat = ChitinCombat, Store = ChitinStorage;
+  const D = ChitinData, C = ChitinCore, combat = ChitinCombat, Store = ChitinStorage, E = ChitinEconomy;
   const $ = id => document.getElementById(id), number = n => Math.floor(n).toLocaleString('ru-RU');
   const clock = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
   let storage = null; try { storage = window.localStorage; } catch { /* Private browsing may block access. */ }
@@ -9,9 +9,17 @@
   const keys = new Set(), pointer = { x: 0, y: 0, held: false, id: null }, touch = { x: 0, y: 0, id: null };
   let game = null, lastStatus = '', lastFrame = 0, accumulated = 0, hudClock = 0, moduleKey = '', dialogMode = '', savedFocus = null;
   let dashPressed = false, corePressed = false, noticeTimer = null, previewTime = 0, shotSerial = 0, lastHp = 0;
+  let marketFilter = 'all', bankingClock = 0, bankWarning = false;
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) settings.reducedEffects = true;
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('notice').hidden = true; }, 6000); }
   function save() { if (!Store.save(storage, settings)) notify('Хранилище недоступно. Рекорд останется только до закрытия страницы.'); }
+  function bank() {
+    if (!game) return true;
+    const result = Store.bankBounty(storage, settings, game);
+    if (!result.ok && !bankWarning) { notify('Bounty пока не сохранён. Проверь доступ к хранилищу; начисление будет повторено.'); bankWarning = true; }
+    if (result.ok) bankWarning = false;
+    return result.ok;
+  }
   function resetInput() { keys.clear(); pointer.held = false; pointer.id = null; touch.x = touch.y = 0; touch.id = null; dashPressed = corePressed = false; $('stick').style.transform = ''; }
   function closeDialog() {
     $('modal').hidden = true; dialogMode = ''; $('hangar').inert = false; $('battle').inert = false;
@@ -30,18 +38,55 @@
     $('frame-name').textContent = frame.name; $('frame-serial').textContent = frame.serial; $('frame-role').textContent = frame.role;
     $('frame-description').textContent = frame.description; $('core-description').textContent = D.cores[settings.core].description;
     $('best-kills').textContent = String(settings.bestKills).padStart(4, '0'); $('best-time').textContent = clock(settings.bestTime); $('run-count').textContent = String(settings.runs).padStart(2, '0');
+    const configuration = E.build(settings, settings.chassis);
+    $('wallet').textContent = `${number(settings.credits)} AC`;
+    $('loadout-summary').textContent = Object.values(configuration.loadout).map(id => E.parts[id].name.split(' / ')[0]).join(' · ') || 'Штатная конфигурация';
+    $('power-summary').textContent = `ЭНЕРГОСЕТЬ ${configuration.power}/${configuration.capacity} · ДЕТАЛЕЙ ${settings.ownedParts.length}/16`;
     $('sound-setting').textContent = `ЗВУК: ${settings.sound ? 'ВКЛ' : 'ВЫКЛ'}`;
     $('effects-setting').textContent = `ЭФФЕКТЫ: ${settings.reducedEffects ? 'МЯГКИЕ' : 'ПОЛНЫЕ'}`;
     audio.enabled = settings.sound; renderer.reduced = settings.reducedEffects; document.body.classList.toggle('reduced', settings.reducedEffects);
   }
   function deploy() {
     if (!sprites.ready) return;
+    if (game && !bank()) { notify('Не удалось сохранить bounty. Вылет не перезапущен — награда пока остаётся в текущем результате.'); return; }
     audio.unlock(); audio.tone('select'); resetInput(); closeDialog();
-    game = new C.Game({ chassis: settings.chassis, core: settings.core, combat });
+    game = new C.Game({ chassis: settings.chassis, core: settings.core, combat, profile: settings });
+    bankingClock = 0;
     lastStatus = ''; shotSerial = 0; lastHp = game.player.hp + game.player.shield; moduleKey = ''; accumulated = 0;
     $('hangar').hidden = true; $('battle').hidden = false; renderer.resize(); updateHud(); $('world').focus({ preventScroll: true });
   }
-  function returnHangar() { resetInput(); game = null; lastStatus = ''; closeDialog(); $('battle').hidden = true; $('hangar').hidden = false; options(); $('deploy').focus(); }
+  function returnHangar() { if (!bank()) { notify('Сначала нужно сохранить bounty. Результат оставлен открытым для повторной попытки.'); return; } resetInput(); game = null; lastStatus = ''; closeDialog(); $('battle').hidden = true; $('hangar').hidden = false; options(); $('deploy').focus(); }
+  function partIcon(part) {
+    const rows = ChitinSprites.manifest.parts.rows, row = Math.floor(part.visual / 4);
+    return `<svg class="part-icon" viewBox="${part.visual % 4 * 250} ${rows[row] * 1000} 250 ${(rows[row + 1] - rows[row]) * 1000}" aria-hidden="true"><image href="assets/parts.png" width="1000" height="1000"/></svg>`;
+  }
+  function workshop() {
+    if (game) return;
+    const chassis = settings.chassis, frame = D.chassis[chassis], build = E.build(settings, chassis), s = build.effects;
+    dialog('workshop', `${frame.name} / СБОРКА`, `МАСТЕРСКАЯ · ${number(settings.credits)} АСТРО-КРЕДИТОВ`,
+      `<p class="dialog-lead">Пять креплений, одна деталь в каждом. Установка и снятие бесплатны. Купленные детали сохраняются после гибели. Каждая деталь меняет спрайт меха.</p><div class="assembly-layout"><div class="assembly-preview"><canvas id="assembly-preview" width="640" height="640" aria-label="Внешний вид установленной сборки"></canvas><strong>ЭНЕРГОСЕТЬ ${build.power} / ${build.capacity}</strong><p>КОРПУС ${frame.hp} → ${frame.hp + (s.hp || 0)}<br>ЩИТ ${frame.shield} → ${frame.shield + (s.shield || 0)}<br>СКОРОСТЬ ${frame.speed} → ${Math.round(frame.speed * (1 + (s.speed || 0)))}<br>ОРУЖИЕ: ${D.weapons[build.weapon].name}</p></div><div class="assembly-slots">${Object.entries(E.slots).map(([slot, name]) => {
+        const installed = build.loadout[slot], owned = settings.ownedParts.filter(id => E.parts[id].slot === slot);
+        return `<section class="assembly-slot"><div class="slot-heading"><strong>${name}</strong><span>${installed ? E.parts[installed].name : 'Штатная система'}</span></div>${installed ? `<button class="quiet" data-remove="${slot}">СНЯТЬ / ВЕРНУТЬ ШТАТНУЮ</button>` : ''}<div class="owned-parts">${owned.map(id => {
+          const part = E.parts[id], compatible = E.compatible(id, chassis), power = build.power - (installed ? E.parts[installed].power : 0) + part.power;
+          return `<button class="owned-part" data-equip="${id}" data-slot="${slot}" aria-pressed="${id === installed}" ${!compatible || power > build.capacity || id === installed ? 'disabled' : ''}>${partIcon(part)}<span><b>${part.name}</b><small>${part.description}</small><em>${!compatible ? 'НЕСОВМЕСТИМО С ШАССИ' : power > build.capacity ? 'НЕДОСТАТОЧНО ЭНЕРГИИ' : id === installed ? 'УСТАНОВЛЕНО' : `УСТАНОВИТЬ / ${part.power} ЭНЕРГИИ`}</em></span></button>`;
+        }).join('') || '<p class="empty-slot">Купи детали для этого крепления на чёрном рынке.</p>'}</div></section>`;
+      }).join('')}</div></div><div class="dialog-actions"><button class="primary" data-action="market">ЧЁРНЫЙ РЫНОК</button><button class="secondary" data-action="close-garage">В АНГАР</button></div>`);
+  }
+  function market() {
+    if (game) return;
+    const cards = Object.entries(E.parts).filter(([, part]) => marketFilter === 'all' || part.slot === marketFilter);
+    dialog('market', 'ЧЁРНЫЙ РЫНОК.', `СВОБОДНАЯ ОРБИТА / БАЛАНС ${number(settings.credits)} AC`,
+      `<p class="dialog-lead">Только игровые Астро-Кредиты. Покупка открывает деталь навсегда; установка — в мастерской. Одна покупка доступна всем совместимым шасси.</p><div class="market-tabs">${[['all', 'Все детали'], ...Object.entries(E.slots)].map(([id, name]) => `<button class="secondary" data-filter="${id}" aria-pressed="${marketFilter === id}">${name}</button>`).join('')}</div><div class="market-grid">${cards.map(([id, part]) => {
+        const owned = settings.ownedParts.includes(id), allowed = E.compatible(id, settings.chassis);
+        return `<article class="market-card">${partIcon(part)}<small>${E.slots[part.slot]} / ${part.power} ЭНЕРГИИ</small><h3>${part.name}</h3><p>${part.description}</p><span class="compatibility">${part.chassis ? part.chassis.map(c => D.chassis[c].name).join(' / ') : 'ВСЕ ШАССИ'}${!allowed ? ' · выбрано другое шасси' : ''}</span><button class="${owned ? 'secondary' : 'primary'}" ${owned ? 'data-action="workshop"' : `data-buy="${id}"`} ${!owned && settings.credits < part.price ? 'disabled' : ''}>${owned ? 'КУПЛЕНО → УСТАНОВИТЬ' : `КУПИТЬ / ${part.price} AC`}</button></article>`;
+      }).join('')}</div><details class="bounty-rates"><summary>BOUNTY / ТАРИФЫ ЗА УНИЧТОЖЕНИЕ</summary><p>${Object.entries(E.bounty).map(([id, value]) => `${D.enemies[id].name}: ${value} AC`).join(' · ')}<br>Элита: ×3. Начисление автоматическое, в том числе при гибели и прерывании вылета.</p></details><div class="dialog-actions"><button class="secondary" data-action="workshop">МАСТЕРСКАЯ</button><button class="secondary" data-action="close-garage">В АНГАР</button></div>`);
+  }
+  function garageTransaction(operation, success, page) {
+    if (game) return;
+    const result = Store.transact(storage, settings, operation);
+    if (!result.ok) { notify(result.message); return; }
+    options(); page(); audio.tone('select'); notify(success);
+  }
   function upgradeDialog() {
     const p = game.player;
     dialog('upgrade', 'ПЕРЕПИШИ ПРАВИЛА БОЯ.', `СИНХРОНИЗАЦИЯ ${p.level} / ВЫБЕРИ ОДНО УЛУЧШЕНИЕ`,
@@ -61,10 +106,12 @@
   }
   function deathDialog() {
     const previous = settings.bestKills;
+    bank();
     if (Store.record(settings, game)) save();
     audio.tone('death');
     dialog('dead', 'МЕХ ПОТЕРЯН. ТЫ — НЕТ.', game.kills > previous ? 'НОВЫЙ РЕКОРД ЗАЧИСТКИ' : 'ОПЕРАЦИЯ ЗАВЕРШЕНА',
-      `<p class="dialog-lead">${game.abandoned ? 'Операция прервана пилотом.' : 'Критическое разрушение корпуса.'} Сборка потеряна. Следующий вылет начинается с чистой системы.</p><div class="results-grid"><div><small>УНИЧТОЖЕНО</small><strong>${number(game.kills)}</strong></div><div><small>ВРЕМЯ</small><strong>${clock(game.time)}</strong></div><div><small>МАТКИ</small><strong>${game.bossKills}</strong></div><div><small>УРОВЕНЬ</small><strong>${game.player.level}</strong></div></div><p class="dialog-lead">Гнёзда: ${game.nests} · Лучшая цепочка: ${game.bestCombo} · Урон: ${number(game.damageDone)}</p>${buildSummary()}<div class="dialog-actions"><button class="primary" data-action="restart">ЕЩЁ ОДИН ВЫЛЕТ ↗</button><button class="secondary" data-action="hangar">СМЕНИТЬ ШАССИ</button></div>`);
+      `<p class="dialog-lead">${game.abandoned ? 'Операция прервана пилотом.' : 'Критическое разрушение корпуса.'} Улучшения забега потеряны. Купленные детали и Астро-Кредиты сохранены при доступном хранилище.</p><div class="results-grid"><div><small>УНИЧТОЖЕНО</small><strong>${number(game.kills)}</strong></div><div><small>ВРЕМЯ</small><strong>${clock(game.time)}</strong></div><div><small>МАТКИ</small><strong>${game.bossKills}</strong></div><div><small>BOUNTY</small><strong>${number(game.bountyTotal)} AC</strong></div></div><p class="dialog-lead" id="bounty-result">${game.bountyPaid === game.bountyTotal ? 'Награда зачислена.' : 'Награда ожидает сохранения. Не закрывай страницу.'} Баланс: ${number(settings.credits)} AC.</p><p class="dialog-lead">Уровень: ${game.player.level} · Гнёзда: ${game.nests} · Лучшая цепочка: ${game.bestCombo} · Урон: ${number(game.damageDone)}</p>${buildSummary()}<div class="dialog-actions"><button class="primary" data-action="restart">ЕЩЁ ОДИН ВЫЛЕТ ↗</button><button class="secondary" data-action="hangar">АНГАР / МОДИФИКАЦИЯ</button></div>`);
+    if (game.bountyTotal > game.bountyPaid) $('dialog-body').innerHTML += '<div class="dialog-actions"><button class="secondary danger" data-action="bounty-loss">ХРАНИЛИЩЕ НЕДОСТУПНО / ВЫЙТИ БЕЗ НАГРАДЫ</button></div>';
   }
   function pick(index) {
     if (!game || !combat.choose(game, index)) return;
@@ -79,6 +126,9 @@
     $('shield-text').textContent = `${Math.ceil(p.shield)} / ${p.maxShield}`;
     $('hp-fill').style.width = `${p.hp / p.maxHp * 100}%`; $('shield-fill').style.width = `${p.shield / p.maxShield * 100}%`;
     $('timer').textContent = clock(game.time); $('kills').textContent = number(game.kills); $('wave').textContent = `ЭСКАЛАЦИЯ ${String(game.wave).padStart(2, '0')}`;
+    $('bounty-hud').textContent = `${number(game.bountyTotal)} AC`;
+    $('bounty-pending').textContent = game.bountyTotal > game.bountyPaid ? `+${number(game.bountyTotal - game.bountyPaid)} к зачислению` : 'ЗАЧИСЛЕНО';
+    if (dialogMode === 'dead') $('bounty-result').textContent = `${game.bountyPaid === game.bountyTotal ? 'Награда зачислена.' : 'Награда ожидает сохранения. Не закрывай страницу.'} Баланс: ${number(settings.credits)} AC.`;
     $('xp-fill').style.width = `${p.xp / p.xpNext * 100}%`; $('level').textContent = `СИНХРОНИЗАЦИЯ / ${String(p.level).padStart(2, '0')}`;
     $('dash-state').textContent = p.dashCooldown <= 0 ? 'ГОТОВ' : `${p.dashCooldown.toFixed(1)} С`;
     $('dash-button').classList.toggle('ready', p.dashCooldown <= 0);
@@ -99,19 +149,30 @@
     if (button.dataset.chassis) { settings.chassis = button.dataset.chassis; options(); save(); $('chassis-options').querySelector(`[data-chassis="${settings.chassis}"]`).focus(); }
     if (button.dataset.core) { settings.core = button.dataset.core; options(); save(); $('core-options').querySelector(`[data-core="${settings.core}"]`).focus(); }
     if (button.dataset.choice !== undefined) pick(Number(button.dataset.choice));
+    if (button.dataset.buy) garageTransaction(next => E.purchase(next, button.dataset.buy), 'Деталь куплена. Установи её в мастерской.', market);
+    if (button.dataset.equip) garageTransaction(next => E.equip(next, settings.chassis, button.dataset.slot, button.dataset.equip), 'Деталь установлена. Внешний вид и характеристики обновлены.', workshop);
+    if (button.dataset.remove) garageTransaction(next => E.equip(next, settings.chassis, button.dataset.remove, null), 'Возвращена штатная система. Купленная деталь осталась на складе.', workshop);
+    if (button.dataset.filter) { marketFilter = button.dataset.filter; market(); }
     const action = button.dataset.action;
+    if (action === 'market') market();
+    if (action === 'workshop') workshop();
+    if (action === 'close-garage') closeDialog();
+    if (action === 'bounty-loss') dialog('bounty-loss', 'ВЫЙТИ БЕЗ СОХРАНЕНИЯ?', 'НАГРАДА МОЖЕТ БЫТЬ ПОТЕРЯНА', `<p class="dialog-lead">Не сохранено: ${number(game.bountyTotal - game.bountyPaid)} AC. Можно остаться и дождаться восстановления хранилища либо отказаться только от этой суммы. Уже зачисленные кредиты и покупки не удаляются.</p><div class="dialog-actions"><button class="primary" data-action="keep-bounty">ОСТАТЬСЯ</button><button class="secondary danger" data-action="forfeit-bounty">ОТКАЗАТЬСЯ И ВЫЙТИ</button></div>`);
+    if (action === 'keep-bounty') deathDialog();
+    if (action === 'forfeit-bounty') { game.bountyPaid = game.bountyTotal; returnHangar(); }
     if (action === 'reroll' && combat.reroll(game)) upgradeDialog();
     if (action === 'resume') { game.pause(); closeDialog(); lastStatus = game.status; }
     if (action === 'help') help();
     if (action === 'close-help') { if (game?.status === 'paused') pauseDialog(); else closeDialog(); }
     if (action === 'sound') { settings.sound = !settings.sound; options(); save(); audio.unlock(); pauseDialog(); }
-    if (action === 'abandon') dialog('confirm', 'ПРЕРВАТЬ ОПЕРАЦИЮ?', 'СБОРКА БУДЕТ ПОТЕРЯНА', '<p class="dialog-lead">Результат будет записан, но продолжить этот вылет уже нельзя.</p><div class="dialog-actions"><button class="secondary" data-action="cancel-abandon">ОСТАТЬСЯ</button><button class="secondary danger" data-action="confirm-abandon">ПРЕРВАТЬ</button></div>');
+    if (action === 'abandon') dialog('confirm', 'ПРЕРВАТЬ ОПЕРАЦИЮ?', 'УЛУЧШЕНИЯ ЗАБЕГА БУДУТ ПОТЕРЯНЫ', '<p class="dialog-lead">Результат и bounty будут записаны. Купленные детали останутся. Продолжить этот вылет уже нельзя.</p><div class="dialog-actions"><button class="secondary" data-action="cancel-abandon">ОСТАТЬСЯ</button><button class="secondary danger" data-action="confirm-abandon">ПРЕРВАТЬ</button></div>');
     if (action === 'cancel-abandon') pauseDialog();
     if (action === 'confirm-abandon') { game.abandoned = true; game.status = 'dead'; }
     if (action === 'restart') deploy();
     if (action === 'hangar') returnHangar();
   });
   $('deploy').onclick = deploy; $('help').onclick = help;
+  $('workshop').onclick = workshop; $('market').onclick = market;
   $('sound-setting').onclick = () => { settings.sound = !settings.sound; options(); save(); audio.unlock(); };
   $('effects-setting').onclick = () => { settings.reducedEffects = !settings.reducedEffects; options(); save(); };
   $('pause').onclick = () => { if (game?.status === 'playing') { resetInput(); game.pause(); } };
@@ -129,8 +190,10 @@
     if (event.repeat) return;
     if (game?.status === 'upgrade' && /^Digit[123]$/.test(event.code)) { pick(Number(event.code.at(-1)) - 1); return; }
     if (event.code === 'Escape' || event.code === 'KeyP') {
-      if (dialogMode === 'help') { if (game?.status === 'paused') pauseDialog(); else closeDialog(); }
+      if (['workshop', 'market'].includes(dialogMode)) closeDialog();
+      else if (dialogMode === 'help') { if (game?.status === 'paused') pauseDialog(); else closeDialog(); }
       else if (dialogMode === 'confirm') pauseDialog();
+      else if (dialogMode === 'bounty-loss') deathDialog();
       else if (game && ['playing', 'paused'].includes(game.status)) { game.pause(); resetInput(); if (game.status === 'playing') closeDialog(); }
       event.preventDefault(); return;
     }
@@ -148,12 +211,14 @@
   function stickMove(e) { if (touch.id !== e.pointerId) return; const rect = $('joystick').getBoundingClientRect(); let dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2; const length = Math.hypot(dx, dy); if (length > 38) { dx *= 38 / length; dy *= 38 / length; } touch.x = dx / 38; touch.y = dy / 38; $('stick').style.transform = `translate(${dx}px,${dy}px)`; }
   $('joystick').addEventListener('pointerdown', e => { if (game?.status !== 'playing') return; touch.id = e.pointerId; $('joystick').setPointerCapture(e.pointerId); stickMove(e); });
   $('joystick').addEventListener('pointermove', stickMove);
-  function backgroundPause() { resetInput(); if (game?.status === 'playing') game.pause(); accumulated = 0; }
+  function backgroundPause() { resetInput(); if (game?.status === 'playing') game.pause(); bank(); accumulated = 0; }
+  window.addEventListener('pagehide', bank);
   window.addEventListener('blur', backgroundPause); document.addEventListener('visibilitychange', () => { if (document.hidden) backgroundPause(); });
   window.addEventListener('resize', () => renderer.resize());
   function frame(stamp) {
     const delta = Math.min(.15, Math.max(0, (stamp - lastFrame) / 1000)); lastFrame = stamp;
     if (game) {
+      bankingClock += delta; if (bankingClock >= 1) { bank(); bankingClock = 0; }
       accumulated += delta;
       while (accumulated >= 1 / 60) {
         const p = game.player, aim = renderer.screenToWorld(pointer.x, pointer.y), beforeDash = p.dashCooldown, beforeCore = p.coreTime;
@@ -171,7 +236,14 @@
         else if (game.status === 'paused') pauseDialog(); else if (game.status === 'dead') deathDialog();
       }
       renderer.draw(game); hudClock += delta; if (hudClock > .1) { updateHud(); hudClock = 0; }
-    } else { previewTime += delta; if (!document.hidden) sprites.preview($('mech-preview'), settings.chassis, previewTime, settings.reducedEffects); }
+    } else {
+      previewTime += delta;
+      if (!document.hidden) {
+        const loadout = E.build(settings, settings.chassis).loadout;
+        sprites.preview($('mech-preview'), settings.chassis, previewTime, settings.reducedEffects, loadout);
+        if (dialogMode === 'workshop') sprites.preview($('assembly-preview'), settings.chassis, previewTime, settings.reducedEffects, loadout);
+      }
+    }
     requestAnimationFrame(frame);
   }
   options(); requestAnimationFrame(frame);
