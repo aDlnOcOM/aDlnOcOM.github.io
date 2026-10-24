@@ -238,8 +238,19 @@
         }
         ctx.restore();
       }
-      for (const e of [...game.enemies].sort((a, b) => a.y - b.y)) if (Math.abs(e.x - p.x) < 850 && Math.abs(e.y - p.y) < 600) this.bug(e, game.time);
+      for (const e of [...game.enemies].sort((a, b) => a.y - b.y)) if (Math.abs(e.x - p.x) < 850 && Math.abs(e.y - p.y) < 600) {
+        if (e.burnTime > 0) circle(ctx, e.x, e.y, e.radius + 5, '#ff713e33', '#ff713e');
+        if (e.slowTime > 0) circle(ctx, e.x, e.y, e.radius + 8, null, '#a1e9ff');
+        this.bug(e, game.time);
+      }
       for (const b of game.bullets) {
+        if (b.weapon === 'flame') { circle(ctx, b.x, b.y, b.radius * 1.6, '#ff713e44'); circle(ctx, b.x, b.y, b.radius, '#ffb454aa'); continue; }
+        if (b.weapon === 'saw') {
+          ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(this.reduced ? 0 : game.time * 18);
+          polygon(ctx, Array.from({ length: 16 }, (_, i) => { const a = i * Math.PI / 8, r = b.radius * (i % 2 ? .65 : 1.25); return [Math.cos(a) * r, Math.sin(a) * r]; }), '#778b48', b.color);
+          circle(ctx, 0, 0, 3, '#f2fff2'); ctx.restore(); continue;
+        }
+        if (b.weapon === 'cryo') { polygon(ctx, [[b.x, b.y - 10], [b.x + 6, b.y], [b.x, b.y + 10], [b.x - 6, b.y]], '#a1e9ff77', b.color); continue; }
         ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(b.x - b.vx * .012, b.y - b.vy * .012); ctx.lineTo(b.x, b.y); ctx.stroke();
         circle(ctx, b.x, b.y, b.radius * .55, '#f2fff2');
       }

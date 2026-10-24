@@ -9,7 +9,7 @@
   const keys = new Set(), pointer = { x: 0, y: 0, held: false, id: null }, touch = { x: 0, y: 0, id: null };
   let game = null, lastStatus = '', lastFrame = 0, accumulated = 0, hudClock = 0, moduleKey = '', dialogMode = '', savedFocus = null;
   let dashPressed = false, corePressed = false, noticeTimer = null, previewTime = 0, shotSerial = 0, lastHp = 0;
-  let marketFilter = 'all', bankingClock = 0, bankWarning = false;
+  let marketFilter = 'all', marketQuality = 'standard', marketPage = 0, bankingClock = 0, bankWarning = false;
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) settings.reducedEffects = true;
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('notice').hidden = true; }, 6000); }
   function save() { if (!Store.save(storage, settings)) notify('Хранилище недоступно. Рекорд останется только до закрытия страницы.'); }
@@ -41,7 +41,7 @@
     const configuration = E.build(settings, settings.chassis);
     $('wallet').textContent = `${number(settings.credits)} AC`;
     $('loadout-summary').textContent = Object.values(configuration.loadout).map(id => E.parts[id].name.split(' / ')[0]).join(' · ') || 'Штатная конфигурация';
-    $('power-summary').textContent = `ЭНЕРГОСЕТЬ ${configuration.power}/${configuration.capacity} · ДЕТАЛЕЙ ${settings.ownedParts.length}/16`;
+    $('power-summary').textContent = `ЭНЕРГОСЕТЬ ${configuration.power}/${configuration.capacity} · ДЕТАЛЕЙ ${settings.ownedParts.length}/${Object.keys(E.parts).length}`;
     $('sound-setting').textContent = `ЗВУК: ${settings.sound ? 'ВКЛ' : 'ВЫКЛ'}`;
     $('effects-setting').textContent = `ЭФФЕКТЫ: ${settings.reducedEffects ? 'МЯГКИЕ' : 'ПОЛНЫЕ'}`;
     audio.enabled = settings.sound; renderer.reduced = settings.reducedEffects; document.body.classList.toggle('reduced', settings.reducedEffects);
@@ -58,8 +58,9 @@
   function returnHangar() { if (!bank()) { notify('Сначала нужно сохранить bounty. Результат оставлен открытым для повторной попытки.'); return; } resetInput(); game = null; lastStatus = ''; closeDialog(); $('battle').hidden = true; $('hangar').hidden = false; options(); $('deploy').focus(); }
   function partIcon(part) {
     const rows = ChitinSprites.manifest.parts.rows, row = Math.floor(part.visual / 4);
-    return `<svg class="part-icon" viewBox="${part.visual % 4 * 250} ${rows[row] * 1000} 250 ${(rows[row + 1] - rows[row]) * 1000}" aria-hidden="true"><image href="assets/parts.png" width="1000" height="1000"/></svg>`;
+    return `<svg class="part-icon" style="filter:hue-rotate(${part.visualHue || 0}deg)" viewBox="${part.visual % 4 * 250} ${rows[row] * 1000} 250 ${(rows[row + 1] - rows[row]) * 1000}" aria-hidden="true"><image href="assets/parts.png" width="1000" height="1000"/></svg>`;
   }
+  function qualityBadge(quality) { const q = E.qualities[quality]; return `<span class="quality-badge" style="--quality:${q.color}">${q.name}</span>`; }
   function workshop() {
     if (game) return;
     const chassis = settings.chassis, frame = D.chassis[chassis], build = E.build(settings, chassis), s = build.effects;
@@ -67,19 +68,20 @@
       `<p class="dialog-lead">Пять креплений, одна деталь в каждом. Установка и снятие бесплатны. Купленные детали сохраняются после гибели. Каждая деталь меняет спрайт меха.</p><div class="assembly-layout"><div class="assembly-preview"><canvas id="assembly-preview" width="640" height="640" aria-label="Внешний вид установленной сборки"></canvas><strong>ЭНЕРГОСЕТЬ ${build.power} / ${build.capacity}</strong><p>КОРПУС ${frame.hp} → ${frame.hp + (s.hp || 0)}<br>ЩИТ ${frame.shield} → ${frame.shield + (s.shield || 0)}<br>СКОРОСТЬ ${frame.speed} → ${Math.round(frame.speed * (1 + (s.speed || 0)))}<br>ОРУЖИЕ: ${D.weapons[build.weapon].name}</p></div><div class="assembly-slots">${Object.entries(E.slots).map(([slot, name]) => {
         const installed = build.loadout[slot], owned = settings.ownedParts.filter(id => E.parts[id].slot === slot);
         return `<section class="assembly-slot"><div class="slot-heading"><strong>${name}</strong><span>${installed ? E.parts[installed].name : 'Штатная система'}</span></div>${installed ? `<button class="quiet" data-remove="${slot}">СНЯТЬ / ВЕРНУТЬ ШТАТНУЮ</button>` : ''}<div class="owned-parts">${owned.map(id => {
-          const part = E.parts[id], compatible = E.compatible(id, chassis), power = build.power - (installed ? E.parts[installed].power : 0) + part.power;
-          return `<button class="owned-part" data-equip="${id}" data-slot="${slot}" aria-pressed="${id === installed}" ${!compatible || power > build.capacity || id === installed ? 'disabled' : ''}>${partIcon(part)}<span><b>${part.name}</b><small>${part.description}</small><em>${!compatible ? 'НЕСОВМЕСТИМО С ШАССИ' : power > build.capacity ? 'НЕДОСТАТОЧНО ЭНЕРГИИ' : id === installed ? 'УСТАНОВЛЕНО' : `УСТАНОВИТЬ / ${part.power} ЭНЕРГИИ`}</em></span></button>`;
+          const part = E.resolvePart(id, E.qualityOf(settings, id)), compatible = E.compatible(id, chassis), power = build.power - (installed ? E.parts[installed].power : 0) + part.power;
+          return `<button class="owned-part" data-equip="${id}" data-slot="${slot}" aria-pressed="${id === installed}" ${!compatible || power > build.capacity || id === installed ? 'disabled' : ''}>${partIcon(part)}<span><b>${part.name}</b>${qualityBadge(part.quality)}<small>${E.describe(part)}</small><em>${!compatible ? 'НЕСОВМЕСТИМО С ШАССИ' : power > build.capacity ? 'НЕДОСТАТОЧНО ЭНЕРГИИ' : id === installed ? 'УСТАНОВЛЕНО' : `УСТАНОВИТЬ / ${part.power} ЭНЕРГИИ`}</em></span></button>`;
         }).join('') || '<p class="empty-slot">Купи детали для этого крепления на чёрном рынке.</p>'}</div></section>`;
       }).join('')}</div></div><div class="dialog-actions"><button class="primary" data-action="market">ЧЁРНЫЙ РЫНОК</button><button class="secondary" data-action="close-garage">В АНГАР</button></div>`);
   }
   function market() {
     if (game) return;
     const cards = Object.entries(E.parts).filter(([, part]) => marketFilter === 'all' || part.slot === marketFilter);
+    const pages = Math.ceil(cards.length / 12); marketPage = Math.max(0, Math.min(pages - 1, marketPage));
     dialog('market', 'ЧЁРНЫЙ РЫНОК.', `СВОБОДНАЯ ОРБИТА / БАЛАНС ${number(settings.credits)} AC`,
-      `<p class="dialog-lead">Только игровые Астро-Кредиты. Покупка открывает деталь навсегда; установка — в мастерской. Одна покупка доступна всем совместимым шасси.</p><div class="market-tabs">${[['all', 'Все детали'], ...Object.entries(E.slots)].map(([id, name]) => `<button class="secondary" data-filter="${id}" aria-pressed="${marketFilter === id}">${name}</button>`).join('')}</div><div class="market-grid">${cards.map(([id, part]) => {
-        const owned = settings.ownedParts.includes(id), allowed = E.compatible(id, settings.chassis);
-        return `<article class="market-card">${partIcon(part)}<small>${E.slots[part.slot]} / ${part.power} ЭНЕРГИИ</small><h3>${part.name}</h3><p>${part.description}</p><span class="compatibility">${part.chassis ? part.chassis.map(c => D.chassis[c].name).join(' / ') : 'ВСЕ ШАССИ'}${!allowed ? ' · выбрано другое шасси' : ''}</span><button class="${owned ? 'secondary' : 'primary'}" ${owned ? 'data-action="workshop"' : `data-buy="${id}"`} ${!owned && settings.credits < part.price ? 'disabled' : ''}>${owned ? 'КУПЛЕНО → УСТАНОВИТЬ' : `КУПИТЬ / ${part.price} AC`}</button></article>`;
-      }).join('')}</div><details class="bounty-rates"><summary>BOUNTY / ТАРИФЫ ЗА УНИЧТОЖЕНИЕ</summary><p>${Object.entries(E.bounty).map(([id, value]) => `${D.enemies[id].name}: ${value} AC`).join(' · ')}<br>Элита: ×3. Начисление автоматическое, в том числе при гибели и прерывании вылета.</p></details><div class="dialog-actions"><button class="secondary" data-action="workshop">МАСТЕРСКАЯ</button><button class="secondary" data-action="close-garage">В АНГАР</button></div>`);
+      `<p class="dialog-lead">80 моделей · 5 качеств · 12 видов оружия. Покупка навсегда для всех совместимых рам. Повышение качества — за разницу цен, без случайного результата. Энергопотребление не меняется.</p><div class="market-tabs">${[['all', 'Все детали'], ...Object.entries(E.slots)].map(([id, name]) => `<button class="secondary" data-filter="${id}" aria-pressed="${marketFilter === id}">${name}</button>`).join('')}</div><p class="market-label">КАЧЕСТВО ПОКУПКИ / УЛУЧШЕНИЯ</p><div class="market-tabs quality-tabs">${Object.entries(E.qualities).map(([id, q]) => `<button class="secondary" data-quality="${id}" aria-pressed="${marketQuality === id}" style="--quality:${q.color}">${q.name}<small>Эффекты ×${q.factor} · цена ×${q.price}</small></button>`).join('')}</div><p class="market-label">Положительные эффекты усиливаются, штрафы уменьшаются. Качество оружейного блока усиливает его собственный урон; перечисленные системные бонусы действуют на весь мех. Предел защиты: 75%, ускорения рывка: 80%.</p><p class="market-label">МОДЕЛЕЙ: ${cards.length} · СТРАНИЦА ${marketPage + 1}/${pages}</p><div class="market-grid">${cards.slice(marketPage * 12, marketPage * 12 + 12).map(([id]) => {
+        const part = E.resolvePart(id, marketQuality), owned = settings.ownedParts.includes(id), allowed = E.compatible(id, settings.chassis), offer = E.quote(settings, id, marketQuality);
+        return `<article class="market-card" style="--quality:${E.qualities[marketQuality].color}">${partIcon(part)}${qualityBadge(marketQuality)}<small>${E.slots[part.slot]} / ${part.power} ЭНЕРГИИ</small><h3>${part.name}</h3><p>${E.describe(part)}</p>${part.weapon ? `<p class="weapon-purpose">${D.weapons[part.weapon].description}</p>` : ''}<small>Полная цена: ${part.price} AC${owned ? ` · В наличии: ${E.qualities[E.qualityOf(settings, id)].name}` : ''}</small><span class="compatibility">${part.chassis ? part.chassis.map(c => D.chassis[c].name).join(' / ') : 'ВСЕ ШАССИ'}${!allowed ? ' · выбрано другое шасси' : ''}</span><button class="${offer.ok ? 'primary' : 'secondary'}" ${offer.ok ? `data-buy="${id}"` : 'data-action="workshop"'} ${offer.ok && settings.credits < offer.cost ? 'disabled' : ''}>${!offer.ok ? 'КУПЛЕНО НЕ ХУЖЕ → МАСТЕРСКАЯ' : `${offer.upgrade ? 'ПОВЫСИТЬ КАЧЕСТВО' : 'КУПИТЬ'} / ${offer.cost} AC`}</button></article>`;
+      }).join('')}</div><div class="dialog-actions"><button class="secondary" data-page="${marketPage - 1}" ${marketPage === 0 ? 'disabled' : ''}>← НАЗАД</button><button class="secondary" data-page="${marketPage + 1}" ${marketPage + 1 >= pages ? 'disabled' : ''}>ДАЛЕЕ →</button></div><details class="bounty-rates"><summary>BOUNTY / ТАРИФЫ ЗА УНИЧТОЖЕНИЕ</summary><p>${Object.entries(E.bounty).map(([id, value]) => `${D.enemies[id].name}: ${value} AC`).join(' · ')}<br>Элита: ×3. Начисление автоматическое, в том числе при гибели и прерывании вылета.</p></details><div class="dialog-actions"><button class="secondary" data-action="workshop">МАСТЕРСКАЯ</button><button class="secondary" data-action="close-garage">В АНГАР</button></div>`);
   }
   function garageTransaction(operation, success, page) {
     if (game) return;
@@ -149,10 +151,12 @@
     if (button.dataset.chassis) { settings.chassis = button.dataset.chassis; options(); save(); $('chassis-options').querySelector(`[data-chassis="${settings.chassis}"]`).focus(); }
     if (button.dataset.core) { settings.core = button.dataset.core; options(); save(); $('core-options').querySelector(`[data-core="${settings.core}"]`).focus(); }
     if (button.dataset.choice !== undefined) pick(Number(button.dataset.choice));
-    if (button.dataset.buy) garageTransaction(next => E.purchase(next, button.dataset.buy), 'Деталь куплена. Установи её в мастерской.', market);
+    if (button.dataset.buy) garageTransaction(next => E.purchase(next, button.dataset.buy, marketQuality), 'Покупка или повышение качества сохранены. Сборка обновлена.', market);
     if (button.dataset.equip) garageTransaction(next => E.equip(next, settings.chassis, button.dataset.slot, button.dataset.equip), 'Деталь установлена. Внешний вид и характеристики обновлены.', workshop);
     if (button.dataset.remove) garageTransaction(next => E.equip(next, settings.chassis, button.dataset.remove, null), 'Возвращена штатная система. Купленная деталь осталась на складе.', workshop);
-    if (button.dataset.filter) { marketFilter = button.dataset.filter; market(); }
+    if (button.dataset.filter) { marketFilter = button.dataset.filter; marketPage = 0; market(); }
+    if (button.dataset.quality && Object.hasOwn(E.qualities, button.dataset.quality)) { marketQuality = button.dataset.quality; market(); }
+    if (button.dataset.page !== undefined && Number.isInteger(Number(button.dataset.page))) { marketPage = Number(button.dataset.page); market(); }
     const action = button.dataset.action;
     if (action === 'market') market();
     if (action === 'workshop') workshop();

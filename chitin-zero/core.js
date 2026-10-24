@@ -126,7 +126,7 @@
     hurtPlayer(amount) {
       const p = this.player;
       if (this.status !== 'playing' || p.invulnerable > 0 || p.dashTime > 0 || amount <= 0) return false;
-      amount *= 1 - p.stats.armor;
+      amount *= 1 - clamp(p.stats.armor, 0, .75);
       if (p.core === 'aegis' && p.coreTime > 0) amount *= .2;
       const absorbed = Math.min(p.shield, amount); p.shield -= absorbed; p.hp = Math.max(0, p.hp - (amount - absorbed));
       p.sinceHit = 0; p.invulnerable = .28; p.hurt = .25; this.shake = 6;
@@ -139,7 +139,7 @@
       if (this.status !== 'playing' || p.dashCooldown > 0) return false;
       const len = Math.hypot(dx, dy);
       p.dashX = len ? dx / len : Math.cos(p.angle); p.dashY = len ? dy / len : Math.sin(p.angle);
-      p.dashTime = .2; p.dashCooldown = p.dashBase * (1 - p.stats.dash);
+      p.dashTime = .2; p.dashCooldown = p.dashBase * (1 - clamp(p.stats.dash, 0, .8));
       this.effect('ring', p.x, p.y, D.chassis[p.chassis].color, 35, .35); return true;
     }
     activateCore() {
@@ -214,6 +214,13 @@
       const p = this.player;
       for (const e of [...this.enemies]) {
         if (e.dead) continue;
+        if (e.burnTime > 0) {
+          const elapsed = Math.min(dt, e.burnTime); e.burnTime = Math.max(0, e.burnTime - dt);
+          this.hurtEnemy(e, e.burnDamage * elapsed);
+          if (e.dead) continue;
+        }
+        const slowFactor = e.slowTime > 0 ? 1 - (e.slow || 0) * (e.boss ? .35 : 1) * Math.min(1, e.slowTime / dt) : 1;
+        e.slowTime = Math.max(0, (e.slowTime || 0) - dt);
         e.flash = Math.max(0, e.flash - dt); e.timer -= dt;
         let dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
         e.angle = Math.atan2(dy, dx);
@@ -221,7 +228,7 @@
           const a = this.rng() * TAU; e.x = p.x + Math.cos(a) * 1000; e.y = p.y + Math.sin(a) * 1000; continue;
         }
         if (dist > 2400 && e.type === 'nest') { e.dead = true; continue; }
-        let speed = e.speed, direction = 1;
+        let speed = e.speed * slowFactor, direction = 1;
         if (e.type === 'nest') {
           if (e.timer <= 0 && dist < 1000) { e.timer = 4; this.spawn('mite', e.x + (this.rng() - .5) * 60, e.y + (this.rng() - .5) * 60); }
         } else if (e.type === 'spitter') {
@@ -229,7 +236,7 @@
           if (e.timer <= 0 && dist < 650) { e.timer = 2.4; this.acid(e, e.angle); this.effect('ring', e.x, e.y, e.color, 26, .3); }
         } else if (e.type === 'charger') {
           if (e.chargeTime > 0) {
-            e.chargeTime -= dt; e.x += Math.cos(e.chargeAngle) * 540 * dt; e.y += Math.sin(e.chargeAngle) * 540 * dt; speed = 0;
+            e.chargeTime -= dt; e.x += Math.cos(e.chargeAngle) * 540 * slowFactor * dt; e.y += Math.sin(e.chargeAngle) * 540 * slowFactor * dt; speed = 0;
           } else if (e.windup > 0) {
             e.windup -= dt; speed = 0;
             if (e.windup <= 0) e.chargeTime = .55;

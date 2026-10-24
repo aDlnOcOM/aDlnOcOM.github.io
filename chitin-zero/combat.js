@@ -8,16 +8,25 @@
     plasma: { passive: 'radius', name: 'СВЕРХНОВАЯ', text: 'Радиус плазменного взрыва увеличен в полтора раза.' },
     rail: { passive: 'critical', name: 'ГОРИЗОНТ', text: 'Каждый снаряд пробивает до четырнадцати целей.' },
     rocket: { passive: 'damage', name: 'РОЙ', text: 'Три самонаводящиеся ракеты за один залп.' },
-    arc: { passive: 'shield', name: 'КАТАКЛИЗМ', text: 'Импульсы испускаются на 40% чаще.' }
+    arc: { passive: 'shield', name: 'КАТАКЛИЗМ', text: 'Импульсы испускаются на 40% чаще.' },
+    cannon: { passive: 'rate', name: 'ГРОЗОВОЙ ФРОНТ', text: 'Автопушка выпускает два осколочных снаряда.' },
+    flame: { passive: 'damage', name: 'ПИРОКЛАЗМ', text: 'Урон горения удваивается.' },
+    cryo: { passive: 'radius', name: 'ВЕЧНАЯ МЕРЗЛОТА', text: 'Замедление усилено до 65%, длительность — 3 секунды.' },
+    mortar: { passive: 'armor', name: 'СОКРУШИТЕЛЬ', text: 'Радиус взрыва гранатомёта увеличен на 60%.' },
+    gauss: { passive: 'critical', name: 'ЗЕНИТ', text: 'Снайперский выстрел пробивает восемь целей.' },
+    saw: { passive: 'speed', name: 'ЛЕСОПИЛКА', text: 'Три диска за залп, каждый пробивает шесть целей.' }
   };
   function profile(game, weapon) {
     const spec = D.weapons[weapon.id], p = game.player, level = weapon.level;
     const evolved = level >= 6;
-    return { ...spec, damage: spec.damage * (1 + .28 * (level - 1)) * p.stats.damage * (p.core === 'inferno' && p.coreTime > 0 ? 1.3 : 1),
+    const damageScale = (1 + .28 * (level - 1)) * p.stats.damage * (weapon.qualityMultiplier || 1) * (p.core === 'inferno' && p.coreTime > 0 ? 1.3 : 1);
+    return { ...spec, damage: spec.damage * damageScale,
       delay: spec.delay * Math.pow(.94, level - 1) / p.stats.rate / (p.core === 'inferno' && p.coreTime > 0 ? 1.8 : 1) * (evolved && weapon.id === 'arc' ? .6 : 1),
-      range: spec.range * p.stats.radius, splash: (spec.splash || 0) * p.stats.radius * (1 + (level - 1) * .06) * (evolved && weapon.id === 'plasma' ? 1.5 : 1),
-      pellets: weapon.id === 'scatter' ? spec.pellets + Math.floor(level / 2) + (evolved ? 4 : 0) : weapon.id === 'rocket' && evolved ? 3 : (spec.pellets || 1),
-      pierce: weapon.id === 'rail' ? evolved ? 14 : 4 + level : weapon.id === 'needle' && evolved ? 2 : 1 };
+      range: spec.range * p.stats.radius, splash: (spec.splash || 0) * p.stats.radius * (1 + (level - 1) * .06) * (evolved && weapon.id === 'plasma' ? 1.5 : evolved && weapon.id === 'mortar' ? 1.6 : 1),
+      pellets: weapon.id === 'scatter' ? spec.pellets + Math.floor(level / 2) + (evolved ? 4 : 0) : evolved && ['rocket', 'saw'].includes(weapon.id) ? 3 : evolved && weapon.id === 'cannon' ? 2 : (spec.pellets || 1),
+      pierce: weapon.id === 'rail' ? evolved ? 14 : 4 + level : evolved && weapon.id === 'gauss' ? 8 : evolved && weapon.id === 'saw' ? 6 : weapon.id === 'needle' && evolved ? 2 : (spec.pierce || 1),
+      burn: (spec.burn || 0) * damageScale * (evolved && weapon.id === 'flame' ? 2 : 1),
+      slow: evolved && weapon.id === 'cryo' ? .65 : (spec.slow || 0), slowTime: evolved && weapon.id === 'cryo' ? 3 : (spec.slowTime || 0) };
   }
   function target(game, range, from = game.player) {
     let best = null, bestDist = range;
@@ -47,13 +56,25 @@
         game.bullets.push({ x: p.x + Math.cos(angle) * 31, y: p.y + Math.sin(angle) * 31,
           vx: Math.cos(a) * spec.speed, vy: Math.sin(a) * spec.speed, speed: spec.speed,
           radius: spec.radius, color: spec.color, damage: spec.damage * (critical ? 2 : 1), critical,
-          life: spec.range / spec.speed, splash: spec.splash, homing: spec.homing, pierce: spec.pierce, hit: new Set(), weapon: weapon.id });
+          life: spec.range / spec.speed, splash: spec.splash, homing: spec.homing, pierce: spec.pierce, burn: spec.burn, burnTime: spec.burnTime, slow: spec.slow, slowTime: spec.slowTime, hit: new Set(), weapon: weapon.id });
       }
       game.effect('muzzle', p.x + Math.cos(angle) * 35, p.y + Math.sin(angle) * 35, spec.color, weapon.id === 'rail' ? 22 : 13, .07);
     }
     p.shootTime = .12;
     game.shotSerial = (game.shotSerial || 0) + 1; game.lastWeapon = weapon.id;
     return true;
+  }
+  function impact(game, enemy, projectile, multiplier = 1) {
+    game.hurtEnemy(enemy, projectile.damage * multiplier, projectile.critical);
+    if (enemy.dead) return;
+    if (projectile.burn) {
+      enemy.burnDamage = Math.max(enemy.burnTime > 0 ? enemy.burnDamage : 0, projectile.burn * multiplier);
+      enemy.burnTime = Math.max(enemy.burnTime || 0, projectile.burnTime);
+    }
+    if (projectile.slow) {
+      enemy.slow = Math.max(enemy.slowTime > 0 ? enemy.slow : 0, projectile.slow);
+      enemy.slowTime = Math.max(enemy.slowTime || 0, projectile.slowTime);
+    }
   }
   function projectiles(game, dt) {
     for (const b of game.bullets) {
@@ -77,13 +98,13 @@
       hits.sort((a, z) => a.t - z.t);
       for (const { e, t } of hits) {
         if (e.dead) continue;
-        b.hit.add(e.id); game.hurtEnemy(e, b.damage, b.critical); b.pierce--;
+        b.hit.add(e.id); impact(game, e, b); b.pierce--;
         const ix = b.x + (nx - b.x) * t, iy = b.y + (ny - b.y) * t;
         game.effect('spark', ix, iy, b.color, b.radius * 2 + 7, .18);
         if (b.splash) {
           game.effect('burst', ix, iy, b.color, b.splash, .35);
           for (const other of game.grid.near(ix, iy, b.splash + 80)) {
-            if (other !== e && !other.dead && Math.hypot(other.x - ix, other.y - iy) < b.splash + other.radius) game.hurtEnemy(other, b.damage * .75);
+            if (other !== e && !other.dead && Math.hypot(other.x - ix, other.y - iy) < b.splash + other.radius) impact(game, other, b, .75);
           }
         }
         if (b.pierce <= 0) { b.life = 0; break; }
@@ -162,7 +183,7 @@
     }
     projectiles(game, dt);
   }
-  const api = { profile, target, fire, projectiles, candidates, offer, choose, reroll, update, evolutions };
+  const api = { profile, target, fire, impact, projectiles, candidates, offer, choose, reroll, update, evolutions };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ChitinCombat = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -98,7 +98,12 @@
         x: ox + (Math.cos(bearing) * forward - Math.sin(bearing) * side) * size,
         y: oy + (Math.sin(bearing) * forward + Math.cos(bearing) * side) * size * .65 - height * size
       });
-      const part = (item, mount, width, bearing) => this.draw(ctx, 'parts', Math.floor(item.visual / 4), item.visual % 4, mount.x, mount.y, width * size, bearing - Math.PI / 2);
+      const part = (item, mount, width, bearing) => {
+        ctx.save();
+        if (item.visualHue) ctx.filter = `${typeof ctx.filter === 'string' && ctx.filter !== 'none' ? ctx.filter : ''} hue-rotate(${item.visualHue}deg)`;
+        this.draw(ctx, 'parts', Math.floor(item.visual / 4), item.visual % 4, mount.x, mount.y, width * size * (item.visualScale || 1), bearing - Math.PI / 2);
+        ctx.restore();
+      };
       this.mechLayer(ctx, p.chassis, pose.row, pose.legs, x, y, size);
       const drive = installed.find(item => item.slot === 'drive');
       if (drive) {
