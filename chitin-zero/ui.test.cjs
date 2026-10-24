@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const scripts = ['data.js', 'economy.js', 'core.js', 'combat.js', 'storage.js', 'audio.js', 'sprites.js', 'render.js', 'app.js'];
 
-async function harness({ failedImage = false, blockedStorage = false, savedProfile = null } = {}) {
+async function harness({ failedImage = false, wrongImageSize = false, blockedStorage = false, savedProfile = null } = {}) {
   const nodes = new Map(), drawCalls = [], callbacks = [], documentListeners = {}, windowListeners = {};
   let document;
   class Element {
@@ -46,7 +46,7 @@ async function harness({ failedImage = false, blockedStorage = false, savedProfi
     localStorage: blockedStorage ? null : { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) },
     matchMedia: () => ({ matches: false }), requestAnimationFrame: cb => callbacks.push(cb), setTimeout: () => 1, clearTimeout() {},
     addEventListener(type, fn) { (windowListeners[type] ||= []).push(fn); },
-    Image: class { constructor() { this.naturalWidth = this.naturalHeight = 1254; } set src(value) { this.source = value; queueMicrotask(() => failedImage ? this.onerror() : this.onload()); } async decode() {} }
+    Image: class { set src(value) { this.source = value; const png = fs.readFileSync(path.join(__dirname, value)); this.naturalWidth = wrongImageSize && value.includes('directions') ? 100 : png.readUInt32BE(16); this.naturalHeight = png.readUInt32BE(20); queueMicrotask(() => failedImage ? this.onerror() : this.onload()); } async decode() {} }
   });
   context.window = context;
   for (const script of scripts) {
@@ -75,7 +75,7 @@ test('all script and asset references are local files and PNGs have expected met
   const { manifest } = require('./sprites.js');
   for (const [name, asset] of Object.entries(manifest)) {
     const png = fs.readFileSync(path.join(__dirname, asset.src)); assert.equal(png.toString('hex', 0, 8), '89504e470d0a1a0a');
-    assert.equal(png.readUInt32BE(16), 1254); assert.equal(png.readUInt32BE(20), 1254);
+    assert.equal(png.readUInt32BE(16), asset.width || 1254); assert.equal(png.readUInt32BE(20), asset.height || 1254);
     if (name !== 'ground') assert.equal(png[25], 6, `${name} retains alpha`);
     assert.equal(asset.rows[0], 0); assert.equal(asset.rows.at(-1), 1);
     for (let i = 1; i < asset.rows.length; i++) assert.ok(asset.rows[i] > asset.rows[i - 1]);
@@ -103,6 +103,13 @@ test('UI upgrade selection, pause, abandon, records and restart complete the run
 test('missing atlas blocks deployment with an explicit loading failure', async () => {
   const h = await harness({ failedImage: true }); assert.equal(h.nodes.get('deploy').disabled, true);
   assert.match(h.nodes.get('asset-status').textContent, /Не удалось загрузить/); h.click('deploy'); assert.equal(h.context.testGame, undefined);
+});
+
+test('wrong directional atlas dimensions block deployment instead of sampling out of bounds', async () => {
+  const h = await harness({ wrongImageSize: true });
+  assert.equal(h.nodes.get('deploy').disabled, true);
+  assert.match(h.nodes.get('asset-status').textContent, /Не удалось загрузить/);
+  h.click('deploy'); assert.equal(h.context.testGame, undefined);
 });
 test('unavailable storage does not block playable deployment or results', async () => {
   const h = await harness({ blockedStorage: true }); h.click('deploy'); h.frame(16); h.context.testGame.status = 'dead'; h.frame(32);

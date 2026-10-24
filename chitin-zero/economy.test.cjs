@@ -107,14 +107,17 @@ test('saved builds survive death and deploy as snapshots, not shared mutable obj
   assert.equal(g.player.installedParts.armor, 'bulwark'); assert.equal(profile.loadouts.spectre.armor, 'bulwark');
   const restarted = quietGame({ profile }); assert.equal(restarted.player.maxHp, 180); assert.equal(restarted.player.level, 1);
 });
-test('sprite compositor samples a walking lower body, static torso and every installed visual layer', () => {
+test('sprite compositor samples directional layers and every installed component without rotating the body', () => {
   const sprites = new Sprites(), calls = [], rotations = [];
-  for (const name of Object.keys(manifest)) sprites.images[name] = { name, naturalWidth: 1254, naturalHeight: 1254 };
+  for (const [name, asset] of Object.entries(manifest)) sprites.images[name] = { name, naturalWidth: asset.width || 1254, naturalHeight: asset.height || 1254 };
   const ctx = new Proxy({}, { get: (_, name) => name === 'drawImage' ? (...args) => calls.push(args) : name === 'rotate' ? angle => rotations.push(angle) : () => {} });
   const p = quietGame().player; p.moving = true; p.walkTime = .26; p.angle = Math.PI; p.moveAngle = 0;
   p.installedParts = { armor: 'bulwark', drive: 'jet', reactor: 'barrier', weapon: 'hive', utility: 'hunter' };
   sprites.mech(ctx, p, 0, 0, 83);
-  assert.equal(calls.filter(c => c[0].name === 'mechs').length, 2); assert.equal(calls.filter(c => c[0].name === 'parts').length, 5);
-  assert.ok(rotations.includes(-Math.PI / 2)); assert.ok(rotations.includes(Math.PI / 2));
-  assert.ok(calls[0][1] > 2 * 313.5); assert.equal(calls.find(c => c[0].name === 'mechs' && c[3] > 300)[1], 314.5);
+  assert.equal(calls.filter(c => c[0].name === 'spectre').length, 2); assert.equal(calls.filter(c => c[0].name === 'parts').length, 5);
+  assert.equal(calls.filter(c => c[0].name === 'mechs').length, 0);
+  assert.equal(rotations.length, 5, 'only component icons rotate, never the directional body');
+  const layers = calls.filter(c => c[0].name === 'spectre');
+  assert.equal(layers[0][1], 384); assert.equal(layers[0][2], 780);
+  assert.equal(layers[1][1], 384); assert.equal(layers[1][2], 0);
 });
