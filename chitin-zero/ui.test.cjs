@@ -3,15 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const scripts = ['data.js', 'core.js', 'combat.js', 'storage.js', 'audio.js', 'sprites.js', 'render.js', 'app.js'];
+const scripts = ['data.js', 'economy.js', 'core.js', 'combat.js', 'storage.js', 'audio.js', 'sprites.js', 'render.js', 'app.js'];
 
-async function harness({ failedImage = false, blockedStorage = false } = {}) {
+async function harness({ failedImage = false, blockedStorage = false, savedProfile = null } = {}) {
   const nodes = new Map(), drawCalls = [], callbacks = [], documentListeners = {}, windowListeners = {};
   let document;
   class Element {
     constructor(id = '', tag = 'DIV') { this.id = id; this.tagName = tag; this.style = {}; this.dataset = {}; this.hidden = false; this.disabled = false; this.listeners = {}; this.clientWidth = 1280; this.clientHeight = 800; this.width = 640; this.height = 640; this.value = ''; this.textContent = ''; this.html = ''; this.children = []; this.classList = { toggle() {} }; }
     set innerHTML(value) {
       this.html = value; this.children = [];
+      for (const match of value.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) nodes.set(match[2], new Element(match[2], match[1].toUpperCase()));
       for (const match of value.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
         const button = new Element('', 'BUTTON'); button.textContent = match[2].replace(/<[^>]*>/g, ''); button.disabled = /\bdisabled\b/.test(match[1]);
         for (const data of match[1].matchAll(/data-([\w-]+)="([^"]*)"/g)) button.dataset[data[1]] = data[2];
@@ -40,6 +41,7 @@ async function harness({ failedImage = false, blockedStorage = false } = {}) {
   document = { getElementById(id) { assert.ok(nodes.has(id), `known DOM id ${id}`); return nodes.get(id); }, activeElement: null, body: new Element('body'), hidden: false,
     addEventListener(type, fn) { (documentListeners[type] ||= []).push(fn); } };
   const memory = new Map();
+  if (savedProfile) memory.set('chitin-zero:v1', JSON.stringify(savedProfile));
   const context = vm.createContext({ document, innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1,
     localStorage: blockedStorage ? null : { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) },
     matchMedia: () => ({ matches: false }), requestAnimationFrame: cb => callbacks.push(cb), setTimeout: () => 1, clearTimeout() {},
@@ -105,4 +107,41 @@ test('missing atlas blocks deployment with an explicit loading failure', async (
 test('unavailable storage does not block playable deployment or results', async () => {
   const h = await harness({ blockedStorage: true }); h.click('deploy'); h.frame(16); h.context.testGame.status = 'dead'; h.frame(32);
   assert.equal(h.nodes.get('notice').hidden, false); assert.match(h.nodes.get('notice').textContent, /Хранилище недоступно/);
+});
+
+test('black market purchase, visual assembly, deployment and persisted bounty work end to end', async () => {
+  const h = await harness({ savedProfile: { version: 1, credits: 1000 } });
+  h.click('market'); assert.match(h.nodes.get('dialog-title').textContent, /ЧЁРНЫЙ РЫНОК/);
+  h.action('jet', 'buy'); assert.equal(JSON.parse([...h.memory.values()][0]).credits, 820);
+  h.action('workshop'); h.action('jet', 'equip'); h.frame(20);
+  assert.match(h.nodes.get('loadout-summary').textContent, /Кочевник/);
+  h.action('close-garage'); h.click('deploy'); h.frame(40);
+  const g = h.context.testGame; assert.equal(g.player.installedParts.drive, 'jet'); assert.equal(g.player.stats.speed, 1.12);
+  const enemy = g.spawn('mite', 500, 0); g.hurtEnemy(enemy, 999); g.status = 'dead'; h.frame(60);
+  assert.equal(JSON.parse([...h.memory.values()][0]).credits, 822); assert.equal(g.bountyPaid, 2);
+  h.action('hangar'); h.click('workshop'); h.action('drive', 'remove'); h.action('close-garage');
+  const saved = JSON.parse([...h.memory.values()][0]); assert.equal(saved.credits, 822); assert.ok(saved.ownedParts.includes('jet'));
+  assert.deepEqual(saved.loadouts.spectre, {});
+  const reloaded = await harness({ savedProfile: saved }); assert.equal(reloaded.nodes.get('wallet').textContent, '822 AC');
+});
+
+test('save failure leaves the market balance and pending end-of-run bounty intact', async () => {
+  const h = await harness({ savedProfile: { version: 1, credits: 500 } });
+  const setter = h.context.localStorage.setItem;
+  h.context.localStorage.setItem = () => { throw new Error('quota'); };
+  h.click('market'); h.action('jet', 'buy'); assert.match(h.nodes.get('notice').textContent, /Баланс не изменён/);
+  assert.equal(h.nodes.get('wallet').textContent, '500 AC');
+  h.action('close-garage'); h.click('deploy'); h.frame(20); const g = h.context.testGame;
+  g.hurtEnemy(g.spawn('mite', 500, 0), 999); g.status = 'dead'; h.frame(40);
+  h.action('restart'); assert.equal(h.context.testGame, g); assert.equal(h.nodes.get('modal').hidden, false); assert.equal(g.bountyPaid, 0);
+  h.context.localStorage.setItem = setter; h.action('restart'); assert.notEqual(h.context.testGame, g);
+  assert.equal(JSON.parse([...h.memory.values()][0]).credits, 502);
+});
+test('a player can explicitly forfeit only unsaved bounty when storage stays unavailable', async () => {
+  const h = await harness({ blockedStorage: true }); h.click('deploy'); h.frame(20);
+  const g = h.context.testGame; g.hurtEnemy(g.spawn('mite', 500, 0), 999); g.status = 'dead'; h.frame(40);
+  h.action('bounty-loss'); assert.match(h.nodes.get('dialog-title').textContent, /БЕЗ СОХРАНЕНИЯ/);
+  h.action('keep-bounty'); assert.equal(g.bountyPaid, 0);
+  h.action('bounty-loss'); h.action('forfeit-bounty'); assert.equal(h.nodes.get('hangar').hidden, false);
+  h.click('deploy'); assert.notEqual(h.context.testGame, g);
 });
