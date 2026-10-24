@@ -2,6 +2,7 @@
   'use strict';
   const D = root.ChitinData || require('./data.js');
   const C = root.ChitinCore || require('./core.js');
+  const V = root.ChitinView || require('./view.js');
   const evolutions = {
     needle: { passive: 'rate', name: 'ШТОРМ', text: 'Усиленная очередь пробивает дополнительную цель.' },
     scatter: { passive: 'armor', name: 'КАРТЕЧЬ', text: 'Ещё четыре поражающих элемента в каждом залпе.' },
@@ -53,14 +54,17 @@
         if (game.bullets.length >= D.limits.bullets) break;
         const spread = spec.pellets > 1 ? (i / (spec.pellets - 1) - .5) * spec.spread : (game.rng() - .5) * spec.spread;
         const a = angle + spread, critical = game.rng() < p.stats.critical;
-        game.bullets.push({ x: p.x + Math.cos(angle) * 31, y: p.y + Math.sin(angle) * 31,
-          vx: Math.cos(a) * spec.speed, vy: Math.sin(a) * spec.speed, speed: spec.speed,
+        const pitch = input.fps ? p.pitch : 0, horizontal = Math.cos(pitch);
+        const muzzle = input.fps ? 6 : 31;
+        game.bullets.push({ x: p.x + Math.cos(angle) * muzzle * horizontal, y: p.y + Math.sin(angle) * muzzle * horizontal,
+          z: input.fps ? V.EYE + Math.sin(pitch) * muzzle : undefined, vz: Math.sin(pitch) * spec.speed,
+          vx: Math.cos(a) * spec.speed * horizontal, vy: Math.sin(a) * spec.speed * horizontal, speed: spec.speed,
           radius: spec.radius, color: spec.color, damage: spec.damage * (critical ? 2 : 1), critical,
           life: spec.range / spec.speed, splash: spec.splash, homing: spec.homing, pierce: spec.pierce, burn: spec.burn, burnTime: spec.burnTime, slow: spec.slow, slowTime: spec.slowTime, hit: new Set(), weapon: weapon.id });
       }
       game.effect('muzzle', p.x + Math.cos(angle) * 35, p.y + Math.sin(angle) * 35, spec.color, weapon.id === 'rail' ? 22 : 13, .07);
     }
-    p.shootTime = .12;
+    p.shootTime = .12; weapon.flash = .12; weapon.shots = (weapon.shots || 0) + 1;
     game.shotSerial = (game.shotSerial || 0) + 1; game.lastWeapon = weapon.id;
     return true;
   }
@@ -84,16 +88,20 @@
           const desired = Math.atan2(enemy.y - b.y, enemy.x - b.x), current = Math.atan2(b.vy, b.vx);
           const diff = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
           const angle = current + C.clamp(diff, -4 * dt, 4 * dt);
-          b.vx = Math.cos(angle) * b.speed; b.vy = Math.sin(angle) * b.speed;
+          const pitch = b.z === undefined ? 0 : Math.atan2(enemy.radius - b.z, Math.max(1, C.distance(b, enemy)));
+          const currentPitch = Math.atan2(b.vz || 0, Math.hypot(b.vx, b.vy));
+          const nextPitch = currentPitch + C.clamp(pitch - currentPitch, -2 * dt, 2 * dt);
+          b.vx = Math.cos(angle) * b.speed * Math.cos(nextPitch); b.vy = Math.sin(angle) * b.speed * Math.cos(nextPitch); b.vz = Math.sin(nextPitch) * b.speed;
         }
       }
-      const elapsed = Math.min(dt, b.life), nx = b.x + b.vx * elapsed, ny = b.y + b.vy * elapsed;
+      const elapsed = Math.min(dt, b.life), nx = b.x + b.vx * elapsed, ny = b.y + b.vy * elapsed, nz = b.z === undefined ? undefined : b.z + b.vz * elapsed;
+      const floorT = nz !== undefined && nz < 0 ? b.z / (b.z - nz) : 1;
       const candidates = game.grid.near((b.x + nx) / 2, (b.y + ny) / 2, Math.hypot(nx - b.x, ny - b.y) / 2 + 85);
       const hits = [];
       for (const e of candidates) {
         if (e.dead || b.hit.has(e.id)) continue;
-        const t = C.segmentHit(b.x, b.y, nx, ny, e.x, e.y, e.radius + b.radius);
-        if (t !== null) hits.push({ e, t });
+        const t = b.z === undefined ? C.segmentHit(b.x, b.y, nx, ny, e.x, e.y, e.radius + b.radius) : V.sphereHit(b, { x: nx, y: ny, z: nz }, { x: e.x, y: e.y, z: e.radius }, e.radius + b.radius);
+        if (t !== null && t <= floorT) hits.push({ e, t });
       }
       hits.sort((a, z) => a.t - z.t);
       for (const { e, t } of hits) {
@@ -104,12 +112,21 @@
         if (b.splash) {
           game.effect('burst', ix, iy, b.color, b.splash, .35);
           for (const other of game.grid.near(ix, iy, b.splash + 80)) {
-            if (other !== e && !other.dead && Math.hypot(other.x - ix, other.y - iy) < b.splash + other.radius) impact(game, other, b, .75);
+            const dz = b.z === undefined ? 0 : other.radius - (b.z + (nz - b.z) * t);
+            if (other !== e && !other.dead && Math.hypot(other.x - ix, other.y - iy, dz) < b.splash + other.radius) impact(game, other, b, .75);
           }
         }
         if (b.pierce <= 0) { b.life = 0; break; }
       }
-      b.x = nx; b.y = ny; b.life -= elapsed;
+      if (floorT < 1 && b.life > 0) {
+        const x = b.x + (nx - b.x) * floorT, y = b.y + (ny - b.y) * floorT;
+        game.effect('burst', x, y, b.color, b.splash || 10, .3);
+        if (b.splash) for (const e of game.grid.near(x, y, b.splash + 80)) {
+          if (!e.dead && !b.hit.has(e.id) && Math.hypot(e.x - x, e.y - y) < b.splash + e.radius) impact(game, e, b, .75);
+        }
+        b.life = 0;
+      }
+      b.x = nx; b.y = ny; b.z = nz; b.life -= elapsed;
     }
     game.bullets = game.bullets.filter(b => b.life > 0);
   }
@@ -117,7 +134,7 @@
     const p = game.player, options = [];
     for (const [id, spec] of Object.entries(D.weapons)) {
       const owned = p.weapons.find(w => w.id === id), evolution = evolutions[id];
-      if (!owned && p.weapons.length < 4 || owned && owned.level < 5) {
+      if (!owned && p.weapons.length < V.MAX_WEAPONS || owned && owned.level < 5) {
         options.push({ key: `weapon:${id}`, type: 'weapon', id, name: spec.name, label: owned ? 'МОДЕРНИЗАЦИЯ МОДУЛЯ' : 'НОВЫЙ МОДУЛЬ',
           level: (owned?.level || 0) + 1, description: spec.description, glyph: spec.glyph, color: spec.color });
       } else if (owned?.level === 5 && (p.passives[evolution.passive] || 0) >= 2) {
@@ -152,7 +169,7 @@
     if (choice.type === 'weapon' || choice.type === 'evolution') {
       const owned = p.weapons.find(w => w.id === choice.id);
       if (owned) owned.level = choice.level;
-      else if (p.weapons.length < 4) p.weapons.push({ id: choice.id, level: 1, cooldown: .1 });
+      else if (p.weapons.length < V.MAX_WEAPONS) p.weapons.push({ id: choice.id, level: 1, cooldown: .1 });
       else return false;
     } else if (choice.type === 'passive') {
       const spec = D.passives[choice.id]; p.passives[choice.id] = choice.level;
@@ -178,8 +195,9 @@
       if (enemy) game.player.angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x);
     }
     for (const weapon of game.player.weapons) {
+      weapon.flash = Math.max(0, (weapon.flash || 0) - dt);
       weapon.cooldown = Math.max(0, weapon.cooldown - dt);
-      if (weapon.cooldown <= 0 && fire(game, weapon, input)) weapon.cooldown = profile(game, weapon).delay;
+      if (weapon.cooldown <= 0 && input.fire !== false && fire(game, weapon, input)) weapon.cooldown = profile(game, weapon).delay;
     }
     projectiles(game, dt);
   }

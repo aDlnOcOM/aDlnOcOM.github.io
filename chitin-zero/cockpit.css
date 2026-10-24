@@ -1,0 +1,45 @@
+/* Cockpit instruments sit on the canopy frame and lower console. */
+.battle #world{cursor:crosshair}
+.battle .hud-top{top:10px;left:4%;right:4%;height:65px;align-items:flex-start}
+.battle .pilot-panel{position:fixed;left:4%;bottom:22px;width:190px;padding:9px 12px;background:#081820ed;border:1px solid #3b5862;border-left:3px solid var(--cyan);box-shadow:inset 0 0 20px #4accca09}
+.battle .operation-clock{position:absolute;left:0;top:0;min-width:140px;text-align:left;background:none;padding:0}
+.battle .operation-clock strong{font-size:25px;line-height:1.1}
+.battle .operation-clock small{font-size:7px}.battle .operation-clock>span{font-size:8px}
+.battle .kill-panel{margin-left:auto;gap:14px;min-width:0}.battle .kill-panel strong{font-size:28px}
+.battle .bounty-hud{top:69px;right:4%;font-size:9px}.battle .bounty-hud small{display:none}
+.battle .radio{top:104px;left:7%;max-width:245px}.battle .radio>span{font-size:8px}.battle .radio p{font-size:10px}
+.battle .boss-hud{top:95px;width:min(350px,40vw)}
+.battle .radar-panel{top:auto;bottom:14px;right:4%;padding:2px 8px;background:#07131be8;border:1px solid #364f59}
+.battle .radar-panel canvas{width:106px;height:106px}.battle .radar-panel>span{font-size:7px}.battle .radar-panel small{display:none}
+.battle .hud-bottom{left:24%;right:20%;bottom:20px;align-items:center;justify-content:space-between}
+.battle .module-block{position:fixed;left:50%;bottom:13%;transform:translateX(-50%);width:min(580px,52vw);text-align:center}
+.battle .module-slots{justify-content:center;gap:4px;flex-wrap:wrap;align-items:center}
+.battle .module-slot{width:38px;height:35px;padding:4px;background:#0b1a23cf}.battle .module-slot>span{font-size:17px}.battle .module-slot>b{font-size:8px;right:3px;top:3px}.battle .module-slot small{display:none}
+.mount-count{font:10px var(--mono);color:var(--cyan);padding:5px}
+.battle .abilities{width:100%;justify-content:space-between;gap:6px;margin:0}.battle .ability{min-width:100px;min-height:53px;padding:6px 10px;background:#0c2029;border-color:#44636b}
+.battle .ability>span,.battle .ability>b{font-size:10px}.battle .ability>kbd{font-size:8px}
+.battle .battle-hints{bottom:2px;right:4%;left:auto;font-size:7px;gap:10px}.battle .battle-hints kbd{font-size:7px}
+.battle .xp-strip>span{left:4%;font-size:8px;bottom:6px}
+.look-hint{position:absolute;left:50%;top:20%;transform:translateX(-50%);background:#071620cf;border:1px solid #6c928e;padding:9px 16px;color:var(--cyan);font:10px/1.7 var(--mono);z-index:2}
+.look-hint small{font-size:8px;color:#b8cecd}.look-hint:active{transform:translateX(-50%)}
+.fire-mode{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);font:9px var(--mono);padding:7px 10px;color:var(--yellow);background:#0a1726b8;border:1px solid #6d704c}
+.fire-mode:active{transform:translateX(-50%)}
+@media(max-width:700px){
+  .battle .pilot-panel{left:2%;bottom:19px;width:125px;padding:5px 7px}.battle .hud-label,.battle .vital-line{font-size:7px}.battle .vital-line{margin:4px 0 2px}
+  .battle .radar-panel{right:2%;bottom:17px;padding:0}.battle .radar-panel canvas{width:75px;height:75px}.battle .radar-panel>span{display:none}
+  .battle .hud-bottom{left:36%;right:25%;bottom:23px}.battle .ability{min-width:52px;min-height:43px;padding:4px}.battle .ability>span,.battle .ability>b{font-size:7px}.battle .ability>kbd{display:none}
+  .battle .operation-clock{min-width:90px}.battle .operation-clock strong{font-size:20px}.battle .kill-panel strong{font-size:23px}
+  .battle .module-block{bottom:16%;width:65vw}.battle .module-slot{width:27px;height:26px}.battle .module-slot>span{font-size:13px}
+  .battle .radio{top:100px;left:6%;max-width:150px}.battle .radio p{font-size:8px}.battle .radio>span{display:none}
+  .battle .boss-hud{top:83px;width:42vw}.battle .battle-hints{display:none}.fire-mode{bottom:26%;font-size:8px}
+  .look-hint{top:28%;width:70%;font-size:9px;text-align:center}
+}
+@media(pointer:coarse){
+  .battle .joystick{bottom:20%;left:4%;width:112px;height:112px}.battle .module-block{bottom:14%;width:65vw}.battle .ability{pointer-events:auto}
+  .battle .look-hint{display:none}.battle .radio{display:none}
+}
+@media(max-height:500px){
+  .battle .pilot-panel{width:130px;bottom:12px}.battle .radar-panel{bottom:8px}.battle .radar-panel canvas{width:70px;height:70px}
+  .battle .hud-bottom{bottom:15px}.battle .module-block{bottom:23%}.fire-mode{bottom:34%}.battle .radio{display:none}
+  .battle .joystick{bottom:29%;width:90px;height:90px}.battle .joystick>div{top:23px;left:23px}
+}

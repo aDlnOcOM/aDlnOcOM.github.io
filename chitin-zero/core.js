@@ -2,6 +2,7 @@
   'use strict';
   const D = root.ChitinData || require('./data.js');
   const E = root.ChitinEconomy || require('./economy.js');
+  const V = root.ChitinView || require('./view.js');
   const TAU = Math.PI * 2;
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -64,7 +65,7 @@
       this.id = 0; this.spawnClock = .6; this.bossAt = 120; this.nestAt = 35; this.wave = 1;
       this.player = { x: 0, y: 0, angle: Math.PI / 2, moveAngle: Math.PI / 2, walk: 0, walkTime: 0, moving: false, radius: 19, chassis, hp: frame.hp, maxHp: frame.hp, shield: frame.shield, maxShield: frame.shield,
         speed: frame.speed, dashBase: frame.dash, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, invulnerable: 1.2, hurt: 0, shootTime: 0, sinceHit: 10,
-        vx: 0, vy: 0, accelerationX: 0, accelerationY: 0, leanX: 0, leanY: 0, legFacing: Math.PI / 2, torsoFacing: Math.PI / 2,
+        vx: 0, vy: 0, accelerationX: 0, accelerationY: 0, leanX: 0, leanY: 0, legFacing: Math.PI / 2, torsoFacing: Math.PI / 2, pitch: 0,
         level: 1, xp: 0, xpNext: 14, core, charge: 0, coreTime: 0, distance: 0,
         stats: { damage: 1, rate: 1, speed: 1, magnet: 110, critical: .05, regen: 0, radius: 1, dash: 0, experience: 1, armor: 0, coreGain: 1, coreDuration: 0 },
         weapons: [{ id: frame.weapon, level: 1, cooldown: .2 }], passives: {} };
@@ -174,6 +175,8 @@
       p.hp = Math.min(p.maxHp, p.hp + p.stats.regen * dt);
       let dx = clamp(input.x || 0, -1, 1), dy = clamp(input.y || 0, -1, 1), len = Math.hypot(dx, dy);
       if (len > 1) { dx /= len; dy /= len; }
+      if (input.aim && Number.isFinite(input.angle)) p.angle = input.angle;
+      if (Number.isFinite(input.pitch)) p.pitch = clamp(input.pitch, -.85, .70);
       if (input.dash) this.dash(dx, dy);
       if (input.core) this.activateCore();
       const velocity = p.speed * p.stats.speed;
@@ -241,7 +244,9 @@
     }
     acid(enemy, angle, speed = 210) {
       if (this.hostile.length >= 140) return;
-      this.hostile.push({ x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 4.2, damage: enemy.damage, radius: 7 });
+      const travel = Math.max(.1, distance(enemy, this.player) / speed);
+      this.hostile.push({ x: enemy.x, y: enemy.y, z: enemy.radius, vz: (V.EYE - enemy.radius) / travel,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 4.2, damage: enemy.damage, radius: 7 });
     }
     updateEnemies(dt) {
       const p = this.player;
@@ -302,9 +307,9 @@
         if (this.status === 'dead') break;
       }
       for (const b of this.hostile) {
-        const nextX = b.x + b.vx * dt, nextY = b.y + b.vy * dt;
-        if (segmentHit(b.x, b.y, nextX, nextY, p.x, p.y, p.radius + b.radius) !== null) { this.hurtPlayer(b.damage); b.life = 0; }
-        b.x = nextX; b.y = nextY; b.life -= dt;
+        const nextX = b.x + b.vx * dt, nextY = b.y + b.vy * dt, nextZ = (b.z ?? V.EYE) + (b.vz || 0) * dt;
+        if (V.sphereHit({ x: b.x, y: b.y, z: b.z ?? V.EYE }, { x: nextX, y: nextY, z: nextZ }, { x: p.x, y: p.y, z: V.EYE }, p.radius + b.radius) !== null) { this.hurtPlayer(b.damage); b.life = 0; }
+        b.x = nextX; b.y = nextY; b.z = nextZ; b.life -= dt;
       }
       this.hostile = this.hostile.filter(b => b.life > 0);
     }

@@ -63,12 +63,12 @@ test('experience queues every earned upgrade without advancing the world', () =>
   for (let i = 0; i < count; i++) { assert.equal(g.status, 'upgrade'); assert.equal(combat.choose(g, 0), true); }
   assert.equal(g.pendingLevels, 0); assert.equal(g.status, 'playing'); assert.equal(g.time, time); assert.equal(combat.choose(g, 0), false);
 });
-test('drafts contain unique options, finite rerolls and enforce four module slots', () => {
+test('drafts contain unique options, finite rerolls and enforce twelve module slots', () => {
   const g = isolated(); g.pendingLevels = 1; combat.offer(g);
   assert.equal(new Set(g.offers.map(o => o.key)).size, 3); assert.equal(combat.choose(g, -1), false);
   for (let i = 0; i < 3; i++) assert.equal(combat.reroll(g), true);
   assert.equal(combat.reroll(g), false);
-  g.player.weapons = ['needle', 'scatter', 'plasma', 'rail'].map(id => ({ id, level: 5, cooldown: 0 }));
+  g.player.weapons = Object.keys(D.weapons).map(id => ({ id, level: 5, cooldown: 0 }));
   assert.equal(combat.candidates(g).some(o => o.type === 'weapon'), false);
 });
 test('every weapon evolution requires its corresponding passive at rank two', () => {
@@ -81,7 +81,7 @@ test('every weapon evolution requires its corresponding passive at rank two', ()
   }
 });
 test('fully completed builds can keep increasing damage in endless mode', () => {
-  const g = isolated(); g.player.weapons = ['needle', 'scatter', 'plasma', 'rail'].map(id => ({ id, level: 6, cooldown: 0 }));
+  const g = isolated(); g.player.weapons = Object.keys(D.weapons).map(id => ({ id, level: 6, cooldown: 0 }));
   g.player.passives = Object.fromEntries(Object.entries(D.passives).map(([id, spec]) => [id, spec.max]));
   g.player.level = 100; g.player.coreLevel = 3; g.pendingLevels = 1;
   let found = false; for (let i = 0; i < 30; i++) { combat.offer(g); if (g.offers.some(o => o.id === 'overclock')) { found = true; break; } }
