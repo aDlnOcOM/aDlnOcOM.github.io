@@ -37,7 +37,7 @@ async function harness({ failedImage = false, wrongImageSize = false, blockedSto
       }, set: (target, key, value) => { target[key] = value; return true; } });
     }
   }
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, 'mech.html'), 'utf8');
   for (const match of html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) { const node = new Element(match[2], match[1].toUpperCase()); node.hidden = /\bhidden\b/.test(match[0]); node.disabled = /\bdisabled\b/.test(match[0]); nodes.set(match[2], node); }
   document = { getElementById(id) { assert.ok(nodes.has(id), `known DOM id ${id}`); return nodes.get(id); }, activeElement: null, body: new Element('body'), hidden: false,
     pointerLockElement: null, exitPointerLock() { this.pointerLockElement = null; for (const fn of documentListeners.pointerlockchange || []) fn(); },
@@ -82,7 +82,7 @@ async function harness({ failedImage = false, wrongImageSize = false, blockedSto
 }
 
 test('all script and asset references are local files with expected metadata', () => {
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, 'mech.html'), 'utf8');
   assert.deepEqual([...html.matchAll(/<script defer src="([^"]+)"/g)].map(m => m[1]), scripts);
   for (const script of scripts) assert.ok(fs.existsSync(path.join(__dirname, script)));
   const { manifest } = require('./sprites.js');

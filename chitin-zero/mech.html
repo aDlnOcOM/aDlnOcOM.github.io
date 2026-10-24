@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a111b">
+  <meta name="description" content="CHITIN // ZERO — бесконечный FPS-survivor из кабины меха. Двенадцать орудий против планеты жуков.">
+  <title>CHITIN // ZERO — Протокол зачистки</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23f1e658' d='M32 2 59 17v30L32 62 5 47V17z'/%3E%3Cpath fill='%230a111b' d='M18 18h28v9H27v10h19v9H18z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="cockpit.css">
+  <script defer src="data.js"></script><script defer src="economy.js"></script><script defer src="view.js"></script><script defer src="core.js"></script><script defer src="combat.js"></script>
+  <script defer src="storage.js"></script><script defer src="audio.js"></script><script defer src="sprites.js"></script>
+  <script defer src="render.js"></script><script defer src="app.js"></script>
+</head>
+<body>
+  <main id="hangar" class="hangar">
+    <header class="masthead"><a class="brand" href="./" aria-label="CHITIN ZERO — главная"><span class="brand-mark">C/</span> ORBITAL DIVISION <b>09</b></a><span class="network"><i></i> КАНАЛ ПИЛОТА АКТИВЕН</span><button id="help" class="quiet">ИНСТРУКТАЖ <span>↗</span></button></header>
+    <section class="hero">
+      <div class="briefing"><p class="eyebrow"><span>ОПЕРАЦИЯ 001</span> / БЕСКОНЕЧНАЯ ЗАЧИСТКА</p>
+        <h1>CHITIN<span>// ZERO<span class="title-dot">.</span></span></h1>
+        <p class="tagline">ПЛАНЕТА ПОТЕРЯНА.<br><strong>БОЕЗАПАС — НЕТ.</strong></p>
+        <p class="intro">Ты — внутри меха. За стеклом — миллионы жуков.<br>Наводи орудия, наращивай арсенал, переживи рой.</p>
+        <div class="mission-tags"><span>FPS / ВИД ИЗ КАБИНЫ</span><span>12 ОРУДИЙ ОДНОВРЕМЕННО</span><span>∞ БЕСКОНЕЧНЫЙ ЗАБЕГ</span></div>
+        <div class="record-strip"><div><small>РЕКОРД ЗАЧИСТКИ</small><strong id="best-kills">0000</strong></div><div><small>ЛУЧШИЙ СИГНАЛ</small><strong id="best-time">00:00</strong></div><div><small>ВЫЛЕТЫ</small><strong id="run-count">00</strong></div></div>
+      </div>
+      <div class="mech-stage" aria-label="Предпросмотр выбранного меха">
+        <div class="stage-grid"></div><div class="stage-orbit"></div><span class="stage-coordinate">ORBIT / 47.092<br>SECTOR: KHEPRI–4</span>
+        <canvas id="mech-preview" width="640" height="640" aria-label="Анимированный спрайт меха"></canvas>
+        <div class="stage-id"><span id="frame-serial">MR–07</span><h2 id="frame-name">СПЕКТР</h2><p id="frame-role">Мобильный охотник</p></div>
+        <div class="tech-label">ПИЛОТ ПОДКЛЮЧЁН<span>NEURAL LINK / 100%</span></div>
+        <div class="stage-bottom"><span>ХОДОВАЯ <b>ГОТОВА</b></span><span>СИСТЕМЫ <b>В НОРМЕ</b></span></div>
+      </div>
+    </section>
+    <section class="deployment" aria-label="Подготовка к высадке">
+      <div class="loadout"><div class="section-label"><span>01 / ВЫБЕРИ ШАССИ</span><span>ТРИ СПОСОБА ВЫЖИТЬ</span></div><div id="chassis-options" class="chassis-options"></div><p id="frame-description" class="frame-description"></p></div>
+      <div class="reactor-loadout"><div class="section-label"><span>02 / АКТИВНОЕ ЯДРО</span><span>Q</span></div><div id="core-options" class="core-options"></div><p id="core-description" class="core-description"></p></div>
+      <div class="deploy-actions"><span class="difficulty">РЕЖИМ <b>БЕСКОНЕЧНЫЙ</b></span><button id="deploy" class="primary deploy" disabled>ЗАГРУЗКА СПРАЙТОВ…</button><small id="asset-status" role="status">Подготовка графики</small></div>
+    </section>
+    <section class="garage-bar" aria-label="Модификация меха и чёрный рынок"><div class="wallet"><small>АСТРО-КРЕДИТЫ</small><strong id="wallet">0 AC</strong><span>BOUNTY / НАГРАДА ЗА УНИЧТОЖЕНИЕ</span></div><div class="garage-summary"><span id="loadout-summary">Штатная конфигурация</span><small id="power-summary"></small></div><button id="workshop" class="secondary">МОДИФИКАЦИЯ МЕХА ↗</button><button id="market" class="primary">ЧЁРНЫЙ РЫНОК ↗</button></section>
+    <footer class="hangar-footer"><span>НЕ ЗАХВАТИТЬ. ЗАЧИСТИТЬ.</span><div><button id="sound-setting" class="quiet">ЗВУК: ВКЛ</button><button id="effects-setting" class="quiet">ЭФФЕКТЫ: ПОЛНЫЕ</button></div><span>CHITIN // ZERO <b>v0.6 / COCKPIT</b></span></footer>
+  </main>
+  <section id="battle" class="battle" hidden aria-label="Поле боя">
+    <canvas id="world" tabindex="0" aria-label="Вид из кабины. Мышь — обзор, WASD — движение, Shift или Ctrl — рывок, Q — ядро, F — автоогонь. Стрелки влево и вправо — поворот, Page Up и Page Down — наклон прицела."></canvas>
+    <button id="look-hint" class="look-hint">КЛИК — УПРАВЛЯТЬ ОБЗОРОМ<br><small>Без захвата: зажать ЛКМ и вести мышь</small></button>
+    <button id="fire-mode" class="fire-mode">F / АВТООГОНЬ ВКЛ</button>
+    <div class="hud-top"><div class="pilot-panel"><span class="hud-label">ПИЛОТ / <b id="hud-chassis">СПЕКТР</b></span><div class="vital-line"><span>КОРПУС</span><b id="hp-text">115 / 115</b></div><div class="meter hull"><i id="hp-fill"></i></div><div class="vital-line"><span>ЩИТ</span><b id="shield-text">45 / 45</b></div><div class="meter shield"><i id="shield-fill"></i></div></div>
+      <div class="operation-clock"><small>ВРЕМЯ ОПЕРАЦИИ</small><strong id="timer">00:00</strong><span id="wave">ЭСКАЛАЦИЯ 01</span></div>
+      <div class="kill-panel"><div><small>УНИЧТОЖЕНО</small><strong id="kills">0</strong></div><button id="pause" aria-label="Пауза" class="icon-button">Ⅱ</button></div>
+    </div>
+    <div class="bounty-hud"><span>BOUNTY</span><b id="bounty-hud">0 AC</b><small id="bounty-pending"></small></div>
+    <div class="xp-strip"><i id="xp-fill"></i><span id="level">СИНХРОНИЗАЦИЯ / 01</span></div>
+    <div id="boss-hud" class="boss-hud" hidden><span id="boss-name">МАТКА РАЗЛОМА</span><div class="meter"><i id="boss-fill"></i></div></div>
+    <div class="radio"><span>ОРБИТА // СВЯЗЬ</span><p id="radio-message" role="status"></p></div>
+    <div class="radar-panel"><span id="biome">ПЕПЕЛЬНЫЕ РАВНИНЫ</span><canvas id="radar" width="160" height="160" aria-label="Радар врагов"></canvas><small><i></i> ЖУКИ <b>◆</b> ГНЁЗДА</small></div>
+    <div class="hud-bottom"><div class="module-block"><span class="hud-label">ОРУЖЕЙНАЯ ШИНА / <span id="aim-mode">АВТОЗАХВАТ</span></span><div id="modules" class="module-slots"></div></div><div class="abilities"><button id="dash-button" class="ability"><kbd>SHIFT</kbd><span>РЫВОК</span><b id="dash-state">ГОТОВ</b></button><button id="core-button" class="ability"><kbd>Q</kbd><span id="core-label">ИНФЕРНО</span><b id="core-state">0%</b><i id="core-fill"></i></button></div></div>
+    <div class="battle-hints"><span><kbd>WASD</kbd> ДВИЖЕНИЕ</span><span><kbd>МЫШЬ</kbd> ОБЗОР</span><span><kbd>F</kbd> АВТООГОНЬ</span><span><kbd>ESC</kbd> ПАУЗА</span></div>
+    <div id="joystick" class="joystick" aria-label="Сенсорный джойстик"><div id="stick"></div></div>
+  </section>
+  <div id="modal" class="modal" hidden><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="dialog-kicker" id="dialog-kicker">ОРБИТАЛЬНЫЙ ТЕРМИНАЛ</div><h2 id="dialog-title" tabindex="-1"></h2><div id="dialog-body"></div></section></div>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <noscript><div class="noscript">Для игры требуется включённый JavaScript.</div></noscript>
+</body>
+</html>
