@@ -14,12 +14,13 @@
   <script defer src="td-app.js"></script>
 </head>
 <body>
-  <div class="app">
+  <a class="skip-link" href="#controls">Перейти к управлению обороной</a>
+  <div class="app" id="app">
     <aside class="rail" aria-label="Системные действия">
       <a class="brand-mark" href="#main" title="Neon Bastion">N<span>↗</span></a>
-      <span class="rail-rule"></span><button id="help" class="rail-button" title="Как играть" aria-label="Как играть">?</button>
-      <button id="save" class="rail-button" title="Сохранить прогресс" aria-label="Сохранить прогресс">⇩</button>
-      <button id="motion" class="rail-button" title="Уменьшить движение" aria-label="Уменьшить движение" aria-pressed="false">≈</button>
+      <button id="help" class="rail-button">Как играть</button>
+      <button id="save" class="rail-button">Сохранить</button>
+      <button id="motion" class="rail-button" aria-pressed="false">Меньше движения</button>
       <span class="rail-bottom">SYSTEM<br>ONLINE<i></i></span>
     </aside>
     <main id="main">
@@ -30,17 +31,26 @@
       </header>
       <section class="dashboard">
         <div class="battle-column">
-          <div class="arena-header"><div class="wave-label"><small>ТЕКУЩАЯ ВОЛНА</small><strong id="wave">001</strong><span id="phase">СЕТЬ ГОТОВА</span></div><div class="core-status"><div><span>ЦЕЛОСТНОСТЬ ЯДРА</span><b id="health">100 / 100</b></div><progress id="hp" value="1" max="1"></progress></div><div class="speed-group" aria-label="Скорость симуляции"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
-          <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают узел, B строит башню, U улучшает." aria-describedby="map-hint"></canvas><div class="map-badge"><i></i><span id="threat">ВХОДЯЩИЙ ТРАФИК / ОЖИДАНИЕ</span></div><div class="map-coordinate" aria-hidden="true">35°41′ N<br>139°41′ E</div></div>
+          <div class="arena-header"><div class="wave-label"><small>Текущая волна</small><strong id="wave">1</strong><span id="phase">Подготовка</span></div><div class="core-status"><div><label for="hp">Прочность ядра</label><b id="health">100 / 100</b></div><progress id="hp" value="1" max="1"></progress></div><div class="speed-group" role="group" aria-label="Скорость симуляции"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
+          <section class="route-nav" aria-labelledby="segment-label">
+            <h2 id="segment-label">Сегмент 1 из 1</h2>
+            <div class="route-actions"><button id="segment-first">К началу</button><button id="segment-prev" aria-label="Предыдущий сегмент">← Назад</button><button id="segment-next" aria-label="Следующий сегмент">Вперёд →</button><button id="segment-last">К концу пути</button><button id="follow-threat">К ближайшей угрозе</button></div>
+            <details><summary>Контрольные точки · каждые 5 сегментов</summary><p id="checkpoint-hint"></p><div id="checkpoints" tabindex="-1" class="checkpoint-list"></div>
+              <form id="checkpoint-form" novalidate><label for="checkpoint-number">Номер КП</label><input id="checkpoint-number" type="number" min="1" step="1" value="1" inputmode="numeric" aria-describedby="checkpoint-hint checkpoint-error"><button id="checkpoint-go" type="submit">Перейти</button><p id="checkpoint-error" role="alert"></p></form>
+            </details>
+          </section>
+          <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают узел, B строит, U улучшает, Page Up и Page Down меняют сегмент." aria-describedby="map-hint combat-summary">Текстовая сводка боя и кнопки выбора всех узлов расположены сразу после карты.</canvas><div class="map-badge"><span id="threat">Ожидание волны</span></div></div>
           <div class="map-footer"><p id="map-hint">Выбери свободный узел → установи башню</p><span id="link-count">0 СВЯЗЕЙ</span></div>
-          <div id="pad-strip" class="pad-strip" aria-label="Выбор узла обороны"></div>
+          <p id="combat-summary" class="combat-summary"></p>
+          <h2 id="controls" tabindex="-1">Узлы видимого сегмента</h2>
+          <div id="pad-strip" class="pad-strip" role="group" tabindex="-1" aria-label="Выбор узла обороны"></div>
           <div class="section-heading"><h2>АРСЕНАЛ СЕТИ</h2><span>06 ЧЕРТЕЖЕЙ / ВЕКТОРНЫЕ СИСТЕМЫ</span></div>
           <div id="catalog" class="catalog" aria-label="Чертежи башен"></div>
-          <section class="automation"><div><b>АВТОНОМНЫЙ РЕЖИМ</b><small>Сеть развивается, пока ты занят</small></div><label><input id="auto-build" type="checkbox" checked><span>Строить</span></label><label><input id="auto-upgrade" type="checkbox" checked><span>Улучшать</span></label><label><input id="auto-evolve" type="checkbox"><span>Эволюции</span></label></section>
+          <section class="automation" aria-labelledby="automation-title"><h2 id="automation-title">Автоматика</h2><p>Сначала исследуй протокол, затем включи его здесь. Тип башни для автостройки всегда выбираешь ты.</p><div><label><input id="auto-build" type="checkbox" disabled aria-describedby="lock-build">Автостройка</label><small id="lock-build">Нужно исследование</small></div><div><label><input id="auto-upgrade" type="checkbox" disabled aria-describedby="lock-upgrade">Автоулучшения</label><small id="lock-upgrade">Нужно исследование</small></div><div><label><input id="auto-evolve" type="checkbox" disabled aria-describedby="lock-evolve">Автоэволюции</label><small id="lock-evolve">Нужно исследование</small></div></section>
         </div>
         <aside class="inspector">
           <nav class="tabs" aria-label="Панель управления"><button data-tab="node" aria-pressed="true">УЗЕЛ</button><button data-tab="research" aria-pressed="false">ИССЛЕДОВАНИЯ</button><button data-tab="combos" aria-pressed="false">СИНТЕЗ</button></nav>
-          <div id="panel"></div>
+          <div id="panel" tabindex="-1"></div>
           <div class="network-record"><div><small>РЕКОРД СЕТИ</small><b id="record">0</b></div><div><small>УНИЧТОЖЕНО</small><b id="kills">0</b></div><div><small>ПЕРЕЗАГРУЗОК</small><b id="prestiges">0</b></div></div>
           <button id="prestige" class="prestige"><span>↻</span><b>ПЕРЕЗАГРУЗКА СЕТИ</b><small id="prestige-hint">Откроется после 20 волн цикла</small></button>
           <p class="idle-note">Производство работает вне игры до 8 часов. Волны и бой — только в открытой вкладке.</p>

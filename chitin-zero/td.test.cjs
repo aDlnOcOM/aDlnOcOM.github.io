@@ -5,7 +5,7 @@ const D=require('./td-data.js');
 const C=require('./td-core.js');
 const {Store,KEY}=require('./td-storage.js');
 const near=(a,b,eps=1e-7)=>assert.ok(Math.abs(a-b)<eps,`${a} ≈ ${b}`);
-function game(){const g=new C.Game();g.auto={build:false,upgrade:false,evolve:false};return g;}
+function game(){const g=new C.Game();g.build(0,'pulse');g.credits=N.from(150);g.auto={build:false,upgrade:false,evolve:false};return g;}
 function rich(){const g=game();g.credits=N.power(10,100);return g;}
 function enemy(g,type='drone',x=160,y=140){g.phase='wave';g.total=20;const e=g.spawn();Object.assign(e,D.enemies[type],{type,x,y,hp:N.from(1000),maxHp:N.from(1000),progress:100});return e;}
 function memory(){const values=new Map();return{values,getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)};}
@@ -24,7 +24,7 @@ test('piecewise path is continuous, bounded and ends at the reactor',()=>{
   assert.deepEqual(C.pointAt(0),{x:0,y:140});assert.deepEqual(C.pointAt(230),{x:230,y:140});assert.deepEqual(C.pointAt(C.pathLength),{x:1000,y:520});
   for(let p=0;p<C.pathLength;p+=5){const a=C.pointAt(p),b=C.pointAt(p+1);assert.ok(C.dist(a,b)<=1.000001);}
 });
-test('new game starts with one free tower, a budget and no combat before activation',()=>{
+test('prepared manual tower and budget do not activate combat automatically',()=>{
   const g=game();g.step(.1);assert.equal(g.time,0);assert.equal(g.wave,1);near(g.credits.number(),150);assert.equal(g.towers.filter(Boolean).length,1);g.start();g.step(.1);assert.ok(g.time>0);
 });
 test('construction validates slots/types/funds and never charges failed purchases',()=>{
@@ -62,12 +62,12 @@ test('support chooses strongest aura instead of stacking identical nanos',()=>{
 test('evolution requires level 10, neighboring partner level 5, currency and one branch only',()=>{
   const g=rich();g.build(1,'arc');assert.equal(g.evolve(0,'storm'),false);g.upgrade(0,9);assert.equal(g.evolve(0,'storm'),false);g.upgrade(1,4);assert.equal(g.evolve(0,'storm'),true);assert.equal(g.evolve(0,'execution'),false);assert.equal(g.stats(g.towers[0]).targets,3);
 });
-test('every auto-layout tower has a valid evolution partner',()=>{
-  const g=rich();for(let i=1;i<12;i++)g.build(i,D.autoPlan[i]);for(const t of g.towers)t.level=10;
+test('a player-selected compatible layout has a valid evolution partner',()=>{
+  const g=rich();for(let i=1;i<12;i++)g.build(i,['pulse','arc','frost','plasma','nano','rail','arc','frost','rail','plasma','nano','plasma'][i]);for(const t of g.towers)t.level=10;
   for(const t of g.towers)assert.ok(g.evolveOptions(t.slot).some(e=>e.ready),`node ${t.slot} ${t.type}`);
 });
 test('auto-build and auto-evolve reserve money instead of spending forever on cheaper upgrades',()=>{
-  const g=game();g.auto={build:true,upgrade:true,evolve:false};g.credits=N.from(30);const level=g.towers[0].level;g.automate();assert.equal(g.towers[0].level,level);near(g.credits.number(),30);
+  const g=game();g.research.autoBuild=g.research.autoUpgrade=g.research.autoEvolve=1;g.plan(1,'arc');g.auto={build:true,upgrade:true,evolve:false};g.credits=N.from(30);const level=g.towers[0].level;g.automate();assert.equal(g.towers[0].level,level);near(g.credits.number(),30);
   g.credits=N.from(100);g.automate();assert.equal(g.towers[1].type,'arc');
   g.auto={build:false,upgrade:true,evolve:true};g.towers[0].level=10;g.towers[1].level=5;g.credits=C.cost(g.towers[0]).mul(2);g.automate();assert.equal(g.towers[0].level,10);assert.equal(g.towers[1].level,5);
   g.credits=C.cost(g.towers[0]).mul(6);g.automate();assert.equal(g.towers[0].evolution,'storm');
@@ -97,7 +97,7 @@ test('wave completion never ends the game and every tenth wave pays cores',()=>{
   const g=game();g.wave=10;g.complete();assert.equal(g.best,10);assert.equal(g.wave,11);near(g.cores.number(),1);g.wave=100000;g.complete();assert.equal(g.wave,100001);assert.equal(g.phase,'between');assert.ok(Number.isFinite(g.credits.log));
 });
 test('prestige resets the cycle but retains permanent research, cores and records',()=>{
-  const g=rich();assert.equal(g.prestige(),false);g.cycleBest=40;g.best=90;g.research.damage=3;g.research.hull=2;g.cores=N.from(12);g.towers[0].level=20;const reward=g.prestigeReward();assert.equal(g.prestige(),true);assert.equal(g.wave,1);assert.equal(g.best,90);assert.equal(g.cycleBest,0);assert.equal(g.research.damage,3);assert.equal(g.towers[0].level,1);near(g.credits.number(),150);near(g.cores.number(),12+reward.number());assert.equal(g.hp,130);assert.equal(g.prestige(),false);
+  const g=rich();assert.equal(g.prestige(),false);g.cycleBest=40;g.best=90;g.research.damage=3;g.research.hull=2;g.cores=N.from(12);g.towers[0].level=20;const reward=g.prestigeReward();assert.equal(g.prestige(),true);assert.equal(g.wave,1);assert.equal(g.best,90);assert.equal(g.cycleBest,0);assert.equal(g.research.damage,3);assert.equal(g.towers[0],null);assert.equal(g.started,false);near(g.credits.number(),150);near(g.cores.number(),12+reward.number());assert.equal(g.hp,130);assert.equal(g.prestige(),false);
 });
 test('research validates funds and ids without spending on rejected purchases',()=>{
   const g=game();assert.equal(g.buyResearch('damage'),false);assert.equal(g.buyResearch('__proto__'),false);g.cores=N.from(10);assert.equal(g.buyResearch('hull'),true);near(g.cores.number(),8);assert.equal(g.maxHp,115);assert.equal(g.hp,115);
@@ -118,10 +118,10 @@ test('corrupt saves are backed up before replacement; failed writes do not claim
 });
 test('malformed progress is sanitized, preventing invalid slots, negative HP and unknown evolutions',()=>{
   const g=new C.Game({version:1,credits:Infinity,cores:null,wave:-1,best:-9,research:{damage:-5,hull:NaN},towers:[{type:'__proto__'},{type:'pulse',level:-3,evolution:'invalid'}],hp:-99,auto:{build:'yes'},speed:99});
-  assert.equal(g.wave,1);assert.equal(g.best,0);assert.equal(g.research.damage,0);assert.equal(g.towers[0],null);assert.equal(g.towers[1].level,1);assert.equal(g.towers[1].evolution,null);assert.equal(g.hp,1);assert.equal(g.speed,1);assert.equal(g.auto.build,true);
+  assert.equal(g.wave,1);assert.equal(g.best,0);assert.equal(g.research.damage,0);assert.equal(g.towers[0],null);assert.equal(g.towers[1].level,1);assert.equal(g.towers[1].evolution,null);assert.equal(g.hp,1);assert.equal(g.speed,1);assert.equal(g.auto.build,false);
 });
 test('one-hour autonomous soak builds/evolves all nodes and keeps pools bounded',()=>{
-  const g=new C.Game();g.start();g.auto.evolve=true;
+  const g=game();g.research.autoBuild=g.research.autoUpgrade=g.research.autoEvolve=1;for(let i=1;i<12;i++)g.plan(i,['pulse','arc','frost','plasma','nano','rail','arc','frost','rail','plasma','nano','plasma'][i]);g.auto={build:true,upgrade:true,evolve:true};g.start();
   for(let i=0;i<36000;i++){g.step(.1);if(i%100===0){assert.ok(g.enemies.length<=D.limits.enemies);assert.ok(g.effects.length<=D.limits.effects);assert.ok(Number.isFinite(g.credits.log));}}
   assert.ok(g.best>=60);assert.ok(g.towers.every(t=>t&&t.level>25&&t.evolution));assert.equal(g.started,true);assert.ok(g.kills>1000);assert.ok(Number.isFinite(g.hp));
 });

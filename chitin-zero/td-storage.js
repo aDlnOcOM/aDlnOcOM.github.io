@@ -6,7 +6,7 @@
     constructor(storage,now=()=>Date.now()){this.storage=storage;this.now=now;this.error='';this.stamp=0;this.recovery=null;}
     load(){
       let saved,raw;
-      try{raw=this.storage?.getItem(KEY);saved=raw?JSON.parse(raw):null;if(raw&&saved?.game?.version!==1){this.recovery=raw;saved=null;this.error='Неизвестный формат: исходные данные будут сохранены в резервной копии.';}if(!this.storage)this.error='Хранилище недоступно: прогресс только в памяти.';}
+      try{raw=this.storage?.getItem(KEY);saved=raw?JSON.parse(raw):null;if(raw&&![1,2].includes(saved?.game?.version)){this.recovery=raw;saved=null;this.error='Неизвестный формат: исходные данные будут сохранены в резервной копии.';}if(!this.storage)this.error='Хранилище недоступно: прогресс только в памяти.';}
       catch{this.recovery=raw||null;this.error='Сохранение не прочитано. Исходные данные будут сохранены в резервной копии.';}
       const game=new C.Game(saved?.game),stamp=Number.isFinite(saved?.savedAt)?saved.savedAt:this.now();
       game.offline(Math.max(0,(this.now()-stamp)/1000));this.stamp=this.now();return game;

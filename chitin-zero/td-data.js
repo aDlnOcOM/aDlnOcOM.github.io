@@ -41,6 +41,9 @@
     {a:'nano',b:'any',name:'РОЙ ПОДДЕРЖКИ',text:'Нано ускоряет соседей. Берётся сильнейший бонус.'}
   ];
   const research = {
+    autoBuild:{name:'Автостройка',text:'Навсегда открывает строительство по выбранным тобой чертежам. Включается отдельно.',cost:1,max:1},
+    autoUpgrade:{name:'Автоулучшения',text:'Навсегда открывает автоматическое улучшение самой дешёвой башни.',cost:2,max:1},
+    autoEvolve:{name:'Автоэволюции',text:'Навсегда открывает автоматический выбор первой доступной эволюции.',cost:3,max:1},
     damage:{name:'Разгон частот',text:'+20% урона за уровень (множитель)',cost:3,factor:1.2},
     income:{name:'Серый протокол',text:'+25% производства и добычи за уровень',cost:3,factor:1.25},
     hull:{name:'Резервный контур',text:'+15 прочности ядра за уровень',cost:2},
@@ -55,6 +58,6 @@
   };
   const path=[[0,140],[230,140],[230,440],[500,440],[500,230],[760,230],[760,520],[1000,520]];
   const pads=[[125,235],[320,230],[130,365],[330,350],[420,535],[525,345],[615,135],[665,325],[850,140],[850,340],[655,540],[880,600]];
-  const D={towers,evolutions,combos,research,enemies,path,pads,width:1000,height:640,linkRange:240,OFFLINE_CAP:8*3600,limits:{enemies:100,effects:100},autoPlan:['pulse','arc','frost','plasma','nano','rail','arc','frost','rail','plasma','nano','plasma']};
+  const D={towers,evolutions,combos,research,enemies,path,pads,width:1000,height:640,linkRange:240,OFFLINE_CAP:8*3600,limits:{enemies:100,effects:100}};
   root.TDData=D;if(typeof module!=='undefined'&&module.exports)module.exports=D;
 })(typeof globalThis!=='undefined'?globalThis:this);
