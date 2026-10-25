@@ -3,67 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#080f18">
-  <title>NEON // BASTION — Infinite field defense</title>
-  <link rel="stylesheet" href="td.css">
-  <link rel="stylesheet" href="field.css">
-  <script defer src="td-number.js"></script>
-  <script defer src="td-data.js"></script>
-  <script defer src="td-core.js"></script>
-    <script defer src="td-render.js"></script>
-  <script defer src="field-data.js"></script>
-  <script defer src="field-core.js"></script>
-  <script defer src="field-storage.js"></script>
-  <script defer src="field-render.js"></script>
-  <script defer src="field-app.js"></script>
+  <meta name="theme-color" content="#081211">
+  <meta name="description" content="Одна башня. Покерные комбинации, джокеры и бесконечная оборона.">
+  <title>NEON // ANTE — Card-driven tower defense</title>
+  <link rel="stylesheet" href="tower.css">
+  <script defer src="tower-number.js"></script>
+  <script defer src="tower-data.js"></script>
+  <script defer src="tower-core.js"></script>
+  <script defer src="tower-storage.js"></script>
+  <script defer src="tower-render.js"></script>
+  <script defer src="tower-app.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#controls">Перейти к управлению обороной</a>
-  <div class="app" id="app">
-    <aside class="rail" aria-label="Системные действия">
-      <a class="brand-mark" href="#main" title="Neon Bastion">N<span>↗</span></a>
-      <button id="help" class="rail-button">Как играть</button>
-      <button id="save" class="rail-button">Сохранить</button>
-      <button id="motion" class="rail-button" aria-pressed="false">Меньше движения</button>
-      <span class="rail-bottom">SYSTEM<br>ONLINE<i></i></span>
-    </aside>
-    <main id="main">
-      <header class="topbar">
-        <div class="title"><p>INFINITE DEFENSE PROTOCOL</p><h1>NEON<span>//</span>BASTION</h1></div>
-        <div class="resources"><div><small>ОЧКИ ЗА УБИЙСТВА</small><b id="credits">150</b><span id="income">Без пассивного дохода</span></div><div class="core-currency"><small>НЕЙРОЯДРА</small><b id="cores">0</b><span>ПОСТОЯННЫЙ ПРОГРЕСС</span></div></div>
-        <button id="run-toggle" class="primary">ЗАПУСТИТЬ ОБОРОНУ <span>▶</span></button>
-      </header>
-      <section class="dashboard">
-        <div class="battle-column">
-          <div class="arena-header"><div class="wave-label"><small>Текущая волна</small><strong id="wave">1</strong><span id="phase">Подготовка</span></div><div class="core-status"><div><label for="hp">Прочность ядра</label><b id="health">600 / 600</b></div><progress id="hp" value="1" max="1"></progress></div><div class="speed-group" role="group" aria-label="Скорость симуляции"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
-          <section class="route-nav" aria-labelledby="field-title">
-            <h2 id="field-title">Бесконечное поле · круговая оборона</h2>
-            <div class="power-summary"><strong id="power">Мощность 4 / 12 МВт</strong><span id="power-warning"></span></div>
-            <div class="route-actions"><button id="camera-core">К ядру</button><button id="camera-threat">К угрозе</button><button data-pan="left" aria-label="Обзор западнее">←</button><button data-pan="up" aria-label="Обзор севернее">↑</button><button data-pan="down" aria-label="Обзор южнее">↓</button><button data-pan="right" aria-label="Обзор восточнее">→</button><button id="power-layer" aria-pressed="true">Энергосеть</button></div>
-            <p id="camera-label"></p>
-          </section>
-          <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают клетку, B строит, U улучшает. Перетаскивание перемещает обзор." aria-describedby="map-hint combat-summary">Текстовая сводка боя, координаты строительства и список построек расположены после карты.</canvas><div class="map-badge"><span id="threat">Ожидание волны</span></div></div>
-          <div class="map-footer"><p id="map-hint">Клик — клетка. Перетаскивание — обзор. Shift + перетаскивание — линия → подтвердить в панели. Линию также можно задать кнопкой «Начать линию здесь» и координатами.</p><span id="link-count">0 СВЯЗЕЙ</span></div>
+  <a class="skip" href="#decisions">Перейти к картам и решениям</a>
+  <div class="shell" id="app">
+    <header class="masthead">
+      <div><p class="kicker">ONE TOWER · INFINITE COMBINATIONS</p><h1>NEON<span> // </span>ANTE</h1></div>
+      <nav aria-label="Управление игрой"><button id="help">Как играть</button><button id="collection-toggle" aria-expanded="false">Коллекция</button><button id="save">Сохранить</button><button id="motion" aria-pressed="false">Меньше движения</button></nav>
+    </header>
+    <main>
+      <div class="dashboard">
+        <section class="battle" aria-label="Оборона башни">
+          <div class="board-head"><div><p class="kicker" id="ante">АНТЕ 01 / 08</p><strong id="blind">Подготовка сигнала</strong></div><div class="speed" role="group" aria-label="Скорость боя"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
+          <div class="arena"><canvas id="arena" tabindex="0" aria-label="Автоматический бой центральной башни. Пробел ставит бой на паузу." aria-describedby="combat-summary">Боевая сводка доступна под картой; карты и покупки — отдельными кнопками.</canvas><div class="arena-label">AUTONOMOUS DEFENSE / LIVE SIGNAL</div></div>
+          <div class="health"><label for="hp">Прочность башни</label><strong id="health">120 / 120</strong><progress id="hp" max="1" value="1"></progress></div>
           <p id="combat-summary" class="combat-summary"></p>
-          <h2 id="controls" tabindex="-1">Строительство</h2>
-          <form id="cell-form" novalidate><label for="cell-x">Клетка X</label><input id="cell-x" type="number" step="1" value="1" aria-describedby="cell-error"><label for="cell-y">Клетка Y</label><input id="cell-y" type="number" step="1" value="0" aria-describedby="cell-error"><button type="submit" id="cell-go">Выбрать клетку</button><p id="cell-error" role="alert"></p></form>
-          <details><summary>Постройки в обзоре</summary><div id="building-list" class="pad-strip" tabindex="-1"></div></details>
-          <div class="section-heading"><h2>АРСЕНАЛ СЕТИ</h2><span>06 ТУРЕЛЕЙ / 04 СООРУЖЕНИЯ</span></div>
-          <div id="catalog" class="catalog" aria-label="Чертежи башен"></div>
-          <section class="automation" aria-labelledby="automation-title"><h2 id="automation-title">Автоматика</h2><p>Сначала исследуй протокол, затем включи его здесь. Тип башни для автостройки всегда выбираешь ты.</p><div><label><input id="auto-build" type="checkbox" disabled aria-describedby="lock-build">Автостройка</label><small id="lock-build">Нужно исследование</small></div><div><label><input id="auto-upgrade" type="checkbox" disabled aria-describedby="lock-upgrade">Автоулучшения</label><small id="lock-upgrade">Нужно исследование</small></div><div><label><input id="auto-evolve" type="checkbox" disabled aria-describedby="lock-evolve">Автоэволюции</label><small id="lock-evolve">Нужно исследование</small></div></section>
-        </div>
-        <aside class="inspector">
-          <nav class="tabs" aria-label="Панель управления"><button data-tab="node" aria-pressed="true">ОБЪЕКТ</button><button data-tab="research" aria-pressed="false">ИССЛЕДОВАНИЯ</button><button data-tab="combos" aria-pressed="false">СИНТЕЗ</button></nav>
-          <div id="panel" tabindex="-1"></div>
-          <div class="network-record"><div><small>РЕКОРД СЕТИ</small><b id="record">0</b></div><div><small>УНИЧТОЖЕНО</small><b id="kills">0</b></div><div><small>ПЕРЕЗАГРУЗОК</small><b id="prestiges">0</b></div></div>
-          <button id="prestige" class="prestige"><span>↻</span><b>ПЕРЕЗАГРУЗКА СЕТИ</b><small id="prestige-hint">Откроется после 20 волн цикла</small></button>
-          <p class="idle-note">Очки — за уничтожение врагов, без добычи и пассивного дохода. Каждая волна: здоровье ×1,16 · урон ×1,09 · награда ×1,12. Бой только в открытой вкладке.<br><a href="route.html">Предыдущая версия с трассой</a> — прежний прогресс сохранён отдельно.</p>
-        </aside>
-      </section>
-      <footer class="statusbar"><span id="event" role="status">Ядро и стартовая турель готовы.</span><button id="help-mobile">ИНСТРУКЦИЯ</button><span id="save-state">ЛОКАЛЬНОЕ СОХРАНЕНИЕ</span></footer>
+          <div class="actions battle-controls"><button id="pause" disabled>Пауза</button><button id="retire" disabled>Завершить забег</button></div>
+          <section id="joker-panel" class="panel" hidden><div class="run-head"><h2>Джокеры</h2><span id="joker-count"></span></div><p>Срабатывают слева направо. Сложение до умножения обычно выгоднее.</p><div id="jokers" class="jokers"></div></section>
+        </section>
+        <section class="desk" id="decisions" tabindex="-1" aria-label="Карты и развитие">
+          <section class="panel" id="setup">
+            <p class="kicker">НОВЫЙ ЗАБЕГ</p><h2>Один сигнал против роя</h2><p>Соберите руку, запустите башню и смотрите, как работает комбинация. Между блайндами перестраивайте колоду.</p>
+            <div id="result"></div><h3>Стартовая колода</h3><div id="decks" class="deck-options"></div>
+            <h3 style="margin-top:18px">Ставка</h3><div id="stakes" class="actions"></div><p id="stake-note" class="intro-note"></p>
+            <div class="form-row"><label for="seed">Сид (необязательно)</label><input id="seed" type="number" min="1" max="4294967295" step="1" placeholder="Случайный" aria-describedby="error"></div>
+            <p id="error" role="alert"></p><button id="new-run" class="primary">Начать забег</button>
+            <p class="intro-note" style="margin-top:14px">Мета-прогрессия — открытия колод, джокеров и ставок. Постоянной покупки силы нет.</p>
+          </section>
+          <section class="panel" id="play-panel" hidden tabindex="-1"></section>
+          <section class="panel" id="build-panel" hidden><p class="kicker">ФОРМУЛА БАШНИ</p><h2 id="hand-name">Соберите руку</h2><div class="score"><div><small>Фишки</small><b id="chips">0</b></div><span>×</span><div><small>Множитель</small><b id="mult">0</b></div></div><div id="stats" class="stats"></div><details><summary>Как посчитана комбинация</summary><div id="trace"></div></details><details><summary>Уровни покерных рук</summary><div id="levels" class="level-list"></div></details></section>
+        </section>
+      </div>
+      <section id="collection" class="panel" hidden tabindex="-1"><h2>Архив сигналов</h2><p id="profile-stats"></p><div id="unlocks" class="collection-grid"></div><h3 style="margin-top:22px">Коллекция джокеров</h3><div id="collection-cards" class="collection-grid"></div></section>
     </main>
+    <footer class="statusbar"><span id="event" role="status"></span><span id="save-state">Локальное сохранение</span></footer>
   </div>
-  <section id="dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden><div class="dialog-box"><p id="dialog-label" class="eyebrow"></p><h2 id="dialog-title"></h2><div id="dialog-body"></div><div id="dialog-actions" class="dialog-actions"></div></div></section>
-  <noscript>Для запуска обороны включи JavaScript.</noscript>
+  <section id="modal" class="overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden><div class="dialog"><h2 id="modal-title"></h2><div id="modal-body"></div><div id="modal-actions" class="actions"></div></div></section>
+  <noscript>Для игры нужен JavaScript.</noscript>
 </body>
 </html>
