@@ -25,7 +25,7 @@ function harness({saved=null,blockedStorage=false,noCanvas=false,width=1000,heig
     getBoundingClientRect(){return{left:10,top:20,width,height};}
     getContext(type){assert.equal(type,'2d','vector-only rendering context');return noCanvas?null:context2d;}
   }
-  const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
+  const html=fs.readFileSync(path.join(__dirname,'route.html'),'utf8');
   for(const m of html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)){const n=new Element(m[2],m[1].toUpperCase());n.hidden=/\bhidden\b/.test(m[0]);nodes.set(n.id,n);}
   for(const m of html.matchAll(/<button\b([^>]*)>/g)){const b=new Element('','BUTTON');for(const d of m[1].matchAll(/data-([\w-]+)="([^"]*)"/g))b.dataset[d[1]]=d[2];if(Object.keys(b.dataset).length)allStatic.push(b);}
   document={activeElement:null,hidden:false,getElementById(id){assert.ok(nodes.has(id),`DOM ${id}`);return nodes.get(id);},addEventListener(type,fn){(docEvents[type]||=[]).push(fn);},querySelectorAll(selector){const key=selector.match(/data-([\w-]+)/)[1];return allStatic.filter(b=>b.dataset[key]!==undefined);}};
@@ -43,8 +43,8 @@ function harness({saved=null,blockedStorage=false,noCanvas=false,width=1000,heig
   };
 }
 function prepared(options){const h=harness(options);h.button('panel','action','build');return h;}
-test('active entrypoint loads only vector TD modules and has no raster/WebGL dependencies',()=>{
-  const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');assert.deepEqual([...html.matchAll(/<script defer src="([^"]+)"/g)].map(m=>m[1]),scripts);
+test('archived route entrypoint loads only vector TD modules and has no raster/WebGL dependencies',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'route.html'),'utf8');assert.deepEqual([...html.matchAll(/<script defer src="([^"]+)"/g)].map(m=>m[1]),scripts);
   assert.doesNotMatch(html,/<img|hunt-|cockpit|webgl/i);assert.ok(fs.existsSync(path.join(__dirname,'mech.html')));assert.ok(fs.existsSync(path.join(__dirname,'hunters.html')));
 });
 test('application boots, renders real vector paths and activates autonomous combat',()=>{
@@ -139,5 +139,5 @@ test('motion preference survives reload and visible particle area follows browse
   const saved=JSON.parse(h.memory.get('neon-bastion:v1'));assert.equal(saved.game.reducedMotion,true);const restored=harness({saved});assert.equal(restored.nodes.get('motion').attrs['aria-pressed'],'true');
 });
 test('HTML exposes language, skip link, progress name, error label and non-canvas controls',()=>{
-  const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');assert.match(html,/<html lang="ru"/);assert.match(html,/href="#controls"/);assert.match(html,/<label for="hp"/);assert.match(html,/aria-describedby="checkpoint-hint checkpoint-error"/);assert.match(html,/id="checkpoint-error" role="alert"/);assert.match(html,/id="combat-summary"/);
+  const html=fs.readFileSync(path.join(__dirname,'route.html'),'utf8');assert.match(html,/<html lang="ru"/);assert.match(html,/href="#controls"/);assert.match(html,/<label for="hp"/);assert.match(html,/aria-describedby="checkpoint-hint checkpoint-error"/);assert.match(html,/id="checkpoint-error" role="alert"/);assert.match(html,/id="combat-summary"/);
 });

@@ -4,14 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080f18">
-  <title>NEON // BASTION — Infinite idle defense</title>
+  <title>NEON // BASTION — Infinite field defense</title>
   <link rel="stylesheet" href="td.css">
+  <link rel="stylesheet" href="field.css">
   <script defer src="td-number.js"></script>
   <script defer src="td-data.js"></script>
   <script defer src="td-core.js"></script>
-  <script defer src="td-storage.js"></script>
-  <script defer src="td-render.js"></script>
-  <script defer src="td-app.js"></script>
+    <script defer src="td-render.js"></script>
+  <script defer src="field-data.js"></script>
+  <script defer src="field-core.js"></script>
+  <script defer src="field-storage.js"></script>
+  <script defer src="field-render.js"></script>
+  <script defer src="field-app.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#controls">Перейти к управлению обороной</a>
@@ -31,32 +35,32 @@
       </header>
       <section class="dashboard">
         <div class="battle-column">
-          <div class="arena-header"><div class="wave-label"><small>Текущая волна</small><strong id="wave">1</strong><span id="phase">Подготовка</span></div><div class="core-status"><div><label for="hp">Прочность ядра</label><b id="health">100 / 100</b></div><progress id="hp" value="1" max="1"></progress></div><div class="speed-group" role="group" aria-label="Скорость симуляции"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
-          <section class="route-nav" aria-labelledby="segment-label">
-            <h2 id="segment-label">Сегмент 1 из 1</h2>
-            <div class="route-actions"><button id="segment-first">К началу</button><button id="segment-prev" aria-label="Предыдущий сегмент">← Назад</button><button id="segment-next" aria-label="Следующий сегмент">Вперёд →</button><button id="segment-last">К концу пути</button><button id="follow-threat">К ближайшей угрозе</button></div>
-            <details><summary>Контрольные точки · каждые 5 сегментов</summary><p id="checkpoint-hint"></p><div id="checkpoints" tabindex="-1" class="checkpoint-list"></div>
-              <form id="checkpoint-form" novalidate><label for="checkpoint-number">Номер КП</label><input id="checkpoint-number" type="number" min="1" step="1" value="1" inputmode="numeric" aria-describedby="checkpoint-hint checkpoint-error"><button id="checkpoint-go" type="submit">Перейти</button><p id="checkpoint-error" role="alert"></p></form>
-            </details>
+          <div class="arena-header"><div class="wave-label"><small>Текущая волна</small><strong id="wave">1</strong><span id="phase">Подготовка</span></div><div class="core-status"><div><label for="hp">Прочность ядра</label><b id="health">600 / 600</b></div><progress id="hp" value="1" max="1"></progress></div><div class="speed-group" role="group" aria-label="Скорость симуляции"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
+          <section class="route-nav" aria-labelledby="field-title">
+            <h2 id="field-title">Бесконечное поле · круговая оборона</h2>
+            <div class="power-summary"><strong id="power">Мощность 4 / 12 МВт</strong><span id="power-warning"></span></div>
+            <div class="route-actions"><button id="camera-core">К ядру</button><button id="camera-threat">К угрозе</button><button data-pan="left" aria-label="Обзор западнее">←</button><button data-pan="up" aria-label="Обзор севернее">↑</button><button data-pan="down" aria-label="Обзор южнее">↓</button><button data-pan="right" aria-label="Обзор восточнее">→</button><button id="power-layer" aria-pressed="true">Энергосеть</button></div>
+            <p id="camera-label"></p>
           </section>
-          <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают узел, B строит, U улучшает, Page Up и Page Down меняют сегмент." aria-describedby="map-hint combat-summary">Текстовая сводка боя и кнопки выбора всех узлов расположены сразу после карты.</canvas><div class="map-badge"><span id="threat">Ожидание волны</span></div></div>
-          <div class="map-footer"><p id="map-hint">Выбери свободный узел → установи башню</p><span id="link-count">0 СВЯЗЕЙ</span></div>
+          <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают клетку, B строит, U улучшает. Перетаскивание перемещает обзор." aria-describedby="map-hint combat-summary">Текстовая сводка боя, координаты строительства и список построек расположены после карты.</canvas><div class="map-badge"><span id="threat">Ожидание волны</span></div></div>
+          <div class="map-footer"><p id="map-hint">Клик — выбрать клетку. Перетаскивание — обзор. Чертёж → построить.</p><span id="link-count">0 СВЯЗЕЙ</span></div>
           <p id="combat-summary" class="combat-summary"></p>
-          <h2 id="controls" tabindex="-1">Узлы видимого сегмента</h2>
-          <div id="pad-strip" class="pad-strip" role="group" tabindex="-1" aria-label="Выбор узла обороны"></div>
-          <div class="section-heading"><h2>АРСЕНАЛ СЕТИ</h2><span>06 ЧЕРТЕЖЕЙ / ВЕКТОРНЫЕ СИСТЕМЫ</span></div>
+          <h2 id="controls" tabindex="-1">Строительство</h2>
+          <form id="cell-form" novalidate><label for="cell-x">Клетка X</label><input id="cell-x" type="number" step="1" value="1" aria-describedby="cell-error"><label for="cell-y">Клетка Y</label><input id="cell-y" type="number" step="1" value="0" aria-describedby="cell-error"><button type="submit" id="cell-go">Выбрать клетку</button><p id="cell-error" role="alert"></p></form>
+          <details><summary>Постройки в обзоре</summary><div id="building-list" class="pad-strip" tabindex="-1"></div></details>
+          <div class="section-heading"><h2>АРСЕНАЛ СЕТИ</h2><span>06 ТУРЕЛЕЙ / 04 СООРУЖЕНИЯ</span></div>
           <div id="catalog" class="catalog" aria-label="Чертежи башен"></div>
           <section class="automation" aria-labelledby="automation-title"><h2 id="automation-title">Автоматика</h2><p>Сначала исследуй протокол, затем включи его здесь. Тип башни для автостройки всегда выбираешь ты.</p><div><label><input id="auto-build" type="checkbox" disabled aria-describedby="lock-build">Автостройка</label><small id="lock-build">Нужно исследование</small></div><div><label><input id="auto-upgrade" type="checkbox" disabled aria-describedby="lock-upgrade">Автоулучшения</label><small id="lock-upgrade">Нужно исследование</small></div><div><label><input id="auto-evolve" type="checkbox" disabled aria-describedby="lock-evolve">Автоэволюции</label><small id="lock-evolve">Нужно исследование</small></div></section>
         </div>
         <aside class="inspector">
-          <nav class="tabs" aria-label="Панель управления"><button data-tab="node" aria-pressed="true">УЗЕЛ</button><button data-tab="research" aria-pressed="false">ИССЛЕДОВАНИЯ</button><button data-tab="combos" aria-pressed="false">СИНТЕЗ</button></nav>
+          <nav class="tabs" aria-label="Панель управления"><button data-tab="node" aria-pressed="true">ОБЪЕКТ</button><button data-tab="research" aria-pressed="false">ИССЛЕДОВАНИЯ</button><button data-tab="combos" aria-pressed="false">СИНТЕЗ</button></nav>
           <div id="panel" tabindex="-1"></div>
           <div class="network-record"><div><small>РЕКОРД СЕТИ</small><b id="record">0</b></div><div><small>УНИЧТОЖЕНО</small><b id="kills">0</b></div><div><small>ПЕРЕЗАГРУЗОК</small><b id="prestiges">0</b></div></div>
           <button id="prestige" class="prestige"><span>↻</span><b>ПЕРЕЗАГРУЗКА СЕТИ</b><small id="prestige-hint">Откроется после 20 волн цикла</small></button>
-          <p class="idle-note">Производство работает вне игры до 8 часов. Волны и бой — только в открытой вкладке.</p>
+          <p class="idle-note">Производство работает вне игры до 8 часов. Волны и бой — только в открытой вкладке.<br><a href="route.html">Предыдущая версия с трассой</a> — прежний прогресс сохранён отдельно.</p>
         </aside>
       </section>
-      <footer class="statusbar"><span id="event" role="status">Сеть готова. Запусти оборону.</span><button id="help-mobile">ИНСТРУКЦИЯ</button><span id="save-state">ЛОКАЛЬНОЕ СОХРАНЕНИЕ</span></footer>
+      <footer class="statusbar"><span id="event" role="status">Ядро и стартовая турель готовы.</span><button id="help-mobile">ИНСТРУКЦИЯ</button><span id="save-state">ЛОКАЛЬНОЕ СОХРАНЕНИЕ</span></footer>
     </main>
   </div>
   <section id="dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden><div class="dialog-box"><p id="dialog-label" class="eyebrow"></p><h2 id="dialog-title"></h2><div id="dialog-body"></div><div id="dialog-actions" class="dialog-actions"></div></div></section>
