@@ -25,7 +25,7 @@
     return{id,scoring,hasPair:groups.some(g=>g.length>=2),flush};
   }
   class Game{
-    constructor(saved){this.profile=profile(saved?.profile);this.run=null;this.speed=1;this.reduced=false;this.effects=[];this.visible=true;this.event='Выберите колоду. Башня ведёт огонь сама; комбинацию собираете вы.';if(saved)this.restore(saved);}
+    constructor(saved){this.profile=profile(saved?.profile);this.run=null;this.speed=1;this.reduced=false;this.effects=[];this.visible=true;this.event='Башня стреляет сама. Вы управляете сборкой.';if(saved)this.restore(saved);}
     unlockedDeck(id){return id==='signal'||id==='reserve'&&this.profile.kills>=100||id==='prism'&&this.profile.bosses>0||id==='citadel'&&this.profile.wins>0;}
     unlockedJoker(id){if(!own(D.jokers,id))return false;const u=D.jokers[id].unlock;return !u||u==='flush'&&this.profile.flushes>0||u==='kills'&&this.profile.kills>=100||u==='boss'&&this.profile.bosses>0||u==='ante'&&this.profile.bestAnte>=4;}
     maxStake(deck){return Math.min(3,(this.profile.deckWins[deck]??-1)+1);}
@@ -37,7 +37,7 @@
       if(this.run&&!['lost','retired'].includes(this.run.phase))return false;
       const cards=[];for(let suit=0;suit<4;suit++)for(let rank=2;rank<=14;rank++)cards.push({id:cards.length+1,rank,suit:deck==='prism'?suit%2:suit,enhance:'plain'});
       this.run={seed:integer(seed,1,4294967295,1),rng:integer(seed,1,4294967295,1),deck,stake,cards,nextId:53,round:1,cleared:0,cash:deck==='reserve'?20:10,levels:Object.fromEntries(Object.keys(D.hands).map(k=>[k,1])),jokers:[],vouchers:[],phase:'prepare',hand:[],pile:[],selected:[],discards:3,shop:[],pack:null,rerolls:0,active:null,enemies:[],spawned:0,total:0,spawnClock:0,fireClock:0,time:0,kills:0,shots:0,hp:N.of(120),maxHp:N.of(120),paused:false,won:false,receipt:null};
-      this.profile.runs++;this.effects=[];this.prepare();this.event='Выберите 1–5 карт. Комбинация и её масти работают весь блайнд.';return true;
+      this.profile.runs++;this.effects=[];this.prepare();this.event='Выберите до пяти модулей и запустите бой.';return true;
     }
     ante(){return this.run?Math.floor((this.run.round-1)/3)+1:1;}
     blind(){const r=this.run,stage=r?(r.round-1)%3:0;return{stage,name:['Малый блайнд','Большой блайнд','Босс-блайнд'][stage],boss:stage===2?D.bosses[(this.ante()-1)%D.bosses.length]:null};}
@@ -102,7 +102,7 @@
       else if(offer.kind==='voucher'){if(r.vouchers.includes(offer.id))return false;r.vouchers.push(offer.id);}
       else if(offer.kind==='tarot'){const c=this.card(targetId);if(!c)return false;if(offer.id==='clone'){if(r.cards.length>=80)return false;r.cards.push({...c,id:r.nextId++});}else if(offer.id==='remove'){if(r.cards.length<=10)return false;r.cards=r.cards.filter(x=>x.id!==targetId);for(const k of ['hand','pile','selected'])r[k]=r[k].filter(id=>id!==targetId);}else if(offer.id==='heart')c.suit=1;else c.enhance=offer.id;}
       else if(offer.kind==='pack'){const pool=Object.keys(D.jokers).filter(id=>this.unlockedJoker(id)&&!r.jokers.includes(id));if(!pool.length||r.jokers.length>=this.slots())return false;r.pack=this.shuffle(pool).slice(0,3);}
-      else return false;r.cash-=offer.cost;offer.sold=true;this.event=offer.kind==='pack'?'Выберите один джокер из набора. Остальные будут потеряны.':'Покупка применена к текущему забегу.';return true;
+      else return false;r.cash-=offer.cost;offer.sold=true;this.event=offer.kind==='pack'?'Выберите один имплант из контейнера. Остальные будут потеряны.':'Покупка применена к текущему забегу.';return true;
     }
     discover(id){if(!this.profile.discovered.includes(id))this.profile.discovered.push(id);}
     choosePack(id){const r=this.run;if(!r||r.phase!=='shop'||!r.pack?.includes(id)||r.jokers.length>=this.slots())return false;r.jokers.push(id);this.discover(id);r.pack=null;return true;}

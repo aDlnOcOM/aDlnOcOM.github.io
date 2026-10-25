@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#081211">
-  <meta name="description" content="Одна башня. Покерные комбинации, джокеры и бесконечная оборона.">
+  <meta name="description" content="Одна башня. Кибермодули, импланты и бесконечная оборона.">
   <title>NEON // ANTE — Card-driven tower defense</title>
   <link rel="stylesheet" href="tower.css">
   <script defer src="tower-number.js"></script>
@@ -18,33 +18,31 @@
   <a class="skip" href="#decisions">Перейти к картам и решениям</a>
   <div class="shell" id="app">
     <header class="masthead">
-      <div><p class="kicker">ONE TOWER · INFINITE COMBINATIONS</p><h1>NEON<span> // </span>ANTE</h1></div>
-      <nav aria-label="Управление игрой"><button id="help">Как играть</button><button id="collection-toggle" aria-expanded="false">Коллекция</button><button id="save">Сохранить</button><button id="motion" aria-pressed="false">Меньше движения</button></nav>
+      <h1>NEON<span> // </span>ANTE</h1>
+      <div class="header-tools"><span class="sr-only">Кредиты</span><span id="cash" class="cash">—</span><details class="menu" id="menu"><summary id="menu-toggle">Меню</summary><nav aria-label="Управление игрой"><button id="help">Как играть</button><button id="collection-toggle" aria-expanded="false" aria-controls="collection">Коллекция</button><button id="save">Сохранить</button><button id="motion" aria-pressed="false">Меньше движения</button><button id="retire" disabled>Завершить забег</button></nav></details></div>
     </header>
     <main>
       <div class="dashboard">
         <section class="battle" aria-label="Оборона башни">
-          <div class="board-head"><div><p class="kicker" id="ante">АНТЕ 01 / 08</p><strong id="blind">Подготовка сигнала</strong></div><div class="speed" role="group" aria-label="Скорость боя"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div></div>
-          <div class="arena"><canvas id="arena" tabindex="0" aria-label="Автоматический бой центральной башни. Пробел ставит бой на паузу." aria-describedby="combat-summary">Боевая сводка доступна под картой; карты и покупки — отдельными кнопками.</canvas><div class="arena-label">AUTONOMOUS DEFENSE / LIVE SIGNAL</div></div>
-          <div class="health"><label for="hp">Прочность башни</label><strong id="health">120 / 120</strong><progress id="hp" max="1" value="1"></progress></div>
-          <p id="combat-summary" class="combat-summary"></p>
-          <div class="actions battle-controls"><button id="pause" disabled>Пауза</button><button id="retire" disabled>Завершить забег</button></div>
-          <section id="joker-panel" class="panel" hidden><div class="run-head"><h2>Джокеры</h2><span id="joker-count"></span></div><p>Срабатывают слева направо. Сложение до умножения обычно выгоднее.</p><div id="jokers" class="jokers"></div></section>
+          <div class="board-head"><p class="kicker" id="ante">АНТЕ 01 / 08</p><strong id="blind">Подготовка сигнала</strong></div>
+          <div class="arena"><canvas id="arena" tabindex="0" aria-label="Автоматический бой центральной башни. Пробел ставит бой на паузу." aria-describedby="combat-summary">Боевая сводка доступна под картой; карты и покупки — отдельными кнопками.</canvas></div>
+          <div class="health"><label for="hp">Ядро</label><strong id="health">120 / 120</strong><progress id="hp" max="1" value="1"></progress></div>
+          <p id="combat-summary" class="sr-only"></p>
+          <div class="battle-controls"><span id="battle-state"></span><div class="speed" role="group" aria-label="Управление боем"><button id="pause" disabled>Пауза</button><button data-speed="1" aria-pressed="true" aria-label="Скорость 1">1×</button><button data-speed="2" aria-pressed="false" aria-label="Скорость 2">2×</button><button data-speed="4" aria-pressed="false" aria-label="Скорость 4">4×</button></div></div>
         </section>
         <section class="desk" id="decisions" tabindex="-1" aria-label="Карты и развитие">
           <section class="panel" id="setup">
-            <p class="kicker">НОВЫЙ ЗАБЕГ</p><h2>Один сигнал против роя</h2><p>Соберите руку, запустите башню и смотрите, как работает комбинация. Между блайндами перестраивайте колоду.</p>
-            <div id="result"></div><h3>Стартовая колода</h3><div id="decks" class="deck-options"></div>
-            <h3 style="margin-top:18px">Ставка</h3><div id="stakes" class="actions"></div><p id="stake-note" class="intro-note"></p>
-            <div class="form-row"><label for="seed">Сид (необязательно)</label><input id="seed" type="number" min="1" max="4294967295" step="1" placeholder="Случайный" aria-describedby="error"></div>
-            <p id="error" role="alert"></p><button id="new-run" class="primary">Начать забег</button>
-            <p class="intro-note" style="margin-top:14px">Мета-прогрессия — открытия колод, джокеров и ставок. Постоянной покупки силы нет.</p>
+            <p class="kicker">НОВЫЙ ЗАБЕГ</p><h2>Один сигнал против роя</h2><p>Собирайте модули. Усиливайте башню. Выживайте.</p>
+            <div id="result"></div><h3>Стартовый набор</h3><div id="decks" class="actions"></div><p id="deck-note" class="intro-note"></p>
+            <details><summary>Настройки забега</summary><h3>Ставка</h3><div id="stakes" class="actions"></div><p id="stake-note" class="intro-note"></p><div class="form-row"><label for="seed">Сид (необязательно)</label><input id="seed" type="number" min="1" max="4294967295" step="1" placeholder="Случайный" aria-describedby="error"></div><p class="intro-note">Новые наборы и ставки открываются за достижения. Условия — в коллекции.</p></details>
+            <p id="error" role="alert"></p><button id="new-run" class="primary">Начать забег →</button>
           </section>
+          <section class="panel build" id="build-panel" hidden><h2 id="hand-name">Соберите сигнал</h2><div class="score"><div><small>Мощность</small><b id="chips">0</b></div><span>×</span><div><small>Множитель</small><b id="mult">0</b></div><span>→</span><div><small>Урон</small><b id="damage">0</b></div></div><details><summary>Параметры и расчёт</summary><div id="stats" class="stats"></div><div id="trace"></div><details><summary>Уровни комбинаций</summary><div id="levels" class="level-list"></div></details></details></section>
           <section class="panel" id="play-panel" hidden tabindex="-1"></section>
-          <section class="panel" id="build-panel" hidden><p class="kicker">ФОРМУЛА БАШНИ</p><h2 id="hand-name">Соберите руку</h2><div class="score"><div><small>Фишки</small><b id="chips">0</b></div><span>×</span><div><small>Множитель</small><b id="mult">0</b></div></div><div id="stats" class="stats"></div><details><summary>Как посчитана комбинация</summary><div id="trace"></div></details><details><summary>Уровни покерных рук</summary><div id="levels" class="level-list"></div></details></section>
         </section>
+        <section id="joker-panel" class="implant-panel" hidden><div class="run-head"><h2>Импланты <small>слева → направо</small></h2><span id="joker-count"></span></div><div id="jokers" class="jokers"></div></section>
       </div>
-      <section id="collection" class="panel" hidden tabindex="-1"><h2>Архив сигналов</h2><p id="profile-stats"></p><div id="unlocks" class="collection-grid"></div><h3 style="margin-top:22px">Коллекция джокеров</h3><div id="collection-cards" class="collection-grid"></div></section>
+      <section id="collection" class="panel" hidden tabindex="-1"><h2>Архив сигналов</h2><p id="profile-stats"></p><div id="unlocks" class="collection-grid"></div><h3 class="collection-title">Коллекция имплантов</h3><div id="collection-cards" class="collection-grid"></div></section>
     </main>
     <footer class="statusbar"><span id="event" role="status"></span><span id="save-state">Локальное сохранение</span></footer>
   </div>
