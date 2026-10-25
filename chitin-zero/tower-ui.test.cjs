@@ -14,13 +14,13 @@ function harness({saved=null,blockedStorage=false,noCanvas=false,width=1000,heig
   },set:(t,k,v)=>{t[k]=v;return true;}});
   class Element{
     constructor(id='',tag='DIV'){this.id=id;this.tagName=tag;this.dataset={};this.style={};this.listeners={};this.children=[];this.hidden=false;this.isConnected=true;this.disabled=false;this.checked=false;this.textContent='';this.value='';this.attrs={};this.classList={toggle:(key,value)=>this.attrs[key]=value};}
-    set innerHTML(html){this.html=html;for(const child of this.children)child.isConnected=false;this.children=[];for(const m of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)){const b=new Element('','BUTTON');b.disabled=/\bdisabled\b/.test(m[1]);b.textContent=m[2];for(const d of m[1].matchAll(/data-([\w-]+)="([^"]*)"/g))b.dataset[d[1]]=d[2];this.children.push(b);}}
+    set innerHTML(html){this.html=html;for(const child of this.children)child.isConnected=false;this.children=[];this.disclosures=[...html.matchAll(/<details\b([^>]*)>/g)].map(m=>({open:/\bopen\b/.test(m[1])}));this.summaries=[...html.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m=>{const s=new Element('','SUMMARY');s.textContent=m[1];return s;});for(const m of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)){const b=new Element('','BUTTON');b.disabled=/\bdisabled\b/.test(m[1]);b.textContent=m[2];for(const d of m[1].matchAll(/data-([\w-]+)="([^"]*)"/g))b.dataset[d[1]]=d[2];this.children.push(b);}}
     get innerHTML(){return this.html||'';}
     closest(tag){return tag==='button'&&this.tagName==='BUTTON'?this:null;}
     addEventListener(type,fn){(this.listeners[type]||=[]).push(fn);}
     setAttribute(key,value){this.attrs[key]=value;}
     focus(){document.activeElement=this;}
-    querySelectorAll(selector){return selector==='details'?[]:this.children.filter(b=>!b.disabled);}
+    querySelectorAll(selector){return selector==='details'?(this.disclosures||[]):selector==='summary'?(this.summaries||[]):this.children.filter(b=>!b.disabled);}
     querySelector(selector){const matches=[...selector.matchAll(/\[data-([\w-]+)="([^"]+)"\]/g)];return matches.length?this.children.find(b=>matches.every(m=>b.dataset[m[1]]===m[2])):this.querySelectorAll()[0];}
     getBoundingClientRect(){return{left:10,top:20,width,height};}
     getContext(type){assert.equal(type,'2d','vector-only rendering context');return noCanvas?null:context2d;}
@@ -52,14 +52,14 @@ test('all entrypoint references exist and obsolete entrypoints and assets are re
   const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');for(const m of html.matchAll(/(?:src|href)="([^"]+)"/g)){if(m[1].startsWith('#'))continue;assert.ok(fs.existsSync(path.join(__dirname,m[1])),m[1]);}for(const file of ['route.html','mech.html','hunters.html','field-core.js','td-core.js','assets'])assert.equal(fs.existsSync(path.join(__dirname,file)),false,file);
 });
 test('deck selection, seeded run and card preview start combat without building controls',()=>{
-  const h=harness();h.nodes.get('seed').value='42';h.click('new-run');const g=h.context.game;assert.equal(g.run.seed,42);assert.equal(h.nodes.get('setup').hidden,true);assert.match(h.nodes.get('play-panel').innerHTML,/Соберите боевую руку/);assert.ok(h.nodes.get('chips').textContent);
+  const h=harness();h.nodes.get('seed').value='42';h.click('new-run');const g=h.context.game;assert.equal(g.run.seed,42);assert.equal(h.nodes.get('setup').hidden,true);assert.match(h.nodes.get('play-panel').innerHTML,/Соберите сигнал/);assert.ok(h.nodes.get('chips').textContent);
   h.button('play-panel','act','launch');assert.equal(g.run.phase,'battle');h.frame(0);for(let i=1;i<40;i++)h.frame(i*100);assert.ok(g.run.shots>0||g.run.spawned>0);
 });
 test('invalid seed is rejected with a visible accessible error',()=>{
   const h=harness();h.nodes.get('seed').value='1.5';h.click('new-run');assert.equal(h.context.game.run,null);assert.match(h.nodes.get('error').textContent,/целым/);
 });
 test('cards toggle selection and discard counts are visible',()=>{
-  const h=harness();h.click('new-run');const g=h.context.game,id=g.run.hand.find(i=>!g.run.selected.includes(i)),before=g.run.selected.length;h.button('play-panel','id',id);assert.ok(g.run.selected.includes(id));assert.equal(g.run.selected.length,before+1);h.button('play-panel','act','discard');assert.equal(g.run.discards,2);assert.match(h.nodes.get('play-panel').innerHTML,/Сбросить выбранные · 2/);
+  const h=harness();h.click('new-run');const g=h.context.game,id=g.run.hand.find(i=>!g.run.selected.includes(i)),before=g.run.selected.length;h.button('play-panel','id',id);assert.ok(g.run.selected.includes(id));assert.equal(g.run.selected.length,before+1);h.button('play-panel','act','discard');assert.equal(g.run.discards,2);assert.match(h.nodes.get('play-panel').innerHTML,/Заменить · 2/);
 });
 test('clearing every selected card clears the formula instead of showing stale damage',()=>{
   const h=harness();h.click('new-run');for(const id of [...h.context.game.run.selected])h.button('play-panel','id',id);assert.equal(h.nodes.get('chips').textContent,'0');assert.equal(h.nodes.get('mult').textContent,'0');assert.match(h.nodes.get('hand-name').textContent,/Выберите/);
@@ -89,9 +89,80 @@ test('storage and Canvas errors are visible instead of claiming success',()=>{
   const h=harness({blockedStorage:true});assert.match(h.nodes.get('save-state').textContent,/только в памяти/);const c=harness({noCanvas:true});assert.equal(c.nodes.get('new-run').disabled,true);assert.match(c.nodes.get('event').textContent,/графику/);
 });
 test('collection reports unlock requirements and stakes instead of permanent damage',()=>{
-  const h=harness();h.click('collection-toggle');assert.equal(h.nodes.get('collection').hidden,false);assert.equal(h.nodes.get('collection-toggle').attrs['aria-expanded'],'true');assert.match(h.nodes.get('unlocks').innerHTML,/100 врагов/);assert.match(h.nodes.get('collection-cards').innerHTML,/Сыграйте флеш/);
+  const h=harness();h.click('collection-toggle');assert.equal(h.nodes.get('collection').hidden,false);assert.equal(h.nodes.get('collection-toggle').attrs['aria-expanded'],'true');assert.match(h.nodes.get('unlocks').innerHTML,/100 врагов/);assert.match(h.nodes.get('collection-cards').innerHTML,/Сыграйте Синхронизацию/);
 });
 test('small screens render finite vector coordinates and retain non-canvas actions',()=>{
-  const h=harness({width:390,height:390,viewportWidth:390,viewportHeight:844});h.click('new-run');h.frame(0);h.frame(100);assert.ok(h.drawCalls.length>150);assert.match(h.nodes.get('play-panel').innerHTML,/Запустить блайнд/);
+  const h=harness({width:390,height:390,viewportWidth:390,viewportHeight:844});h.click('new-run');h.frame(0);h.frame(100);assert.ok(h.drawCalls.length>150);assert.match(h.nodes.get('play-panel').innerHTML,/В бой →/);
+});
+
+test('cyber systems have unique circuit art, readable codes and no traditional suit symbols',()=>{
+  const h=harness(),D=h.context.TowerData;
+  assert.deepEqual(Array.from(D.suits,s=>s.code),['AIM','FIX','CLK','NET']);
+  assert.equal(new Set(D.suits.map(s=>s.path)).size,4);
+  assert.equal(new Set(D.suits.map(s=>s.name)).size,4);
+  assert.ok(Object.values(D.hands).every(hand=>hand.rule));
+  h.click('new-run');const html=h.nodes.get('play-panel').innerHTML;
+  assert.doesNotMatch(html,/[♠♥♣♦]|playing-card|>J<|>Q<|>K<|>A</);
+  for(const s of D.suits){assert.ok(html.includes(s.path));assert.ok(html.includes(s.code));assert.ok(html.includes(s.name));}
+  assert.match(html,/aria-label="[^"]+ранг \d{2}/);
+  assert.match(html,/aria-pressed="true"/);assert.match(html,/aria-hidden="true">✓/);
+});
+
+test('same module renderer preserves ranks, upgrades and scoring state in battle and patch browser',()=>{
+  const h=harness();h.click('new-run');const g=h.context.game;
+  const ids=[10,24,38,52]; // Ranks 11–14, one of every system.
+  g.run.hand=ids;g.run.selected=[...ids];g.card(ids[0]).enhance='foil';
+  h.button('play-panel','act','launch');
+  const html=h.nodes.get('play-panel').innerHTML;
+  for(const rank of [11,12,13,14])assert.match(html,new RegExp(`<strong>${rank}</strong>`));
+  assert.match(html,/\+30 мощ\./);assert.match(html,/Вне связки/);assert.match(html,/В сети/);
+  assert.doesNotMatch(html,/data-act="card"/);
+  finish(g);g.run.cash=100;g.run.shop=[g.item('tarot','heart')];h.frame(0);
+  h.button('play-panel','id',String(ids[3]));assert.match(h.nodes.get('play-panel').innerHTML,/Цель: NET \/ 14/);
+  h.button('play-panel','act','buy');assert.equal(g.card(ids[3]).suit,1);
+  assert.match(h.nodes.get('play-panel').innerHTML,/Цель: FIX \/ 14/);
+});
+
+test('menu and diagnostics start folded while primary actions remain outside disclosures',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8'),stack=[],ancestors=new Map();
+  for(const m of html.matchAll(/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi)){
+    const tag=m[2].toLowerCase();if(m[1]){assert.equal(stack.pop(),tag,`balanced ${tag}`);continue;}
+    const id=m[3].match(/\bid="([^"]+)"/);if(id){assert.ok(!ancestors.has(id[1]),`unique ${id[1]}`);ancestors.set(id[1],[...stack]);}
+    if(!['meta','link','input','br','hr'].includes(tag))stack.push(tag);
+  }
+  assert.equal(stack.length,0);assert.doesNotMatch(html,/<details\b[^>]*\bopen(?:\s|>|=)/);
+  for(const id of ['help','save','retire','stats','trace','levels','seed'])assert.ok(ancestors.get(id).includes('details'),id);
+  for(const id of ['new-run','cash','damage','hp','pause'])assert.ok(!ancestors.get(id).includes('details'),id);
+  const h=harness();assert.equal(h.nodes.get('decks').children.length,1);h.click('new-run');
+  assert.ok(h.nodes.get('play-panel').innerHTML.indexOf('data-act="launch"')<h.nodes.get('play-panel').innerHTML.indexOf('<details'));
+});
+
+test('compact cash and damage displays track play, purchases and empty selections',()=>{
+  const h=harness();h.click('new-run');const g=h.context.game;
+  assert.equal(h.nodes.get('cash').textContent,'$10');assert.equal(h.nodes.get('damage').textContent,g.score().damage.format());
+  for(const id of [...g.run.selected])h.button('play-panel','id',id);
+  assert.equal(h.nodes.get('damage').textContent,'0');h.button('play-panel','act','best');h.button('play-panel','act','launch');
+  g.run.cash+=1;h.frame(0);h.frame(100);h.frame(200);assert.equal(h.nodes.get('cash').textContent,'$11');
+  finish(g);g.run.shop=[g.item('planet','pair')];h.frame(300);h.button('play-panel','act','buy');
+  assert.equal(h.nodes.get('cash').textContent,`$${g.run.cash}`);
+});
+
+test('expanded guide survives selecting a module and keyboard can reach modal guide',()=>{
+  const h=harness();h.click('new-run');h.nodes.get('play-panel').disclosures[0].open=true;
+  h.button('play-panel','id',h.context.game.run.selected[0]);assert.equal(h.nodes.get('play-panel').disclosures[0].open,true);
+  h.click('help');h.key('Tab');assert.equal(h.document.activeElement.tagName,'SUMMARY');
+  h.key('Tab');assert.equal(h.document.activeElement.dataset.act,'close');
+  h.key('Tab',{shiftKey:true});assert.equal(h.document.activeElement.tagName,'SUMMARY');h.key('Escape');
+  h.nodes.get('menu').open=true;h.key('Escape');assert.equal(h.nodes.get('menu').open,false);assert.equal(h.document.activeElement.id,'menu-toggle');
+});
+
+test('version-one snapshots keep numeric module identities, enhancements and damage',()=>{
+  const h=harness();h.nodes.get('seed').value='42';h.click('new-run');const g=h.context.game;
+  g.card(g.run.selected[0]).enhance='steel';g.run.jokers=['spark','echo'];g.launch();
+  const saved=JSON.parse(JSON.stringify(g.serialize())),restored=harness({saved}).context.game;
+  assert.equal(saved.version,1);assert.equal(restored.run.phase,'battle');assert.equal(restored.run.paused,true);
+  assert.equal(JSON.stringify(restored.run.cards),JSON.stringify(saved.run.cards));
+  assert.equal(JSON.stringify(restored.run.selected),JSON.stringify(saved.run.selected));
+  assert.equal(restored.run.active.damage.log,g.run.active.damage.log);assert.equal(restored.run.rng,g.run.rng);
 });
 
