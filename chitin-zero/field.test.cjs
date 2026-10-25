@@ -2,9 +2,57 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const C=require('./field-core.js'),F=require('./field-data.js'),N=require('./td-number.js'),{Store,KEY}=require('./field-storage.js');
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-6,`${a} ~= ${b}`);
+function terrainCell(id){for(let q=9;q<80;q++)for(let r=-40;r<40;r++)if(F.terrain(q,r)===id)return C.key(q,r);throw Error('missing terrain '+id);}
 function rich(){const g=new C.Game();g.credits=N.from(1e9);return g;}
 function remote(){const g=rich();g.build('3,0','pylon');g.build('6,0','pylon');g.build('7,0','pulse');g.build('6,1','generator');return g;}
 function enemy(g,x,y){g.total=20;const e=g.spawn();Object.assign(e,{x,y,hp:N.from(10000),maxHp:N.from(10000),progress:-Math.hypot(x,y)});return e;}
+test('terrain is deterministic, varied, sparse and has a safe starting clearing',()=>{
+  const a=new C.Game(),b=new C.Game();for(const id of ['ash','slag','rubble','basalt']){const slot=terrainCell(id);assert.equal(a.terrainAt(slot).id,id);assert.deepEqual(a.terrainAt(slot),b.terrainAt(slot));}
+  for(let q=-8;q<=8;q++)for(let r=-8;r<=8;r++)assert.equal(F.terrain(q,r),'basalt');
+  for(const slot of ['1000000000,-1000000000','-1000000000,1000000000'])assert.ok(a.terrainAt(slot));assert.equal(a.foundations.size,2);assert.equal(a.terrainAt('NaN,0'),null);
+});
+test('foundation is charged once, survives demolition and roundtrips through save',()=>{
+  const g=rich(),slot=terrainCell('slag'),initial=g.credits.number();assert.equal(g.build(slot,'wall'),true);near(initial-g.credits.number(),30);assert.equal(g.terrainAt(slot).id,'floor');g.sell(slot);assert.equal(g.buildCost(slot,'wall').number().toFixed(0),'12');
+  const restored=new C.Game(g.serialize());assert.equal(restored.terrainAt(slot).id,'floor');assert.ok(restored.build(slot,'pylon'));restored.hurt(restored.tower(slot),1e9);assert.equal(restored.terrainAt(slot).id,'floor');
+});
+test('insufficient points cannot prepare land or place a block',()=>{
+  const g=new C.Game(),slot=terrainCell('slag');g.credits=N.from(12);assert.equal(g.build(slot,'wall'),false);assert.equal(g.terrainAt(slot).id,'slag');near(g.credits.number(),12);
+});
+test('old field saves preserve buildings and gain their existing foundations for free',()=>{
+  const g=rich(),slot=terrainCell('rubble');g.build(slot,'wall');const saved=g.serialize();delete saved.foundations;delete saved.terrainVersion;const restored=new C.Game(saved),balance=restored.credits.log;assert.equal(restored.terrainAt(slot).id,'floor');assert.equal(restored.credits.log,balance);assert.equal(restored.tower(slot).type,'wall');
+});
+test('foundation save validation ignores noncanonical and out-of-world cells',()=>{
+  const saved=new C.Game().serialize();saved.foundations=['NaN,0','01,0','1000000001,0','12,12',{},null];const g=new C.Game(saved);assert.ok(g.foundations.has('12,12'));assert.equal(g.foundations.size,3);
+});
+test('terrain slows enemies and a prepared floor restores full movement speed',()=>{
+  const g=rich(),slot=terrainCell('slag'),p=C.cell(slot),e=enemy(g,p.x,p.y);e.think=1;e.target='0,0';const start={x:e.x,y:e.y};g.moveEnemy(e,.1);const slow=Math.hypot(e.x-start.x,e.y-start.y);g.foundations.add(slot);e.x=start.x;e.y=start.y;g.moveEnemy(e,.1);near(slow/Math.hypot(e.x-start.x,e.y-start.y),.65);
+});
+test('wall lines are orthogonal, bounded and built as a single manual transaction',()=>{
+  const g=rich(),quote=g.lineQuote('-3,-3','3,-3','wall');assert.equal(quote.slots.length,7);near(quote.price.number(),84);g.credits=quote.price;assert.ok(g.buildLine('-3,-3','3,-3','wall'));for(const slot of quote.slots)assert.equal(g.tower(slot).type,'wall');assert.ok(g.credits.number()<1e-8);
+  assert.equal(g.lineSlots('0,0','1000000000,0','wall').length,0);assert.equal(g.lineSlots('0,0','63,0','wall').length,64);assert.equal(g.lineSlots('0,0','64,0','wall').length,0);assert.equal(g.lineSlots('0,0','1,0','__proto__').length,0);
+});
+test('pylon line preserves corners and has no gaps outside relay range',()=>{
+  const g=rich();g.build('3,0','pylon');assert.ok(g.buildLine('3,0','9,5','pylon'));for(const s of g.lineSlots('3,0','9,5','pylon'))assert.equal(g.tower(s).connected,true);assert.ok(g.lineSlots('3,0','9,5','pylon').includes('9,0'));assert.ok(g.lineQuote('3,0','9,5','pylon').reason);
+});
+test('line collision, enemy occupancy and insufficient funds cannot partially spend or build',()=>{
+  for(const obstacle of ['building','enemy','funds']){const g=rich();if(obstacle==='building')g.build('2,3','pulse');if(obstacle==='enemy')enemy(g,120,180);if(obstacle==='funds')g.credits=N.from(12);const before=g.serialize();assert.equal(g.buildLine('0,3','4,3','wall'),false);assert.deepEqual(g.serialize(),before);}
+});
+test('line quote includes each terrain preparation and skips matching existing blocks',()=>{
+  const g=rich(),from=terrainCell('slag'),p=C.cell(from),to=C.key(p.q+2,p.r);g.build(from,'wall');const quote=g.lineQuote(from,to,'wall');assert.equal(quote.slots.length,2);near(quote.price.number(),quote.slots.reduce((n,s)=>n+g.buildCost(s,'wall').number(),0));
+});
+test('kill points are awarded exactly once and respect bounty research and nano marking',()=>{
+  const g=new C.Game();g.credits=N.from(0);g.research.income=2;const e=g.spawn();e.mark=.6;g.damage(e,e.hp);near(g.credits.number(),12*1.6*1.25**2);assert.equal(g.kills,1);const before=g.credits.log;g.damage(e,1e9);assert.equal(g.credits.log,before);assert.equal(g.kills,1);
+});
+test('waiting, offline time, loading and wave completion do not create points',()=>{
+  const g=new C.Game();g.start();g.timer=1e6;const before=g.credits.log;for(let i=0;i<1000;i++)g.step(.1);g.offline(86400);assert.equal(g.income().log,-Infinity);assert.equal(g.credits.log,before);g.complete();assert.equal(g.credits.log,before);const store=new Store({getItem:()=>JSON.stringify({game:g.serialize(),savedAt:0}),setItem(){}});assert.equal(store.load().credits.log,before);
+});
+test('health, attack damage and kill reward follow geometric growth independently of population',()=>{
+  const a=new C.Game(),b=new C.Game();a.wave=11;b.wave=12;const e=a.spawn(),f=b.spawn();near(f.hp.div(e.hp).number(),F.growth.health);near(b.enemyDamage(f).div(a.enemyDamage(e)).number(),F.growth.damage);near(b.bounty(f).div(a.bounty(e)).number(),F.growth.bounty);
+  a.wave=100000;const extreme=a.spawn();for(const amount of [extreme.hp,a.enemyDamage(extreme),a.bounty(extreme)])assert.ok(Number.isFinite(amount.log)&&amount.log>1000);
+});
+test('spawned enemy keeps its wave scaling even when current wave changes',()=>{
+  const g=new C.Game();g.wave=50;const e=g.spawn(),reward=g.bounty(e).log,damage=g.enemyDamage(e).log;g.wave=1;assert.equal(g.bounty(e).log,reward);assert.equal(g.enemyDamage(e).log,damage);
+});
 test('initial world contains exactly a core and a powered simple turret',()=>{
   const g=new C.Game();assert.equal(g.buildings.size,2);assert.equal(g.core.type,'core');assert.equal(g.tower('1,0').type,'pulse');assert.equal(g.tower('1,0').powered,true);assert.equal(g.network.capacity,12);assert.equal(g.network.used,4);assert.equal(g.started,false);near(g.credits.number(),150);
 });

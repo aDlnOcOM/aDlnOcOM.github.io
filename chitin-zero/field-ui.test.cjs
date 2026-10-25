@@ -42,6 +42,15 @@ function harness({saved=null,blockedStorage=false,noCanvas=false,width=1000,heig
     key(code,event={}){emit(docEvents,'keydown',{code,...event});},doc(type,event){emit(docEvents,type,event);},win(type,event){emit(winEvents,type,event);},element(id,type,event){emit(nodes.get(id).listeners,type,event);}
   };
 }
+test('line construction is keyboard-accessible and requires explicit confirmation',()=>{
+  const h=harness(),g=h.context.game;g.credits=h.context.TDNumber.from(500);h.nodes.get('cell-x').value='-2';h.nodes.get('cell-y').value='3';h.element('cell-form','submit');h.button('catalog','blueprint','wall');h.button('panel','action','line-start');h.nodes.get('cell-x').value='2';h.element('cell-form','submit');assert.equal(g.buildings.size,2);assert.match(h.nodes.get('panel').innerHTML,/5 блоков/);h.button('panel','action','line-build');assert.equal(g.buildings.size,7);assert.equal(g.tower('-2,3').type,'wall');
+});
+test('shift drag previews a line without moving camera or spending until confirmed',()=>{
+  const h=harness(),g=h.context.game;h.button('catalog','blueprint','wall');const before=g.credits.log;h.element('field','pointerdown',{button:0,shiftKey:true,clientX:390,clientY:520,pointerId:1});h.element('field','pointermove',{clientX:630,clientY:520});h.element('field','pointerup');h.element('field','click',{clientX:630,clientY:520});h.frame(0);assert.equal(g.camera.x,0);assert.equal(g.credits.log,before);assert.equal(g.buildings.size,2);assert.match(h.nodes.get('panel').innerHTML,/5 блоков/);h.button('panel','action','line-cancel');assert.equal(g.buildings.size,2);assert.doesNotMatch(h.nodes.get('panel').innerHTML,/Подтвердить линию/);
+});
+test('terrain surcharge and kill-only economy are exposed as text',()=>{
+  const h=harness(),g=h.context.game;let slot;for(let q=9;q<80&&!slot;q++)for(let r=0;r<80;r++)if(h.context.FieldData.terrain(q,r)==='slag'){slot=[q,r];break;}h.nodes.get('cell-x').value=String(slot[0]);h.nodes.get('cell-y').value=String(slot[1]);h.element('cell-form','submit');h.button('catalog','blueprint','wall');assert.match(h.nodes.get('panel').innerHTML,/Шлаковая низина/);assert.match(h.nodes.get('panel').innerHTML,/30 очков/);assert.match(h.nodes.get('income').textContent,/только за убийства/);h.button(null,'tab','research');assert.match(h.nodes.get('panel').innerHTML,/Пассивного производства нет/);assert.equal(g.buildings.size,2);
+});
 test('field entrypoint starts with one powered turret and renders vector-only combat',()=>{
   const h=harness(),g=h.context.game;assert.equal(g.buildings.size,2);assert.equal(g.tower('1,0').powered,true);h.click('run-toggle');h.frame(0);for(let i=1;i<60;i++)h.frame(i*100);assert.ok(g.time>0);assert.ok(h.drawCalls.length>200);assert.equal(g.started,true);assert.match(h.nodes.get('power').textContent,/12/);
 });
@@ -68,8 +77,8 @@ test('manual upgrades, energy priority, and permanent automation controls work',
 test('demolition confirms loss and modal returns keyboard focus',()=>{
   const h=harness(),g=h.context.game;h.nodes.get('help').focus();h.click('help');assert.equal(h.nodes.get('app').inert,true);h.key('Escape');assert.equal(h.document.activeElement,h.nodes.get('help'));assert.equal(h.nodes.get('app').inert,false);h.button('panel','action','sell');h.button('dialog-actions','action','close');assert.ok(g.tower('1,0'));h.button('panel','action','sell');h.button('dialog-actions','action','sell-confirm');assert.equal(g.tower('1,0'),null);
 });
-test('hidden tab stops damage and records offline production once',()=>{
-  const h=harness();h.click('run-toggle');const g=h.context.game,before=g.credits.number(),hp=g.core.hp.log;h.document.hidden=true;h.doc('visibilitychange');h.advanceTime(60000);h.frame(0);h.document.hidden=false;h.doc('visibilitychange');assert.equal(g.core.hp.log,hp);assert.ok(g.credits.number()>=before+89.9);assert.equal(h.nodes.get('dialog').hidden,false);assert.ok(h.memory.has('neon-bastion:field:v1'));
+test('hidden tab stops combat and never grants offline points',()=>{
+  const h=harness();h.click('run-toggle');const g=h.context.game,before=g.credits.log,hp=g.core.hp.log;h.document.hidden=true;h.doc('visibilitychange');h.advanceTime(60000);h.frame(0);h.document.hidden=false;h.doc('visibilitychange');assert.equal(g.core.hp.log,hp);assert.equal(g.credits.log,before);assert.equal(h.nodes.get('dialog').hidden,true);assert.ok(h.memory.has('neon-bastion:field:v1'));
 });
 test('graphics and save failures remain visible and do not claim success',()=>{
   const h=harness({noCanvas:true});assert.equal(h.nodes.get('run-toggle').disabled,true);assert.match(h.nodes.get('event').textContent,/графику/);const s=harness({blockedStorage:true});assert.match(s.nodes.get('save-state').textContent,/только в памяти/);

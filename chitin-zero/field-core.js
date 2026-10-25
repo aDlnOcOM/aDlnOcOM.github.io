@@ -10,7 +10,7 @@
   function intersection(a,b,target,radius){let lo=0,hi=1;const half=definition(target).half+radius;for(const axis of ['x','y']){const delta=b[axis]-a[axis],min=target[axis]-half,max=target[axis]+half;if(Math.abs(delta)<1e-9){if(a[axis]<min||a[axis]>max)return null;}else{let x=(min-a[axis])/delta,y=(max-a[axis])/delta;if(x>y)[x,y]=[y,x];lo=Math.max(lo,x);hi=Math.min(hi,y);if(lo>hi)return null;}}return lo;}
   class Game extends C.Game{
     constructor(saved){
-      super();this.buildings=new Map();this.nextBuilding=1;this.camera={x:0,y:0};this.selected='1,0';this.network={capacity:12,demand:4,used:4,links:[],disconnected:0,shed:0};this.powerDirty=true;
+      super();this.foundations=new Set(['0,0','1,0']);this.buildings=new Map();this.nextBuilding=1;this.camera={x:0,y:0};this.selected='1,0';this.network={capacity:12,demand:4,used:4,links:[],disconnected:0,shed:0};this.powerDirty=true;
       this.core=this.create('0,0','core');this.buildings.set('0,0',this.core);const starter=this.create('1,0','pulse');this.buildings.set(starter.slot,starter);
       this.event='Ядро и стартовая турель готовы. Расширяй сеть пилонами, следи за мощностью.';this.viewport={x:-500,y:-320,width:1000,height:640};this.worldVersion=1;
       if(saved)this.restoreField(saved);this.rebuildPower();
@@ -20,6 +20,27 @@
     allTowers(){return this.allBuildings().filter(t=>definition(t).kind==='tower');}
     tower(slot){return this.buildings.get(slot)||null;}
     validSlot(slot){return!!cell(slot);}
+    terrainAt(slot){const p=cell(slot);if(!p)return null;const id=this.foundations.has(slot)||this.tower(slot)?'floor':F.terrain(p.q,p.r);return{id,...F.terrainTypes[id]};}
+    buildCost(slot,type){return N.from((F.structures[type]?.cost||0)+(this.terrainAt(slot)?.foundation||0));}
+    lineSlots(from,to,type){
+      const a=cell(from),b=cell(to);if(!a||!b||!Object.hasOwn(F.structures,type))return[];
+      const distance=Math.abs(b.q-a.q)+Math.abs(b.r-a.r);if(distance>=F.lineLimit)return[];
+      const slots=[from];let q=a.q,r=a.r;while(q!==b.q){q+=Math.sign(b.q-q);slots.push(key(q,r));}while(r!==b.r){r+=Math.sign(b.r-r);slots.push(key(q,r));}
+      // Relay chains use their full range, keeping corners and both endpoints.
+      return type==='pylon'?slots.filter((s,i)=>i===0||i===slots.length-1||i===Math.abs(b.q-a.q)||i%3===0):slots;
+    }
+    lineQuote(from,to,type){
+      const path=this.lineSlots(from,to,type);if(!path.length)return{slots:[],price:N.from(0),reason:`Линия должна занимать не более ${F.lineLimit} клеток.`};
+      const slots=path.filter(s=>this.tower(s)?.type!==type);let price=N.from(0),reason='';
+      for(const slot of slots){reason=reason||this.canBuild(slot,type);price=price.add(this.buildCost(slot,type));}
+      if(!slots.length)reason='Эта линия уже построена.';return{slots,price,reason};
+    }
+    buildLine(from,to,type){const quote=this.lineQuote(from,to,type);if(quote.reason||!this.credits.gte(quote.price)){this.say(quote.reason||'Недостаточно очков для всей линии.');return false;}for(const slot of quote.slots)this.build(slot,type);this.say(`Построено блоков: ${quote.slots.length}. Потрачено ${quote.price.format()} очков.`);return true;}
+    income(){return N.from(0);}
+    offline(){this.lastReward=null;return N.from(0);}
+    bounty(e){return N.from(F.growth.baseBounty*e.reward*(1+(e.mark||0))).mul(N.power(F.growth.bounty,(e.wave||this.wave)-1)).mul(N.power(1.25,this.research.income));}
+    enemyDamage(e){return N.from(e.damage).mul(N.power(F.growth.damage,(e.wave||this.wave)-1));}
+    damage(e,amount){if(e.dead)return;e.hp=e.hp.sub(N.from(amount));e.flash=.12;if(e.hp.log!==-Infinity)return;e.dead=true;this.kills++;this.credits=this.credits.add(this.bounty(e));this.effect({kind:'burst',x:e.x,y:e.y,radius:e.boss?42:16,color:e.color,life:.3});}
     neighbors(t){return this.allTowers().filter(o=>o!==t&&o.powered&&C.dist(t,o)<=D.linkRange);}
     links(){return super.links(false);}
     structureHp(t){return N.from(definition(t).hp).mul(N.power(1.14,t.level-1)).mul(1+this.research.hull*.15);}
@@ -43,12 +64,12 @@
       this.network={capacity,demand,used,links,disconnected,shed};
     }
     canBuild(slot,type){const p=cell(slot);if(!p||!Object.hasOwn(F.structures,type))return'Недопустимая клетка или чертёж.';if(this.tower(slot))return'Клетка занята.';if(this.enemies.some(e=>!e.dead&&Math.abs(e.x-p.x)<definition({type}).half+e.radius&&Math.abs(e.y-p.y)<definition({type}).half+e.radius))return'На клетке находится враг.';return'';}
-    build(slot,type){const reason=this.canBuild(slot,type);if(reason){this.say(reason);return false;}const price=N.from(F.structures[type].cost);if(!this.credits.gte(price)){this.say('Недостаточно кредитов.');return false;}this.credits=this.credits.sub(price);const t=this.create(slot,type);t.maxHp=t.hp=this.structureHp(t);this.buildings.set(slot,t);this.plans.delete(slot);this.powerDirty=true;this.rebuildPower();this.say(`${F.structures[type].name}: ${slot}. ${t.status}.`);return true;}
+    build(slot,type){const reason=this.canBuild(slot,type);if(reason){this.say(reason);return false;}const price=this.buildCost(slot,type);if(!this.credits.gte(price)){this.say('Недостаточно очков.');return false;}this.credits=this.credits.sub(price);const t=this.create(slot,type);t.maxHp=t.hp=this.structureHp(t);this.foundations.add(slot);this.buildings.set(slot,t);this.plans.delete(slot);this.powerDirty=true;this.rebuildPower();this.say(`${F.structures[type].name}: ${slot}. ${t.status}.`);return true;}
     plan(slot,type){if(!this.canAutomate('build')||this.canBuild(slot,type))return false;this.plans.set(slot,type);this.say(`В очередь: ${F.structures[type].name}, клетка ${slot}.`);return true;}
     upgradeCost(slot,count=1){const t=this.tower(slot);return t&&Number.isSafeInteger(count)&&count>0?cost(t,count):N.from(0);}
     affordableCount(slot){const t=this.tower(slot);if(!t||!this.credits.gte(cost(t)))return 0;let n=Math.min(Number.MAX_SAFE_INTEGER-t.level,Math.floor(this.credits.mul(.16).div(cost(t)).add(1).log/Math.log10(1.16)+1e-9));if(n>0&&!this.credits.gte(cost(t,n)))n--;return Math.max(0,n);}
     upgrade(slot,count=1){const t=this.tower(slot);if(!t||!Number.isSafeInteger(count)||count<1||!Number.isSafeInteger(t.level+count))return false;const price=cost(t,count);if(!this.credits.gte(price))return false;this.credits=this.credits.sub(price);t.spent=t.spent.add(price);const ratio=t.hp.ratio(t.maxHp);t.level+=count;t.maxHp=this.structureHp(t);t.hp=t.maxHp.mul(ratio);this.powerDirty=true;this.rebuildPower();this.say(`${definition(t).name}: уровень ${t.level}.`);return true;}
-    sell(slot){const t=this.tower(slot);if(!t||t===this.core)return false;const refund=t.spent.mul(.7*t.hp.ratio(t.maxHp));this.credits=this.credits.add(refund);this.remove(t);this.say(`Демонтировано. Возвращено ${refund.format()} кредитов с учётом повреждений.`);return true;}
+    sell(slot){const t=this.tower(slot);if(!t||t===this.core)return false;const refund=t.spent.mul(.7*t.hp.ratio(t.maxHp));this.credits=this.credits.add(refund);this.remove(t);this.say(`Демонтировано. Возвращено ${refund.format()} очков с учётом повреждений. Фундамент сохранён.`);return true;}
     remove(t){if(t===this.core)return;this.buildings.delete(t.slot);this.plans.delete(t.slot);this.powerDirty=true;this.rebuildPower();}
     setPriority(slot,n){const t=this.tower(slot);if(!t||![0,1,2].includes(n))return false;t.priority=n;this.powerDirty=true;this.rebuildPower();return true;}
     evolveOptions(slot){const t=this.tower(slot);return t&&definition(t).kind==='tower'?super.evolveOptions(slot):[];}
@@ -62,6 +83,7 @@
     start(){if(this.phase!=='ready')return false;this.started=true;this.phase='between';this.timer=2;this.say('Круговая оборона активирована.');return true;}
     spawn(){
       const e=super.spawn(),angle=(this.spawned-1)%8*Math.PI/4+this.wave*.31+Math.floor((this.spawned-1)/8)*.17;
+      e.wave=this.wave;e.hp=e.maxHp=N.from(24*D.enemies[e.type].hp).mul(N.power(F.growth.health,this.wave-1));
       // Perimeter grows with the connected base, not with unpowered remote decoys.
       const reach=this.allBuildings().reduce((r,t)=>t.connected?Math.max(r,Math.hypot(t.x,t.y)):r,0),radius=Math.max(480,reach+300);
       e.x=Math.cos(angle)*radius;e.y=Math.sin(angle)*radius;e.angle=angle+Math.PI;e.progress=-Math.hypot(e.x,e.y);e.attackClock=0;e.think=0;e.target='0,0';return e;
@@ -70,12 +92,13 @@
     hurt(t,amount){if(t.hp.log===-Infinity)return;t.hp=t.hp.sub(amount);t.flash=.18;if(t.hp.log===-Infinity){this.effect({kind:'burst',x:t.x,y:t.y,radius:42,color:definition(t).color,life:.4});if(t!==this.core){this.say(`${definition(t).name} уничтожен в ${t.slot}.`);this.remove(t);}else{this.powerDirty=true;this.rebuildPower();}}}
     moveEnemy(e,dt){
       e.think-=dt;let target=this.tower(e.target);if(!target||e.think<=0){target=this.target(e);e.target=target.slot;e.think=.5;}
-      const dx=target.x-e.x,dy=target.y-e.y,length=Math.hypot(dx,dy)||1,speed=e.speed*Math.min(1.7,1+Math.log2(this.wave+1)*.03)*e.slowFactor;
+      const ground=this.terrainAt(key(Math.round(e.x/F.cell),Math.round(e.y/F.cell)));
+      const dx=target.x-e.x,dy=target.y-e.y,length=Math.hypot(dx,dy)||1,speed=e.speed*Math.min(1.7,1+Math.log2(this.wave+1)*.03)*e.slowFactor*(ground?.speed||1);
       const next={x:e.x+dx/length*Math.min(length,speed*dt),y:e.y+dy/length*Math.min(length,speed*dt)};e.angle=Math.atan2(dy,dx);
       const p={q:Math.round(e.x/F.cell),r:Math.round(e.y/F.cell),x:e.x,y:e.y};let blocker=null,hit=1;
       for(const t of this.nearby(p,Math.max(80,speed*dt+40))){const at=intersection(e,next,t,e.radius+2);if(at!==null&&at<=hit){hit=at;blocker=t;}}
       e.x+=(next.x-e.x)*Math.max(0,hit-.001);e.y+=(next.y-e.y)*Math.max(0,hit-.001);e.progress=-Math.hypot(e.x,e.y);e.attackClock=Math.max(0,e.attackClock-dt);
-      if(blocker&&e.attackClock<=0){this.hurt(blocker,N.from(e.damage).mul(N.power(1.09,this.wave-1)));e.attackClock=e.boss?.8:1;this.effect({kind:'beam',x:e.x,y:e.y,toX:blocker.x,toY:blocker.y,color:e.color,life:.12});}
+      if(blocker&&e.attackClock<=0){this.hurt(blocker,this.enemyDamage(e));e.attackClock=e.boss?.8:1;this.effect({kind:'beam',x:e.x,y:e.y,toX:blocker.x,toY:blocker.y,color:e.color,life:.12});}
     }
     repairStructures(dt){
       // Simultaneous accumulated healing, with a per-target cap: stacking cannot grant invulnerability.
@@ -86,9 +109,13 @@
       }
       for(const [t,amount]of repairs){const cap=t.maxHp.mul(.04*dt),heal=amount.gte(cap)?cap:amount;t.hp=t.hp.add(heal);if(t.hp.gte(t.maxHp))t.hp=t.maxHp;}
     }
-    complete(){const count=this.segmentCount;super.complete();this.segmentCount=count;this.core.hp=this.core.hp.add(this.core.maxHp.mul(.06));if(this.core.hp.gte(this.core.maxHp))this.core.hp=this.core.maxHp;}
+    complete(){
+      this.best=Math.max(this.best,this.wave);this.cycleBest=Math.max(this.cycleBest,this.wave);
+      if(this.wave%10===0){const reward=N.power(1.08,this.wave/10-1);this.cores=this.cores.add(reward);this.say(`Волна ${this.wave}: +${reward.format()} нейроядер.`);}else this.say(`Волна ${this.wave} отражена. Очки получены за уничтоженных врагов.`);
+      this.wave++;this.phase='between';this.timer=3;this.core.hp=this.core.hp.add(this.core.maxHp.mul(.06));if(this.core.hp.gte(this.core.maxHp))this.core.hp=this.core.maxHp;
+    }
     step(dt){
-      if(!this.started||this.paused||!Number.isFinite(dt)||dt<=0)return;dt=Math.min(.1,dt);this.time+=dt;this.credits=this.credits.add(this.income().mul(dt));this.rebuildPower();
+      if(!this.started||this.paused||!Number.isFinite(dt)||dt<=0)return;dt=Math.min(.1,dt);this.time+=dt;this.rebuildPower();
       this.autoClock-=dt;if(this.autoClock<=0){this.autoClock=.5;this.automate();}
       for(const t of this.allBuildings()){t.flash=Math.max(0,t.flash-dt);if(t.type!=='regen')t.cooldown=Math.max(0,t.cooldown-dt);}
       for(const e of this.effects)e.life-=dt;this.effects=this.effects.filter(e=>e.life>0);
@@ -102,14 +129,16 @@
       this.enemies=this.enemies.filter(e=>!e.dead);if(this.spawned>=this.total&&!this.enemies.length)this.complete();
     }
     prestige(){const reward=this.prestigeReward();if(reward.log===-Infinity)return false;const keep={cores:this.cores.add(reward),research:{...this.research},best:this.best,prestiges:this.prestiges+1,kills:this.kills,defeats:this.defeats,auto:{...this.auto},speed:this.speed,reducedMotion:this.reducedMotion};Object.assign(this,new Game(),keep);for(const t of this.allBuildings())t.hp=t.maxHp=this.structureHp(t);this.rebuildPower();this.say('Новый цикл: ядро и простая турель. Исследования сохранены.');return true;}
-    serialize(){return{version:1,mode:'field',credits:this.credits.toJSON(),cores:this.cores.toJSON(),research:{...this.research},buildings:this.allBuildings().map(t=>({slot:t.slot,type:t.type,level:t.level,evolution:t.evolution,hp:t.hp.toJSON(),spent:t.spent.toJSON(),priority:t.priority})),plans:[...this.plans],camera:{...this.camera},selected:this.selected,wave:this.wave,best:this.best,cycleBest:this.cycleBest,prestiges:this.prestiges,kills:this.kills,defeats:this.defeats,started:this.started,paused:this.paused,repair:this.phase==='repair',auto:{...this.auto},speed:this.speed,reducedMotion:this.reducedMotion};}
+    serialize(){return{version:1,mode:'field',terrainVersion:1,foundations:[...this.foundations],credits:this.credits.toJSON(),cores:this.cores.toJSON(),research:{...this.research},buildings:this.allBuildings().map(t=>({slot:t.slot,type:t.type,level:t.level,evolution:t.evolution,hp:t.hp.toJSON(),spent:t.spent.toJSON(),priority:t.priority})),plans:[...this.plans],camera:{...this.camera},selected:this.selected,wave:this.wave,best:this.best,cycleBest:this.cycleBest,prestiges:this.prestiges,kills:this.kills,defeats:this.defeats,started:this.started,paused:this.paused,repair:this.phase==='repair',auto:{...this.auto},speed:this.speed,reducedMotion:this.reducedMotion};}
     restoreField(v){
       if(!v||v.mode!=='field'||v.version!==1)return;for(const id of Object.keys(D.research))this.research[id]=Math.min(D.research[id].max||Number.MAX_SAFE_INTEGER,Number.isSafeInteger(v.research?.[id])&&v.research[id]>=0?v.research[id]:0);
+      if(Array.isArray(v.foundations))for(const slot of v.foundations)if(cell(slot))this.foundations.add(slot);
       if(v.credits===null||Number.isFinite(v.credits))this.credits=N.load(v.credits);if(v.cores===null||Number.isFinite(v.cores))this.cores=N.load(v.cores);
       if(Array.isArray(v.buildings)){this.buildings.clear();for(const saved of v.buildings){if(!saved||!cell(saved.slot)||saved.type==='core'&&saved.slot!=='0,0'||saved.slot==='0,0'&&saved.type!=='core'||saved.type!=='core'&&!Object.hasOwn(F.structures,saved.type)||this.buildings.has(saved.slot))continue;
           const t=this.create(saved.slot,saved.type);t.level=finiteLevel(saved.level);t.maxHp=this.structureHp(t);t.hp=saved.hp===null?N.from(0):Number.isFinite(saved.hp)?N.load(saved.hp):t.maxHp;if(t.hp.gte(t.maxHp))t.hp=t.maxHp;if(t.hp.log===-Infinity&&t.type!=='core')continue;
           t.spent=Number.isFinite(saved.spent)?N.load(saved.spent):N.from(definition(t).cost);t.priority=[0,1,2].includes(saved.priority)?saved.priority:1;t.evolution=D.evolutions[t.type]?.some(e=>e.id===saved.evolution)&&t.level>=10?saved.evolution:null;this.buildings.set(t.slot,t);
         }this.core=this.tower('0,0');if(!this.core){this.core=this.create('0,0','core');this.core.hp=this.core.maxHp=this.structureHp(this.core);this.buildings.set('0,0',this.core);}}
+      for(const t of this.allBuildings())this.foundations.add(t.slot);
       for(const id of ['best','cycleBest','prestiges','kills','defeats'])this[id]=Number.isSafeInteger(v[id])&&v[id]>=0?v[id]:0;this.best=Math.max(this.best,this.cycleBest);this.wave=Math.min(finiteLevel(v.wave),this.best+1);
       this.started=v.started===true;this.paused=v.paused===true;this.phase=this.core.hp.log===-Infinity?'repair':this.started?'between':'ready';if(this.phase==='repair')this.started=true;this.timer=this.phase==='repair'?8:2;
       for(const id of Object.keys(this.auto))this.auto[id]=this.canAutomate(id)&&v.auto?.[id]===true;

@@ -13,4 +13,9 @@ g.start();g.phase='wave';g.wave=8;g.time=23;g.total=24;
 for(let i=0;i<24;i++){const e=g.spawn(),a=i*Math.PI/12+.12,radius=235+(i%3)*35;e.x=Math.cos(a)*radius;e.y=Math.sin(a)*radius;e.angle=a+Math.PI;e.progress=-radius;}
 g.hurt(g.tower('3,1'),180);g.hurt(g.tower('-3,-1'),220);g.hurt(g.tower('1,0'),45);
 for(const t of g.allTowers())g.attack(t);g.repairStructures(.1);g.enemies=g.enemies.filter(e=>!e.dead);g.selected='2,0';
-const renderer=new Renderer(canvas);renderer.draw(g);fs.writeFileSync(process.argv[3],canvas.toBuffer('image/png'));
+const renderer=new Renderer(canvas);
+if(process.argv[6]==='terrain'){
+  g.enemies=[];g.effects=[];g.buildLine('4,0','16,0','pylon');g.build('16,1','generator');g.build('17,0','rail');g.build('16,-1','regen');g.buildLine('13,-2','18,-2','wall');
+  g.camera={x:15*60,y:3*60};g.selected='18,6';renderer.blueprint='wall';renderer.lineStart='10,6';
+}
+renderer.draw(g);fs.writeFileSync(process.argv[3],canvas.toBuffer('image/png'));

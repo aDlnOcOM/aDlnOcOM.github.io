@@ -30,7 +30,7 @@
     <main id="main">
       <header class="topbar">
         <div class="title"><p>INFINITE DEFENSE PROTOCOL</p><h1>NEON<span>//</span>BASTION</h1></div>
-        <div class="resources"><div><small>КРЕДИТЫ</small><b id="credits">150</b><span id="income">+1,5 / с</span></div><div class="core-currency"><small>НЕЙРОЯДРА</small><b id="cores">0</b><span>ПОСТОЯННЫЙ ПРОГРЕСС</span></div></div>
+        <div class="resources"><div><small>ОЧКИ ЗА УБИЙСТВА</small><b id="credits">150</b><span id="income">Без пассивного дохода</span></div><div class="core-currency"><small>НЕЙРОЯДРА</small><b id="cores">0</b><span>ПОСТОЯННЫЙ ПРОГРЕСС</span></div></div>
         <button id="run-toggle" class="primary">ЗАПУСТИТЬ ОБОРОНУ <span>▶</span></button>
       </header>
       <section class="dashboard">
@@ -43,7 +43,7 @@
             <p id="camera-label"></p>
           </section>
           <div class="battlefield"><canvas id="field" tabindex="0" aria-label="Карта обороны. Стрелки выбирают клетку, B строит, U улучшает. Перетаскивание перемещает обзор." aria-describedby="map-hint combat-summary">Текстовая сводка боя, координаты строительства и список построек расположены после карты.</canvas><div class="map-badge"><span id="threat">Ожидание волны</span></div></div>
-          <div class="map-footer"><p id="map-hint">Клик — выбрать клетку. Перетаскивание — обзор. Чертёж → построить.</p><span id="link-count">0 СВЯЗЕЙ</span></div>
+          <div class="map-footer"><p id="map-hint">Клик — клетка. Перетаскивание — обзор. Shift + перетаскивание — линия → подтвердить в панели. Линию также можно задать кнопкой «Начать линию здесь» и координатами.</p><span id="link-count">0 СВЯЗЕЙ</span></div>
           <p id="combat-summary" class="combat-summary"></p>
           <h2 id="controls" tabindex="-1">Строительство</h2>
           <form id="cell-form" novalidate><label for="cell-x">Клетка X</label><input id="cell-x" type="number" step="1" value="1" aria-describedby="cell-error"><label for="cell-y">Клетка Y</label><input id="cell-y" type="number" step="1" value="0" aria-describedby="cell-error"><button type="submit" id="cell-go">Выбрать клетку</button><p id="cell-error" role="alert"></p></form>
@@ -57,7 +57,7 @@
           <div id="panel" tabindex="-1"></div>
           <div class="network-record"><div><small>РЕКОРД СЕТИ</small><b id="record">0</b></div><div><small>УНИЧТОЖЕНО</small><b id="kills">0</b></div><div><small>ПЕРЕЗАГРУЗОК</small><b id="prestiges">0</b></div></div>
           <button id="prestige" class="prestige"><span>↻</span><b>ПЕРЕЗАГРУЗКА СЕТИ</b><small id="prestige-hint">Откроется после 20 волн цикла</small></button>
-          <p class="idle-note">Производство работает вне игры до 8 часов. Волны и бой — только в открытой вкладке.<br><a href="route.html">Предыдущая версия с трассой</a> — прежний прогресс сохранён отдельно.</p>
+          <p class="idle-note">Очки — за уничтожение врагов, без добычи и пассивного дохода. Каждая волна: здоровье ×1,16 · урон ×1,09 · награда ×1,12. Бой только в открытой вкладке.<br><a href="route.html">Предыдущая версия с трассой</a> — прежний прогресс сохранён отдельно.</p>
         </aside>
       </section>
       <footer class="statusbar"><span id="event" role="status">Ядро и стартовая турель готовы.</span><button id="help-mobile">ИНСТРУКЦИЯ</button><span id="save-state">ЛОКАЛЬНОЕ СОХРАНЕНИЕ</span></footer>
