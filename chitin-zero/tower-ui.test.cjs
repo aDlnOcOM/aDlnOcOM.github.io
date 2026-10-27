@@ -20,7 +20,7 @@ function harness({saved=null,blockedStorage=false,noCanvas=false,width=1000,heig
     addEventListener(type,fn){(this.listeners[type]||=[]).push(fn);}
     setAttribute(key,value){this.attrs[key]=value;}
     focus(){document.activeElement=this;}
-    querySelectorAll(selector){return selector==='details'?(this.disclosures||[]):selector==='summary'?(this.summaries||[]):this.children.filter(b=>!b.disabled);}
+    querySelectorAll(selector){return selector==='details'?(this.disclosures||[]):selector==='summary'?(this.summaries||[]):selector==='summary, button:not([disabled])'?[...(this.summaries||[]),...this.children.filter(b=>!b.disabled)]:this.children.filter(b=>!b.disabled);}
     querySelector(selector){const matches=[...selector.matchAll(/\[data-([\w-]+)="([^"]+)"\]/g)];return matches.length?this.children.find(b=>matches.every(m=>b.dataset[m[1]]===m[2])):this.querySelectorAll()[0];}
     getBoundingClientRect(){return{left:10,top:20,width,height};}
     getContext(type){assert.equal(type,'2d','vector-only rendering context');return noCanvas?null:context2d;}
@@ -68,7 +68,7 @@ test('shop offers, targeted tarot and planet purchases change run state through 
   const h=harness();h.click('new-run');const g=h.context.game;g.launch();finish(g);g.run.cash=100;g.run.shop=[g.item('planet','pair'),g.item('tarot','foil')];h.frame(0);h.button('play-panel','id','0');assert.equal(g.run.levels.pair,2);h.button('play-panel','id','1');assert.equal(g.run.cards[0].enhance,'foil');assert.match(h.nodes.get('play-panel').innerHTML,/Куплено/);
 });
 test('joker order and sales are reachable without dragging',()=>{
-  const h=harness();h.click('new-run');const g=h.context.game;g.run.jokers=['spark','echo'];h.button('play-panel','act','best');h.button('jokers','act','right');assert.equal(g.run.jokers[0],'echo');g.launch();finish(g);h.frame(0);h.button('jokers','act','sell');assert.equal(g.run.jokers.length,1);
+  const h=harness();h.click('new-run');const g=h.context.game;g.run.jokers=['spark','echo'];h.button('play-panel','act','best');h.button('jokers','id','0');h.button('modal-body','act','right');assert.equal(g.run.jokers[0],'echo');assert.equal(h.nodes.get('modal-title').textContent,'Искровой чип');h.key('Escape');g.launch();finish(g);h.frame(0);h.button('jokers','id','0');h.button('modal-body','act','sell');assert.equal(g.run.jokers.length,1);assert.equal(h.nodes.get('modal').hidden,true);
 });
 test('booster choice blocks next round until an explicit choice or skip',()=>{
   const h=harness();h.click('new-run');const g=h.context.game;g.launch();finish(g);g.run.cash=100;g.run.shop=[g.item('pack','joker')];h.frame(0);h.button('play-panel','act','buy');assert.match(h.nodes.get('play-panel').innerHTML,/Оставьте один/);h.button('play-panel','act','pack');assert.equal(g.run.pack,null);assert.equal(g.run.jokers.length,1);
@@ -89,7 +89,7 @@ test('storage and Canvas errors are visible instead of claiming success',()=>{
   const h=harness({blockedStorage:true});assert.match(h.nodes.get('save-state').textContent,/только в памяти/);const c=harness({noCanvas:true});assert.equal(c.nodes.get('new-run').disabled,true);assert.match(c.nodes.get('event').textContent,/графику/);
 });
 test('collection reports unlock requirements and stakes instead of permanent damage',()=>{
-  const h=harness();h.click('collection-toggle');assert.equal(h.nodes.get('collection').hidden,false);assert.equal(h.nodes.get('collection-toggle').attrs['aria-expanded'],'true');assert.match(h.nodes.get('unlocks').innerHTML,/100 врагов/);assert.match(h.nodes.get('collection-cards').innerHTML,/Сыграйте Синхронизацию/);
+  const h=harness();h.click('collection-toggle');assert.equal(h.nodes.get('collection').hidden,true);assert.equal(h.nodes.get('modal').hidden,false);assert.equal(h.nodes.get('collection-toggle').attrs['aria-expanded'],'true');assert.match(h.nodes.get('modal-body').innerHTML,/100 врагов/);assert.match(h.nodes.get('modal-body').innerHTML,/Сыграйте Синхронизацию/);h.key('Escape');assert.equal(h.nodes.get('collection-toggle').attrs['aria-expanded'],'false');
 });
 test('small screens render finite vector coordinates and retain non-canvas actions',()=>{
   const h=harness({width:390,height:390,viewportWidth:390,viewportHeight:844});h.click('new-run');h.frame(0);h.frame(100);assert.ok(h.drawCalls.length>150);assert.match(h.nodes.get('play-panel').innerHTML,/В бой →/);
@@ -118,7 +118,7 @@ test('same module renderer preserves ranks, upgrades and scoring state in battle
   assert.match(html,/\+30 мощ\./);assert.match(html,/Вне связки/);assert.match(html,/В сети/);
   assert.doesNotMatch(html,/data-act="card"/);
   finish(g);g.run.cash=100;g.run.shop=[g.item('tarot','heart')];h.frame(0);
-  h.button('play-panel','id',String(ids[3]));assert.match(h.nodes.get('play-panel').innerHTML,/Цель: NET \/ 14/);
+  h.button('play-panel','act','modules');h.button('modal-body','id',String(ids[3]));assert.equal(h.nodes.get('modal').hidden,true);assert.match(h.nodes.get('play-panel').innerHTML,/Цель: NET \/ 14/);
   h.button('play-panel','act','buy');assert.equal(g.card(ids[3]).suit,1);
   assert.match(h.nodes.get('play-panel').innerHTML,/Цель: FIX \/ 14/);
 });
@@ -131,10 +131,11 @@ test('menu and diagnostics start folded while primary actions remain outside dis
     if(!['meta','link','input','br','hr'].includes(tag))stack.push(tag);
   }
   assert.equal(stack.length,0);assert.doesNotMatch(html,/<details\b[^>]*\bopen(?:\s|>|=)/);
-  for(const id of ['help','save','retire','stats','trace','levels','seed'])assert.ok(ancestors.get(id).includes('details'),id);
+  for(const id of ['help','save','retire','seed'])assert.ok(ancestors.get(id).includes('details'),id);
+  assert.match(html,/<div hidden><div id="stats"[\s\S]*id="trace"[\s\S]*id="levels"/);
   for(const id of ['new-run','cash','damage','hp','pause'])assert.ok(!ancestors.get(id).includes('details'),id);
   const h=harness();assert.equal(h.nodes.get('decks').children.length,1);h.click('new-run');
-  assert.ok(h.nodes.get('play-panel').innerHTML.indexOf('data-act="launch"')<h.nodes.get('play-panel').innerHTML.indexOf('<details'));
+  assert.match(h.nodes.get('play-panel').innerHTML,/data-act="launch"/);assert.doesNotMatch(h.nodes.get('play-panel').innerHTML,/<details/);
 });
 
 test('compact cash and damage displays track play, purchases and empty selections',()=>{
@@ -147,13 +148,63 @@ test('compact cash and damage displays track play, purchases and empty selection
   assert.equal(h.nodes.get('cash').textContent,`$${g.run.cash}`);
 });
 
-test('expanded guide survives selecting a module and keyboard can reach modal guide',()=>{
-  const h=harness();h.click('new-run');h.nodes.get('play-panel').disclosures[0].open=true;
-  h.button('play-panel','id',h.context.game.run.selected[0]);assert.equal(h.nodes.get('play-panel').disclosures[0].open,true);
-  h.click('help');h.key('Tab');assert.equal(h.document.activeElement.tagName,'SUMMARY');
+test('guide is an overlay with keyboard access to scrolling content and disclosures',()=>{
+  const h=harness();h.click('new-run');h.click('help');h.key('Tab');assert.equal(h.document.activeElement.id,'modal-body');h.key('Tab');assert.equal(h.document.activeElement.tagName,'SUMMARY');
   h.key('Tab');assert.equal(h.document.activeElement.dataset.act,'close');
   h.key('Tab',{shiftKey:true});assert.equal(h.document.activeElement.tagName,'SUMMARY');h.key('Escape');
   h.nodes.get('menu').open=true;h.key('Escape');assert.equal(h.nodes.get('menu').open,false);assert.equal(h.document.activeElement.id,'menu-toggle');
+});
+
+test('game phases select dock, market and launch screen without expanding the page',()=>{
+  const h=harness();assert.equal(h.nodes.get('app').dataset.phase,'setup');assert.equal(h.nodes.get('decisions').hidden,true);
+  h.click('new-run');assert.equal(h.nodes.get('app').dataset.phase,'prepare');assert.equal(h.nodes.get('side-console').hidden,false);assert.equal(h.nodes.get('decisions').hidden,false);
+  h.button('play-panel','act','launch');assert.equal(h.nodes.get('app').dataset.phase,'battle');finish(h.context.game);h.frame(0);assert.equal(h.nodes.get('app').dataset.phase,'shop');
+  assert.doesNotMatch(h.nodes.get('play-panel').innerHTML,/deck-browser|<details/);
+  h.button('play-panel','act','next');assert.equal(h.nodes.get('app').dataset.phase,'prepare');
+});
+
+test('every inspection pauses combat without changing the selected build or previous pause state',()=>{
+  for(const id of ['inspect-build','guide','loadout','collection-toggle']){
+    const h=harness();h.click('new-run');h.button('play-panel','act','launch');const g=h.context.game,selected=JSON.stringify(g.run.selected),time=g.run.time;
+    h.nodes.get(id).focus();h.click(id);assert.equal(g.run.paused,true);assert.equal(h.nodes.get('app').inert,true);h.frame(0);h.frame(100);assert.equal(g.run.time,time);
+    h.key('Escape');assert.equal(g.run.paused,false);assert.equal(JSON.stringify(g.run.selected),selected);assert.equal(h.document.activeElement.id,id);
+    g.run.paused=true;h.click(id);h.key('Escape');assert.equal(g.run.paused,true);
+  }
+});
+
+test('compact loadout opens each implant but cannot rearrange an active battle',()=>{
+  const h=harness();h.click('new-run');const g=h.context.game;g.run.jokers=['spark','echo','cache','shell','scope','medic'];h.button('play-panel','act','launch');
+  h.click('loadout');assert.equal(h.nodes.get('modal-body').children.length,6);h.button('modal-body','id','0');
+  assert.equal(h.nodes.get('modal').dataset.kind,'implant');const right=h.nodes.get('modal-body').children.find(b=>b.dataset.act==='right');assert.equal(right.disabled,true);
+  h.button('modal-body','act','right');assert.equal(g.run.jokers[0],'spark');h.key('Escape');assert.equal(g.run.paused,false);
+});
+
+test('patch picker traps keyboard focus and cancel leaves target and credits untouched',()=>{
+  const h=harness();h.click('new-run');const g=h.context.game;g.launch();finish(g);g.run.shop=[g.item('tarot','heart')];h.frame(0);
+  const before=JSON.stringify(g.run.cards),cash=g.run.cash;h.button('play-panel','act','modules');
+  h.key('Tab');assert.equal(h.document.activeElement.id,'modal-body');h.key('Tab');assert.equal(h.document.activeElement.dataset.act,'target');
+  h.key('Escape');assert.equal(JSON.stringify(g.run.cards),before);assert.equal(g.run.cash,cash);assert.equal(h.nodes.get('app').inert,false);
+});
+
+test('boss rule remains visible on the field and eight or nine modules remain in the dock',()=>{
+  const h=harness();h.click('new-run');const g=h.context.game;g.run.round=3;g.run.vouchers=['pocket'];g.prepare();h.button('play-panel','act','best');
+  assert.equal(h.nodes.get('boss-warning').hidden,false);assert.match(h.nodes.get('boss-warning').textContent,/35%/);
+  assert.match(h.nodes.get('play-panel').innerHTML,/--cards:9/);assert.equal(h.nodes.get('play-panel').children.filter(b=>b.dataset.act==='card').length,9);
+  h.button('play-panel','act','launch');assert.equal(h.nodes.get('boss-warning').hidden,false);
+});
+
+test('viewport layout has bounded main regions and independently scrollable overlay content',()=>{
+  const css=fs.readFileSync(path.join(__dirname,'tower.css'),'utf8');
+  assert.match(css,/html,body\{[^}]*height:100%;overflow:hidden/);
+  assert.match(css,/\.shell\{[^}]*height:100dvh;[^}]*minmax\(0,1fr\)/);
+  assert.match(css,/\.arena canvas\{[^}]*height:100%/);
+  assert.doesNotMatch(css,/height:clamp\(320px,56vh/);
+  assert.match(css,/#modal-body\{[^}]*overflow:auto/);
+  assert.match(css,/@media\(max-height:520px\) and \(min-width:560px\)/);
+  // This asserts the CSS contract, not computed geometry in a real browser.
+  for(const [width,height] of [[320,568],[390,844],[640,360],[844,390],[1366,768],[1920,1080]]){
+    const h=harness({width,height,viewportWidth:width,viewportHeight:height});h.click('new-run');h.frame(0);assert.ok(h.drawCalls.length>50);assert.equal(h.nodes.get('decisions').hidden,false);
+  }
 });
 
 test('version-one snapshots keep numeric module identities, enhancements and damage',()=>{
